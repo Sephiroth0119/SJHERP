@@ -6,6 +6,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import com.sjherp.agent.session.AgentSessionRepository;
 import com.sjherp.infra.agent.AgentReplyJsonCodec;
+import com.sjherp.infra.agent.PendingToolCallJsonCodec;
 import com.sjherp.infra.persistence.JdbcAgentSessionRepository;
 
 /**
@@ -22,6 +23,12 @@ public class AgentInfraConfig {
     @Bean
     public AgentReplyJsonCodec agentReplyJsonCodec() {
         return new AgentReplyJsonCodec();
+    }
+
+    /** 高风险待确认调用现场（PendingToolCall）的 JSON 编解码（M1-T03） */
+    @Bean
+    public PendingToolCallJsonCodec pendingToolCallJsonCodec() {
+        return new PendingToolCallJsonCodec();
     }
 
     /** 会话仓储：MySQL 实现为运行时默认 */

@@ -34,3 +34,11 @@ sjherp:
   # / llm（强制 LLM，缺 key 启动失败）/ placeholder（强制规则占位）
   agent:
     mode: auto
+    # 执行循环（M1-T02）防护参数
+    max-iterations: 8            # 最大 LLM 迭代次数，用尽后强制终轮收尾
+    loop-timeout-seconds: 300    # 循环整体超时预算（覆盖全部 LLM 调用与工具执行）
+    # 终轮 JSON 模式：separate-final-call（默认）/ with-tools。
+    # DeepSeek 实测（2026-06）：response_format=json_object 与 tools 同时携带不报错，
+    # 但模型稳定不发起工具调用（4/4 复现），故必须用 separate-final-call
+    # （工具轮不带 json_object，模型不再调工具后终轮单独调一次 json_object）。
+    final-json-mode: separate-final-call

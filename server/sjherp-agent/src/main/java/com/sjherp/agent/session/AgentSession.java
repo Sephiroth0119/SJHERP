@@ -30,6 +30,16 @@ public class AgentSession {
     /** 消息历史（持久化时单独成表，按追加顺序排列） */
     private final List<AgentMessage> messages = new ArrayList<>();
 
+    /**
+     * 待人工确认的高风险工具调用现场（M1-T03 Human-in-the-loop）。
+     *
+     * <p>PendingToolCall 序列化后的 JSON（编解码在 infra，agent 模块零依赖、
+     * 只把它当不透明字符串持有）；null 表示当前没有待确认调用。
+     * 持久化到 agent_session.pending_tool_call 列（V3 迁移），保证杀进程后
+     * 确认流程仍可恢复（ADR-001 延伸）。
+     */
+    private String pendingToolCallJson;
+
     /** 创建时间 */
     private final Instant createdAt;
 
@@ -59,10 +69,19 @@ public class AgentSession {
     public static AgentSession restore(String sessionId, String userId, String title,
                                        SessionStatus status, List<AgentMessage> messages,
                                        Instant createdAt, Instant updatedAt) {
+        return restore(sessionId, userId, title, status, messages, null, createdAt, updatedAt);
+    }
+
+    /** 同上，含待确认高风险工具调用现场（agent_session.pending_tool_call 列） */
+    public static AgentSession restore(String sessionId, String userId, String title,
+                                       SessionStatus status, List<AgentMessage> messages,
+                                       String pendingToolCallJson,
+                                       Instant createdAt, Instant updatedAt) {
         AgentSession session = new AgentSession(sessionId, userId, title, status, createdAt, updatedAt);
         if (messages != null) {
             session.messages.addAll(messages);
         }
+        session.pendingToolCallJson = pendingToolCallJson;
         return session;
     }
 
@@ -98,6 +117,22 @@ public class AgentSession {
 
     public SessionStatus getStatus() {
         return status;
+    }
+
+    /** 待确认高风险工具调用现场 JSON；null 表示无待确认调用 */
+    public String getPendingToolCallJson() {
+        return pendingToolCallJson;
+    }
+
+    /** 是否存在待人工确认的高风险工具调用 */
+    public boolean hasPendingToolCall() {
+        return pendingToolCallJson != null && !pendingToolCallJson.isBlank();
+    }
+
+    /** 写入 / 清除（传 null）待确认调用现场，并刷新更新时间 */
+    public void setPendingToolCallJson(String pendingToolCallJson) {
+        this.pendingToolCallJson = pendingToolCallJson;
+        this.updatedAt = Instant.now();
     }
 
     /** 只读视图，外部不允许绕过 {@link #append} 修改历史 */

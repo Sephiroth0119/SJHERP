@@ -24,6 +24,27 @@ public interface Tool {
     String parameterSchema();
 
     /**
+     * 工具风险级别（M1-T03 安全壳），默认 NORMAL。
+     *
+     * <p>声明为 HIGH 的工具由 Agent 执行循环在框架层强制拦截：未带"已确认"
+     * 标记的调用不执行，中断循环返回待确认结果，由人点击确认后才恢复执行
+     * （CLAUDE.md：Human-in-the-loop）。
+     */
+    default ToolRiskLevel riskLevel() {
+        return ToolRiskLevel.NORMAL;
+    }
+
+    /**
+     * 执行本工具所需的权限点（如 "purchase:create_order"），默认 null 表示无权限要求。
+     *
+     * <p>本期只声明接口：执行循环会把它交给 {@link ToolPermissionChecker} 校验，
+     * 真实权限模型在 M2-T06 接入（届时由 app 层提供基于用户角色的实现）。
+     */
+    default String requiredPermission() {
+        return null;
+    }
+
+    /**
      * 执行工具。
      *
      * @param arguments LLM 给出的调用参数（已按 parameterSchema 解析为键值对）
