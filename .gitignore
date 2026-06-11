@@ -22,6 +22,9 @@ application-local.yml
 # Claude Code 会话状态
 .claude/scheduled_tasks.lock
 
+# Playwright MCP 调试产物
+.playwright-mcp/
+
 # 系统
 Thumbs.db
 .DS_Store
