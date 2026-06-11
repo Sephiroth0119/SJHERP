@@ -22,4 +22,13 @@
     <artifactId>sjherp-domain</artifactId>
     <name>SJHERP Domain</name>
     <description>领域模型与领域服务：单据状态机、库存成本核算、财务勾稽规则</description>
+
+    <dependencies>
+        <!-- 仅测试依赖（test scope），运行时保持零依赖纯 Java；版本由 Spring Boot 父 POM 管理 -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
 </project>

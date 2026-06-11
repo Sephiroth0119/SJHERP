@@ -1,7 +1,6 @@
 package com.sjherp.agent.llm;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * LLM 回复（厂商无关的统一表示）。
@@ -15,17 +14,13 @@ public record LlmResponse(String content, List<ToolCall> toolCalls) {
         toolCalls = toolCalls == null ? List.of() : List.copyOf(toolCalls);
     }
 
+    /** 纯文本回复的便捷构造 */
+    public LlmResponse(String content) {
+        this(content, List.of());
+    }
+
     /** 是否包含工具调用请求 */
     public boolean hasToolCalls() {
         return !toolCalls.isEmpty();
-    }
-
-    /**
-     * 模型发起的一次工具调用请求。
-     *
-     * @param toolName  工具名称（必须已在 ToolRegistry 注册）
-     * @param arguments 调用参数（已解析为键值对）
-     */
-    public record ToolCall(String toolName, Map<String, Object> arguments) {
     }
 }

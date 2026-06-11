@@ -14,10 +14,21 @@ import java.util.List;
 public interface LlmClient {
 
     /**
-     * 同步对话补全。
+     * 同步对话补全（全默认按次参数）。
      *
      * @param messages 完整上下文消息列表（含 system 提示与历史）
      * @return 模型回复
      */
-    LlmResponse chat(List<LlmMessage> messages);
+    default LlmResponse chat(List<LlmMessage> messages) {
+        return chat(messages, LlmRequestOptions.defaults());
+    }
+
+    /**
+     * 同步对话补全，带按次参数（响应格式 / 温度覆盖 / 工具定义 / 工具选择）。
+     *
+     * @param messages 完整上下文消息列表（含 system 提示、历史、工具结果回灌）
+     * @param options  本次调用参数，不可为 null（无特殊要求传 {@link LlmRequestOptions#defaults()}）
+     * @return 模型回复（可能包含工具调用请求）
+     */
+    LlmResponse chat(List<LlmMessage> messages, LlmRequestOptions options);
 }

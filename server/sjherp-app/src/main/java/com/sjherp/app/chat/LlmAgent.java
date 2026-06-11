@@ -11,6 +11,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sjherp.agent.llm.LlmClient;
 import com.sjherp.agent.llm.LlmMessage;
+import com.sjherp.agent.llm.LlmRequestOptions;
 import com.sjherp.agent.llm.LlmResponse;
 import com.sjherp.agent.reply.AgentReply;
 import com.sjherp.agent.reply.Option;
@@ -37,6 +38,10 @@ public class LlmAgent implements Agent {
 
     /** 仅用于把表单 values 序列化进用户消息（与协议编解码无关） */
     private static final ObjectMapper PLAIN_MAPPER = new ObjectMapper();
+
+    /** 聊天链路要求模型输出协议 JSON：按次启用 response_format=json_object（行为与原构造参数开关一致） */
+    private static final LlmRequestOptions JSON_REPLY_OPTIONS =
+            LlmRequestOptions.builder().jsonResponseFormat(true).build();
 
     /**
      * 系统提示词：协议字段结构、optionId 回传机制、Human-in-the-loop 规则、
@@ -139,7 +144,7 @@ public class LlmAgent implements Agent {
 
         String raw;
         try {
-            LlmResponse response = llmClient.chat(messages);
+            LlmResponse response = llmClient.chat(messages, JSON_REPLY_OPTIONS);
             raw = response.content();
         } catch (RuntimeException e) {
             // LLM 调用失败（超时/网络/非 200）：不把异常抛给用户，给致歉兜底

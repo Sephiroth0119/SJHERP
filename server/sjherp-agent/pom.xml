@@ -24,5 +24,12 @@
     <name>SJHERP Agent Framework</name>
     <description>自研 Agent 框架：会话、工具注册、选项返回协议、LLM 抽象层（领域无关）</description>
 
-    <!-- 刻意保持零运行时依赖：纯 Java 21 -->
+    <!-- 刻意保持零运行时依赖：纯 Java 21；仅允许 test scope 的 JUnit 5 -->
+    <dependencies>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
 </project>

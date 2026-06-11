@@ -70,11 +70,10 @@ public class ChatAgentConfig {
     private Agent llmAgent(LlmProperties llm, AgentReplyJsonCodec codec) {
         log.info("聊天 Agent：使用 LlmAgent（provider=DeepSeek, model={}, baseUrl={}, timeout={}s）",
                 llm.model(), llm.baseUrl(), llm.timeoutSeconds());
+        // json_object 等按次参数改由 LlmAgent 通过 LlmRequestOptions 传入（M1-T01）
         DeepSeekLlmClient client = new DeepSeekLlmClient(
                 llm.apiKey(), llm.baseUrl(), llm.model(), llm.temperature(),
-                Duration.ofSeconds(llm.timeoutSeconds()),
-                // 聊天链路要求模型输出协议 JSON，启用 json_object
-                true);
+                Duration.ofSeconds(llm.timeoutSeconds()));
         return new LlmAgent(client, codec);
     }
 }
