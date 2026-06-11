@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  sjherp-infra：基础设施层
+
+  职责：持久化（MySQL）、LLM 抽象层的具体厂商实现（DeepSeek/通义/Claude/GPT 可切换）、
+  向量库客户端（系统大记忆）。依赖方向：仅依赖 sjherp-domain（实现其仓储接口），
+  后续接入 LLM 时再依赖 sjherp-agent 的 LlmClient 接口提供实现。
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.sjherp</groupId>
+        <artifactId>sjherp-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>sjherp-infra</artifactId>
+    <name>SJHERP Infrastructure</name>
+    <description>持久化、LLM 抽象层实现、向量库客户端</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.sjherp</groupId>
+            <artifactId>sjherp-domain</artifactId>
+        </dependency>
+    </dependencies>
+</project>

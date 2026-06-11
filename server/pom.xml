@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SJHERP 后端父 POM（Maven 多模块）
+
+  模块职责（与 CLAUDE.md 仓库结构规划一致）：
+  - sjherp-agent  : 自研 Agent 框架，领域无关，可独立演进，不依赖其他业务模块
+  - sjherp-domain : 领域模型与领域服务（进销存 + 生产 + 财务核心）
+  - sjherp-infra  : 持久化、LLM 抽象层实现、向量库客户端（依赖 domain）
+  - sjherp-app    : 应用层，Agent 工具定义 / API / 编排入口（依赖 agent + domain + infra）
+
+  依赖方向（不可逆转）：app -> agent / domain / infra；infra -> domain；agent 不依赖任何业务模块。
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- 继承 Spring Boot 父 POM，统一管理依赖与插件版本 -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.4.5</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.sjherp</groupId>
+    <artifactId>sjherp-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>SJHERP Parent</name>
+    <description>下一代 Agent 原生 ERP - 后端父工程</description>
+
+    <modules>
+        <module>sjherp-agent</module>
+        <module>sjherp-domain</module>
+        <module>sjherp-infra</module>
+        <module>sjherp-app</module>
+    </modules>
+
+    <properties>
+        <java.version>21</java.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <!-- 统一管理本工程内部模块版本，子模块互相引用时无需写版本号 -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.sjherp</groupId>
+                <artifactId>sjherp-agent</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.sjherp</groupId>
+                <artifactId>sjherp-domain</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.sjherp</groupId>
+                <artifactId>sjherp-infra</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+</project>

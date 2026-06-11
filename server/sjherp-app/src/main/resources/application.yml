@@ -1,0 +1,15 @@
+# SJHERP 应用配置
+spring:
+  application:
+    name: sjherp
+
+  # MySQL 数据源（占位，骨架阶段不连库；启用时取消注释并补全密码）
+  # 业务数据库为 MySQL 8.x，InnoDB，强事务；金额字段一律 DECIMAL
+  # datasource:
+  #   url: jdbc:mysql://localhost:3306/sjherp?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+  #   username: sjherp
+  #   password: ${SJHERP_DB_PASSWORD}
+  #   driver-class-name: com.mysql.cj.jdbc.Driver
+
+server:
+  port: 8080

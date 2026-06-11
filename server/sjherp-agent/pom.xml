@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  sjherp-agent：自研 Agent 框架核心（项目核心资产之一）
+
+  设计约束（见 CLAUDE.md）：
+  - 领域无关：本模块不允许依赖 sjherp-domain / sjherp-infra / sjherp-app，
+    也不依赖 Spring，保持纯 Java，可独立演进、独立测试。
+  - 会话状态显式持久化：抽象为 Repository 接口，先提供内存实现，
+    后续由 sjherp-infra 提供数据库实现。
+  - 选项返回协议：AgentReply（文本 + 选项 + 可选表单）是前后端核心契约。
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.sjherp</groupId>
+        <artifactId>sjherp-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>sjherp-agent</artifactId>
+    <name>SJHERP Agent Framework</name>
+    <description>自研 Agent 框架：会话、工具注册、选项返回协议、LLM 抽象层（领域无关）</description>
+
+    <!-- 刻意保持零运行时依赖：纯 Java 21 -->
+</project>

@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  sjherp-app：应用层（唯一可启动模块）
+
+  职责：Agent 工具(Tool)定义（把领域服务包装为注册工具）、HTTP API、Agent 编排入口。
+  依赖方向：app -> agent + domain + infra。
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.sjherp</groupId>
+        <artifactId>sjherp-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>sjherp-app</artifactId>
+    <name>SJHERP Application</name>
+    <description>应用层：API、Agent 工具定义、编排入口</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.sjherp</groupId>
+            <artifactId>sjherp-agent</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.sjherp</groupId>
+            <artifactId>sjherp-domain</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.sjherp</groupId>
+            <artifactId>sjherp-infra</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- 只有 app 模块打可执行 jar -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

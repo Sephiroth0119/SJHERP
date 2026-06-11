@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  sjherp-domain：领域模型与领域服务（进销存 + 生产 + 财务核心）
+
+  不可妥协原则（见 CLAUDE.md）：
+  - 所有业务写操作必须经过本层的领域服务，受单据状态机和校验规则约束；
+  - 金额/数量/成本一律 BigDecimal，禁止 float/double；
+  - 财务记录只可冲销、不可物理修改/删除。
+  本模块保持纯 Java，不依赖 Spring 与任何持久化框架。
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.sjherp</groupId>
+        <artifactId>sjherp-parent</artifactId>
+        <version>0.1.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>sjherp-domain</artifactId>
+    <name>SJHERP Domain</name>
+    <description>领域模型与领域服务：单据状态机、库存成本核算、财务勾稽规则</description>
+</project>
