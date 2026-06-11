@@ -1,0 +1,40 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: SJHERP
+      - generic [ref=e7]: Agent 原生 ERP
+    - navigation [ref=e8]:
+      - button "Agent 助手" [ref=e9] [cursor=pointer]
+      - button "采购" [ref=e10] [cursor=pointer]
+      - button "销售" [ref=e11] [cursor=pointer]
+      - button "库存" [ref=e12] [cursor=pointer]
+      - button "生产" [ref=e13] [cursor=pointer]
+      - button "财务" [ref=e14] [cursor=pointer]
+    - generic [ref=e15]: 协议版本 v0.1.0 · mock 模式
+  - main [ref=e16]:
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - heading "Agent 助手" [level=1] [ref=e19]
+        - generic [ref=e20]: 会话 f92df4d6-b695-461b-85eb-763678a81521
+      - generic [ref=e21]:
+        - generic [ref=e26]:
+          - generic [ref=e27]: 你好，我是 SJHERP 业务助手。直接输入你要做的业务，例如：给华东金属下一张 500 张不锈钢板的采购单。
+          - generic [ref=e28]: 23:13
+        - generic [ref=e29]:
+          - generic [ref=e30]: 帮我采购一批不锈钢板
+          - generic [ref=e31]: 23:13
+        - generic [ref=e32]:
+          - generic [ref=e33]: 物料 **M-0042 不锈钢板 2mm** 需补货 500kg，找到 2 家合格供应商。下采购订单属于高风险操作，请人工确认选择：
+          - generic [ref=e34]:
+            - button "供应商A（华东金属） 单价 ¥18.50/kg，交期 3 天，近 90 天准交率 98%" [ref=e35] [cursor=pointer]:
+              - generic [ref=e36]: 供应商A（华东金属）
+              - generic [ref=e37]: 单价 ¥18.50/kg，交期 3 天，近 90 天准交率 98%
+            - button "供应商B（南方钢业） 单价 ¥17.90/kg，交期 7 天，近 90 天准交率 91%" [ref=e38] [cursor=pointer]:
+              - generic [ref=e39]: 供应商B（南方钢业）
+              - generic [ref=e40]: 单价 ¥17.90/kg，交期 7 天，近 90 天准交率 91%
+            - button "暂不下单" [ref=e41] [cursor=pointer]:
+              - generic [ref=e42]: 暂不下单
+          - generic [ref=e43]: 23:13
+      - generic [ref=e23]:
+        - textbox "输入业务需求，如：给华东金属下一张 500 张不锈钢板的采购单" [ref=e24]
+        - button "发送" [disabled] [ref=e25]

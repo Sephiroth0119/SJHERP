@@ -3,13 +3,19 @@ spring:
   application:
     name: sjherp
 
-  # MySQL 数据源（占位，骨架阶段不连库；启用时取消注释并补全密码）
-  # 业务数据库为 MySQL 8.x，InnoDB，强事务；金额字段一律 DECIMAL
-  # datasource:
-  #   url: jdbc:mysql://localhost:3306/sjherp?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
-  #   username: sjherp
-  #   password: ${SJHERP_DB_PASSWORD}
-  #   driver-class-name: com.mysql.cj.jdbc.Driver
+  # MySQL 数据源。业务数据库为 MySQL 8.x，InnoDB，强事务；金额字段一律 DECIMAL。
+  # 默认值指向开发 VM（192.168.237.133，dq-mysql 容器；新环境可用 deploy/docker-compose.dev.yml 复现）。
+  # 注意：默认密码仅限私有仓库 + 开发环境；生产环境必须用环境变量
+  # SJHERP_DB_URL / SJHERP_DB_USERNAME / SJHERP_DB_PASSWORD 覆盖，禁止把生产口令写进任何文件。
+  datasource:
+    url: ${SJHERP_DB_URL:jdbc:mysql://192.168.237.133:3306/sjherp}
+    username: ${SJHERP_DB_USERNAME:sjherp_app}
+    password: ${SJHERP_DB_PASSWORD:sjherp_dev_2026}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  # Flyway 数据库迁移（脚本位于 sjherp-infra 模块 classpath:db/migration，随应用启动自动执行）
+  flyway:
+    enabled: true
 
 server:
   port: 8080

@@ -6,10 +6,10 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 会话仓储的内存实现（仅用于骨架阶段与单元测试）。
+ * 会话仓储的内存实现（仅用于单元测试，不再作为运行时默认实现）。
  *
- * <p>注意：生产环境必须替换为数据库实现（sjherp-infra 提供），
- * 否则违反"状态显式持久化"的框架设计约束。
+ * <p>运行时默认实现为 sjherp-infra 的 JdbcAgentSessionRepository（MySQL），
+ * 保证"状态显式持久化"——任意时刻杀进程会话可恢复（ADR-001）。
  */
 public class InMemoryAgentSessionRepository implements AgentSessionRepository {
 

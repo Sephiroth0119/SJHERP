@@ -2,6 +2,8 @@
  * 左侧导航：Agent 主入口 + 传统业务入口（采购/销售/库存/生产/财务）。
  */
 import { MODULE_NAV_ITEMS, type ModuleKey } from '../types/navigation';
+import { AGENT_PROTOCOL_VERSION } from '../types/agent';
+import { USE_MOCK } from '../api/chatApi';
 
 interface SidebarProps {
   active: ModuleKey;
@@ -28,7 +30,10 @@ export function Sidebar({ active, onSelect }: SidebarProps) {
           </button>
         ))}
       </nav>
-      <div className="sidebar-footer">协议版本 v0.1.0 · mock 模式</div>
+      <div className="sidebar-footer">
+        协议版本 v{AGENT_PROTOCOL_VERSION}
+        {USE_MOCK ? ' · mock 模式' : ''}
+      </div>
     </aside>
   );
 }

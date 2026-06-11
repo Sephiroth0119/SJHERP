@@ -37,11 +37,33 @@ public class AgentSession {
     private Instant updatedAt;
 
     public AgentSession(String sessionId, String userId) {
+        this(sessionId, userId, null, SessionStatus.ACTIVE, Instant.now(), null);
+    }
+
+    /** 全量构造（仅供 {@link #restore} 重建持久化状态时使用） */
+    private AgentSession(String sessionId, String userId, String title,
+                         SessionStatus status, Instant createdAt, Instant updatedAt) {
         this.sessionId = Objects.requireNonNull(sessionId, "sessionId 不能为空");
         this.userId = Objects.requireNonNull(userId, "userId 不能为空");
-        this.status = SessionStatus.ACTIVE;
-        this.createdAt = Instant.now();
-        this.updatedAt = this.createdAt;
+        this.title = title;
+        this.status = Objects.requireNonNull(status, "status 不能为空");
+        this.createdAt = Objects.requireNonNull(createdAt, "createdAt 不能为空");
+        this.updatedAt = updatedAt == null ? createdAt : updatedAt;
+    }
+
+    /**
+     * 从持久化状态重建会话（供 infra 仓储实现使用，不刷新 updatedAt）。
+     *
+     * <p>ADR-001 核心要求：任意时刻杀进程，会话都能凭数据库中的字段完整恢复。
+     */
+    public static AgentSession restore(String sessionId, String userId, String title,
+                                       SessionStatus status, List<AgentMessage> messages,
+                                       Instant createdAt, Instant updatedAt) {
+        AgentSession session = new AgentSession(sessionId, userId, title, status, createdAt, updatedAt);
+        if (messages != null) {
+            session.messages.addAll(messages);
+        }
+        return session;
     }
 
     /** 追加一条消息并刷新更新时间 */

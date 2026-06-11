@@ -1,0 +1,22 @@
+- generic [ref=e3]:
+  - complementary [ref=e4]:
+    - generic [ref=e5]:
+      - generic [ref=e6]: SJHERP
+      - generic [ref=e7]: Agent 原生 ERP
+    - navigation [ref=e8]:
+      - button "Agent 助手" [ref=e9] [cursor=pointer]
+      - button "采购" [ref=e10] [cursor=pointer]
+      - button "销售" [ref=e11] [cursor=pointer]
+      - button "库存" [ref=e12] [cursor=pointer]
+      - button "生产" [ref=e13] [cursor=pointer]
+      - button "财务" [ref=e14] [cursor=pointer]
+    - generic [ref=e15]: 协议版本 v0.1.0 · mock 模式
+  - main [ref=e16]:
+    - generic [ref=e17]:
+      - generic [ref=e18]:
+        - heading "Agent 助手" [level=1] [ref=e19]
+        - generic [ref=e20]: 正在连接后端…
+      - generic [ref=e22]: 助手正在思考…
+      - generic [ref=e23]:
+        - textbox "输入业务需求，如：给华东金属下一张 500 张不锈钢板的采购单" [disabled] [ref=e24]
+        - button "发送" [disabled] [ref=e25]

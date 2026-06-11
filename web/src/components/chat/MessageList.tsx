@@ -1,5 +1,6 @@
 /**
- * 消息列表：渲染用户消息与 Agent 结构化回复（文本 + OptionCard + FormCard）。
+ * 消息列表：渲染用户消息与 Agent 结构化回复（文本 + OptionCard + FormCard），
+ * 以及聊天流末尾的等待指示与网络错误提示（可重试）。
  */
 import { useEffect, useRef } from 'react';
 import type {
@@ -11,10 +12,18 @@ import type {
 import { OptionCard } from './OptionCard';
 import { FormCard } from './FormCard';
 
+/** 聊天流中的错误提示项：中文文案 + 重试动作 */
+export interface ChatStreamError {
+  text: string;
+  retry: () => void;
+}
+
 interface MessageListProps {
   messages: ChatMessage[];
-  /** Agent 是否正在生成回复（mock 延迟期间显示提示） */
+  /** Agent 是否正在生成回复（请求往返期间显示等待指示） */
   pending: boolean;
+  /** 最近一次失败的错误提示，渲染在消息流末尾 */
+  error?: ChatStreamError | null;
   onSelectOption: (option: AgentOption) => void;
   onSubmitForm: (form: AgentForm, values: AgentFormValues) => void;
 }
@@ -24,13 +33,13 @@ function formatTime(iso: string): string {
   return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 }
 
-export function MessageList({ messages, pending, onSelectOption, onSubmitForm }: MessageListProps) {
+export function MessageList({ messages, pending, error, onSelectOption, onSubmitForm }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // 新消息到达时滚动到底部
+  // 新消息/等待指示/错误提示出现时滚动到底部
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, pending]);
+  }, [messages, pending, error]);
 
   const lastAgentId = [...messages].reverse().find((m) => m.role === 'agent')?.id;
 
@@ -71,6 +80,14 @@ export function MessageList({ messages, pending, onSelectOption, onSubmitForm }:
         );
       })}
       {pending && <div className="message-pending">助手正在思考…</div>}
+      {!pending && error && (
+        <div className="message-error" role="alert">
+          <span className="message-error-text">{error.text}</span>
+          <button type="button" className="message-error-retry" onClick={error.retry}>
+            重试
+          </button>
+        </div>
+      )}
       <div ref={bottomRef} />
     </div>
   );
