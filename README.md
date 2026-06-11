@@ -13,7 +13,7 @@
 | 前端 | React + TypeScript（Vite） | 聊天界面已对接后端会话 API（mock 可用 VITE_USE_MOCK=true 切回） |
 | 业务数据库 | MySQL 8.x（InnoDB，强事务） | 开发环境已接入（Flyway 迁移） |
 | 向量库（大记忆） | 候选 Qdrant（待定） | 开发环境已部署，待接入 |
-| LLM 接入 | 自建抽象层，可切换 DeepSeek / 通义 / Claude / GPT | 规划中 |
+| LLM 接入 | 自建抽象层，可切换 DeepSeek / 通义 / Claude / GPT | DeepSeek 已接入（聊天链路 LLM 驱动），工具调用待接入 |
 
 ## 目录结构
 
@@ -44,12 +44,45 @@ SJHERP/
    然后用环境变量 `SJHERP_DB_URL` 指向自己的 MySQL（账号/密码默认 `sjherp_app` / `sjherp_dev_2026`，
    可用 `SJHERP_DB_USERNAME` / `SJHERP_DB_PASSWORD` 覆盖；生产环境必须覆盖）。
 
+### LLM 配置（DeepSeek）
+
+聊天链路由 LLM 驱动（`sjherp.agent.mode=auto`，默认）：配置了 API Key 走 `LlmAgent`，
+否则回退规则占位 `PlaceholderAgent`（启动日志有 WARN 提示）。API Key **绝不写进任何会被
+git 跟踪的文件**，二选一：
+
+1. **环境变量**（推荐，生产唯一方式）：
+
+   ```powershell
+   $env:SJHERP_LLM_API_KEY = "sk-xxx"
+   mvn spring-boot:run -pl sjherp-app
+   ```
+
+2. **local profile**（本地开发）：创建 `server/sjherp-app/src/main/resources/application-local.yml`
+   （已被 .gitignore 忽略），内容：
+
+   ```yaml
+   # 本地开发密钥，勿提交
+   sjherp:
+     llm:
+       api-key: sk-xxx
+   ```
+
+   然后带 local profile 启动：
+
+   ```bash
+   mvn spring-boot:run -pl sjherp-app "-Dspring-boot.run.profiles=local"
+   ```
+
+其余可选配置（`application.yml`，前缀 `sjherp.llm`）：`base-url`（默认 https://api.deepseek.com）、
+`model`（默认 deepseek-chat）、`temperature`（默认 0.7）、`timeout-seconds`（默认 60）；
+`sjherp.agent.mode` 可显式指定 `llm` / `placeholder`。
+
 ### 后端
 
 ```bash
 cd server
 mvn -DskipTests install   # 首次或模块代码变更后，把兄弟模块装入本地 Maven 仓库
-mvn spring-boot:run -pl sjherp-app
+mvn spring-boot:run -pl sjherp-app "-Dspring-boot.run.profiles=local"   # 不需要 LLM 时可省略 profile 参数
 # 依赖：JDK 21、Maven 3.9+，以及可访问的 MySQL（见上）
 ```
 
@@ -66,4 +99,4 @@ npm run dev
 
 ## 下一步
 
-接入 LLM 抽象层的第一个具体实现（替换 PlaceholderAgent）、领域工具注册、Qdrant 大记忆接入。
+领域工具（Tool）注册并接入 LLM 工具调用、流程缺口记录通道落地、Qdrant 大记忆接入。

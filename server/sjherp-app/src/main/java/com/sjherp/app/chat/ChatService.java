@@ -31,9 +31,9 @@ public class ChatService {
 
     private final AgentSessionRepository repository;
     private final AgentReplyJsonCodec codec;
-    private final PlaceholderAgent agent;
+    private final Agent agent;
 
-    public ChatService(AgentSessionRepository repository, AgentReplyJsonCodec codec, PlaceholderAgent agent) {
+    public ChatService(AgentSessionRepository repository, AgentReplyJsonCodec codec, Agent agent) {
         this.repository = repository;
         this.codec = codec;
         this.agent = agent;
@@ -59,24 +59,25 @@ public class ChatService {
     public AgentReply handleMessage(String sessionId, SendMessageRequest request) {
         AgentSession session = getSession(sessionId);
 
+        // 约定：先以「只含历史」的 session 调 Agent（Agent 接口约定），拿到回复后再统一落库
         AgentReply reply;
         if (request.text() != null && !request.text().isBlank()) {
             // 自由文本：用户消息原文落库
+            reply = agent.replyToText(session, request.text());
             session.append(AgentMessage.user(request.text()));
             if (session.getTitle() == null) {
                 session.setTitle(truncate(request.text()));
             }
-            reply = agent.replyToText(request.text());
         } else if (request.optionId() != null) {
             // 点击选项：凭最近一条 Agent 回复按 id 还原；用户气泡显示选项 label（协议约定）
             Option option = resolveOption(session, request.optionId());
+            reply = agent.replyToOption(session, option);
             session.append(AgentMessage.user(option.label()));
-            reply = agent.replyToOption(option);
         } else if (request.formId() != null) {
             // 提交表单：values 一律字符串（金额/数量后端 BigDecimal 解析，禁止 float/double）
             Map<String, String> values = request.values() == null ? Map.of() : request.values();
+            reply = agent.replyToForm(session, request.formId(), values);
             session.append(AgentMessage.user("提交表单 " + request.formId() + "：" + values));
-            reply = agent.replyToForm(request.formId(), values);
         } else {
             throw new IllegalArgumentException("请求体必须提供 text / optionId / formId 三者之一");
         }

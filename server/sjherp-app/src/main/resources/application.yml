@@ -19,3 +19,18 @@ spring:
 
 server:
   port: 8080
+
+sjherp:
+  # LLM 接入（当前实现：DeepSeek，OpenAI 兼容 API）。
+  # api-key 绝不写进任何会被 git 跟踪的文件：用环境变量 SJHERP_LLM_API_KEY，
+  # 或本地开发用 local profile（src/main/resources/application-local.yml，已被 .gitignore 忽略）。
+  llm:
+    api-key: ${SJHERP_LLM_API_KEY:}
+    base-url: https://api.deepseek.com
+    model: deepseek-chat
+    temperature: 0.7
+    timeout-seconds: 60
+  # 聊天 Agent 模式：auto（默认，api-key 非空用 LlmAgent，否则回退 PlaceholderAgent 并打 WARN）
+  # / llm（强制 LLM，缺 key 启动失败）/ placeholder（强制规则占位）
+  agent:
+    mode: auto

@@ -9,26 +9,29 @@ import com.sjherp.agent.reply.Action;
 import com.sjherp.agent.reply.AgentReply;
 import com.sjherp.agent.reply.Form;
 import com.sjherp.agent.reply.Option;
+import com.sjherp.agent.session.AgentSession;
 
 /**
- * 规则占位 Agent（演示用）。
+ * 规则占位 Agent（演示/离线开发用，{@link Agent} 的无 LLM 实现）。
  *
- * <p>【待替换】这是 LLM 接入前的临时实现：待 sjherp-agent 的 {@code LlmClient}
- * 有真实厂商实现（DeepSeek/通义/Claude/GPT，infra 层提供）并接入工具注册后，
- * 本类整体替换为真正的 Agent 编排循环。占位期间只用于：
+ * <p>LLM 驱动的实现见 {@link LlmAgent}；装配切换见 {@code ChatAgentConfig}
+ * （sjherp.agent.mode，默认 auto：配了 api-key 用 LlmAgent，否则回退本类）。
+ * 本类保留用于：
  * <ul>
- *   <li>打通前后端的选项返回协议 v0.1（选项卡片 / 表单 / Human-in-the-loop 确认）；</li>
+ *   <li>无 API Key 的离线开发与演示（选项卡片 / 表单 / Human-in-the-loop 确认）；</li>
  *   <li>验证会话持久化与回放（ADR-001）。</li>
  * </ul>
  *
  * <p>规则：识别「采购 / 销售 / 库存」关键词返回演示回复，其中采购场景演示
  * requiresConfirmation=true + risk=high 的高风险确认流程；其余输入 echo。
+ * 无状态实现，不读取会话历史（session 参数忽略）。
  */
 @Component
-public class PlaceholderAgent {
+public class PlaceholderAgent implements Agent {
 
     /** 处理用户自由文本 */
-    public AgentReply replyToText(String text) {
+    @Override
+    public AgentReply replyToText(AgentSession session, String text) {
         if (text.contains("采购")) {
             return purchaseConfirmationDemo();
         }
@@ -43,7 +46,8 @@ public class PlaceholderAgent {
     }
 
     /** 处理用户点击的选项（已由 ChatService 凭最近一条回复按 id 还原，防伪造） */
-    public AgentReply replyToOption(Option option) {
+    @Override
+    public AgentReply replyToOption(AgentSession session, Option option) {
         return switch (option.id()) {
             // —— 采购确认场景（Human-in-the-loop：点击确认后才"执行"） ——
             case "opt-sup-a" -> AgentReply.text(
@@ -76,7 +80,8 @@ public class PlaceholderAgent {
     }
 
     /** 处理用户提交的表单（values 一律字符串，金额/数量由后端 BigDecimal 解析） */
-    public AgentReply replyToForm(String formId, Map<String, String> values) {
+    @Override
+    public AgentReply replyToForm(AgentSession session, String formId, Map<String, String> values) {
         if ("form-so-demo".equals(formId)) {
             return AgentReply.text("已创建销售订单**草稿** SO-DEMO-003（演示数据）：\n\n"
                     + "- 客户：" + values.getOrDefault("customer", "（未填写）") + "\n"
