@@ -19,6 +19,9 @@ dist/
 .env.*
 application-local.yml
 
+# Claude Code 会话状态
+.claude/scheduled_tasks.lock
+
 # 系统
 Thumbs.db
 .DS_Store
