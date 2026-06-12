@@ -40,8 +40,10 @@ public class JdbcInventoryTransactionRepository implements InventoryTransactionR
                     + "src_line_no, idempotency_key, operator, created_at FROM inventory_transaction ";
 
     private static final RowMapper<InventoryTransaction> ROW_MAPPER = (rs, rowNum) -> {
-        // src_line_no 可空：getInt 对 NULL 返回 0，须经 wasNull 区分
-        int srcLineNo = rs.getInt("src_line_no");
+        // src_line_no 可空：getInt 对 NULL 返回 0，wasNull 必须紧跟 getInt
+        //（wasNull 判定的是最后一次列读取，中间隔了其他列会判错）
+        int srcLineNoRaw = rs.getInt("src_line_no");
+        Integer srcLineNo = rs.wasNull() ? null : srcLineNoRaw;
         return InventoryTransaction.restore(
                 rs.getLong("id"),
                 rs.getLong("warehouse_id"),
@@ -54,7 +56,7 @@ public class JdbcInventoryTransactionRepository implements InventoryTransactionR
                 rs.getBigDecimal("balance_amount_after"),
                 rs.getString("src_doc_type"),
                 rs.getString("src_doc_no"),
-                rs.wasNull() ? null : srcLineNo,
+                srcLineNo,
                 rs.getString("idempotency_key"),
                 rs.getString("operator"),
                 fromDb(rs.getObject("created_at", LocalDateTime.class)));
