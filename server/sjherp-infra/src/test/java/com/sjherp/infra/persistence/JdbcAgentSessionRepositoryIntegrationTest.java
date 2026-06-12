@@ -2,6 +2,8 @@ package com.sjherp.infra.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
@@ -72,5 +74,52 @@ class JdbcAgentSessionRepositoryIntegrationTest extends MySqlContainerTestBase {
         assertThat(again.getMessages().get(1).content()).contains("第一轮回复");
         assertThat(again.hasPendingToolCall()).isFalse();
         assertThat(again.getPendingToolCallJson()).isNull();
+    }
+
+    @Test
+    void 摘要位点守卫_携带旧位点的实例不能回退已前进的摘要() {
+        String sessionId = "it-sess-" + uniqueSuffix();
+        String userId = "it-user-" + uniqueSuffix();
+        AgentSession session = new AgentSession(sessionId, userId);
+        session.append(AgentMessage.user("第一轮"));
+        session.updateHistorySummary("- 新摘要（覆盖到 seq=4）", 4);
+        sessionRepository.save(session);
+
+        // 模拟并发/陈旧内存状态：另一实例仍持有旧摘要位点（聚合内的防回退校验
+        // 管不到跨实例场景，必须靠 DB 层守卫；用 restore 直接构造旧状态）
+        AgentSession stale = AgentSession.restore(sessionId, userId, null, SessionStatus.ACTIVE,
+                List.of(), null, "- 旧摘要（覆盖到 seq=2）", 2,
+                Instant.now(), Instant.now());
+        sessionRepository.save(stale);
+
+        AgentSession reloaded = sessionRepository.findById(sessionId).orElseThrow();
+        assertThat(reloaded.getSummarizedUntilSeq())
+                .as("守卫生效：位点不回退（DB 层兜底，单会话串行仍是架构假设）").isEqualTo(4);
+        assertThat(reloaded.getHistorySummary()).contains("新摘要");
+    }
+
+    @Test
+    void 摘要位点守卫_位点前进与持平时正常更新() {
+        String sessionId = "it-sess-" + uniqueSuffix();
+        AgentSession session = new AgentSession(sessionId, "it-user-fwd");
+        session.append(AgentMessage.user("第一轮"));
+        session.updateHistorySummary("- 摘要 v1", 2);
+        sessionRepository.save(session);
+
+        // 位点前进：正常更新
+        AgentSession reloaded = sessionRepository.findById(sessionId).orElseThrow();
+        reloaded.updateHistorySummary("- 摘要 v2", 5);
+        sessionRepository.save(reloaded);
+        AgentSession afterForward = sessionRepository.findById(sessionId).orElseThrow();
+        assertThat(afterForward.getSummarizedUntilSeq()).isEqualTo(5);
+        assertThat(afterForward.getHistorySummary()).contains("v2");
+
+        // 位点持平（同位点重写摘要文本，幂等保存）：仍允许更新
+        AgentSession same = sessionRepository.findById(sessionId).orElseThrow();
+        same.updateHistorySummary("- 摘要 v2 修订", 5);
+        sessionRepository.save(same);
+        AgentSession afterSame = sessionRepository.findById(sessionId).orElseThrow();
+        assertThat(afterSame.getSummarizedUntilSeq()).isEqualTo(5);
+        assertThat(afterSame.getHistorySummary()).contains("修订");
     }
 }

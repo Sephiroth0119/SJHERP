@@ -53,10 +53,10 @@ class DeepSeekToolCallingIntegrationTest {
     void functionCallingRoundTripAgainstRealDeepSeek() throws Exception {
         String apiKey = readApiKey();
         Assumptions.assumeTrue(apiKey != null && !apiKey.isBlank(),
-                "未找到 application-local.yml 中的 sjherp.llm.api-key，跳过集成测试");
+                "未找到 application-local.yml 中的 api-key（sjherp.llm.providers.deepseek.api-key），跳过集成测试");
 
-        DeepSeekLlmClient client = new DeepSeekLlmClient(
-                apiKey, "https://api.deepseek.com", "deepseek-chat", 0.7, Duration.ofSeconds(60));
+        OpenAiCompatibleLlmClient client = new OpenAiCompatibleLlmClient(
+                "deepseek", apiKey, "https://api.deepseek.com", "deepseek-chat", 0.7, Duration.ofSeconds(60));
 
         ToolDefinition inventoryTool = new ToolDefinition(
                 "get_inventory", "按商品名称查询当前库存数量", INVENTORY_SCHEMA);
@@ -103,7 +103,7 @@ class DeepSeekToolCallingIntegrationTest {
     }
 
     /** 429 限流兜底：等 60 秒重试，最多 3 次（与任务说明一致） */
-    private LlmResponse chatWithRateLimitRetry(DeepSeekLlmClient client,
+    private LlmResponse chatWithRateLimitRetry(OpenAiCompatibleLlmClient client,
                                                List<LlmMessage> messages,
                                                LlmRequestOptions options) throws InterruptedException {
         LlmClientException last = null;

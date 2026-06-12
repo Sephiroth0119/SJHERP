@@ -6,6 +6,8 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,11 +27,16 @@ import com.sjherp.agent.session.SessionStatus;
  * <p>写入约定：
  * <ul>
  *   <li>消息只追加不修改——save 时仅补插 seq 大于库中最大值的新消息；</li>
+ *   <li>摘要位点守卫——history_summary / summarized_until_seq 的更新带
+ *       {@code WHERE summarized_until_seq <= ?} 守卫，位点只前进不回退
+ *       （DB 层兜底守卫，非完整乐观锁；单会话串行处理仍是架构假设）；</li>
  *   <li>时间列为 DATETIME(6)，读写一律按 UTC LocalDateTime 转换，与连接时区解耦。</li>
  * </ul>
  */
 @Transactional
 public class JdbcAgentSessionRepository implements AgentSessionRepository {
+
+    private static final Logger log = LoggerFactory.getLogger(JdbcAgentSessionRepository.class);
 
     private final JdbcTemplate jdbc;
 
@@ -64,9 +71,8 @@ public class JdbcAgentSessionRepository implements AgentSessionRepository {
         // 先尝试更新，不存在则插入（无并发建会话冲突场景，无需 upsert 语法）
         int updated = jdbc.update(
                 "UPDATE agent_session SET title = ?, status = ?, pending_tool_call = ?, "
-                        + "history_summary = ?, summarized_until_seq = ?, updated_at = ? WHERE id = ?",
+                        + "updated_at = ? WHERE id = ?",
                 session.getTitle(), session.getStatus().name(), session.getPendingToolCallJson(),
-                session.getHistorySummary(), session.getSummarizedUntilSeq(),
                 toDb(session.getUpdatedAt()), session.getSessionId());
         if (updated == 0) {
             jdbc.update(
@@ -77,6 +83,21 @@ public class JdbcAgentSessionRepository implements AgentSessionRepository {
                     session.getStatus().name(), session.getPendingToolCallJson(),
                     session.getHistorySummary(), session.getSummarizedUntilSeq(),
                     toDb(session.getCreatedAt()), toDb(session.getUpdatedAt()));
+        } else {
+            // 摘要相关列单独 UPDATE 并带位点守卫（D-8 同批 P2）：summarized_until_seq
+            // 只前进不回退——携带旧位点的会话实例（并发/陈旧内存状态）不得覆盖库中已前进的
+            // 摘要，否则摘要与位点回退会导致上下文重复或丢失。注意：这是 DB 层守卫而非
+            // 完整乐观锁，「单会话串行处理」仍是架构假设（ADR-001），守卫只兜底摘要不回退。
+            int summaryUpdated = jdbc.update(
+                    "UPDATE agent_session SET history_summary = ?, summarized_until_seq = ? "
+                            + "WHERE id = ? AND summarized_until_seq <= ?",
+                    session.getHistorySummary(), session.getSummarizedUntilSeq(),
+                    session.getSessionId(), session.getSummarizedUntilSeq());
+            if (summaryUpdated == 0) {
+                log.warn("会话摘要更新被位点守卫拦截（sessionId={}, 传入位点={}）：库中位点更新，"
+                                + "已跳过本次摘要写入以防回退（单会话串行假设可能被破坏，需排查）",
+                        session.getSessionId(), session.getSummarizedUntilSeq());
+            }
         }
 
         // 消息只追加不修改：补插 seq 大于库中最大值的新消息

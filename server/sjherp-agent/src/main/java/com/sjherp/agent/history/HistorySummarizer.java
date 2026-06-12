@@ -22,4 +22,13 @@ public interface HistorySummarizer {
      * @throws RuntimeException 摘要生成失败（网络 / 超时 / 空回复等）
      */
     String summarize(String previousSummary, List<HistoryMessage> messages);
+
+    /**
+     * 绑定会话 id 的摘要器视图（M1-T07 摘要观测）：实现方若需要把摘要的 LLM 调用
+     * 落 agent_invocation 观测（如 {@link LlmHistorySummarizer}），覆写本方法以携带
+     * sessionId；默认返回自身（无观测需求的实现与测试替身不受影响）。
+     */
+    default HistorySummarizer forSession(String sessionId) {
+        return this;
+    }
 }

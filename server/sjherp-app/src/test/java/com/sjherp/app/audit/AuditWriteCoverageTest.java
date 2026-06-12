@@ -11,8 +11,11 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.junit.jupiter.api.Test;
@@ -20,6 +23,9 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.aop.aspectj.annotation.AspectJProxyFactory;
+import org.springframework.beans.factory.config.BeanDefinition;
+import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
+import org.springframework.core.type.filter.RegexPatternTypeFilter;
 
 import com.sjherp.domain.catalog.CategoryRepository;
 import com.sjherp.domain.catalog.CategoryService;
@@ -59,7 +65,9 @@ import com.sjherp.infra.persistence.audit.AuditLogRepository;
  *   <li>每个已标注 @Audited 的领域 Service 至少一条「写操作 → 审计记录」用例
  *       （仓储全 mock，经 AspectJProxyFactory 套真实切面）；</li>
  *   <li>反射完整性兜底：服务类上所有带 operator 参数的公有方法都必须标注
- *       @Audited——新增写方法漏标注时本测试失败（防覆盖漂移）。</li>
+ *       @Audited——新增写方法漏标注时本测试失败（防覆盖漂移）。被检查的类来自
+ *       classpath 扫描 com.sjherp.domain 下全部 *Service（非硬编码名单，
+ *       新增领域 Service 自动纳入，D-8 同批 P2）。</li>
  * </ul>
  */
 class AuditWriteCoverageTest {
@@ -72,7 +80,9 @@ class AuditWriteCoverageTest {
     private <T> T proxied(T target) {
         AspectJProxyFactory factory = new AspectJProxyFactory(target);
         factory.setProxyTargetClass(true);
-        factory.addAspect(new AuditAspect(auditRepository, new AuditMetrics()));
+        AuditMetrics metrics = new AuditMetrics();
+        factory.addAspect(new AuditAspect(
+                new TransactionAwareAuditWriter(auditRepository, metrics), metrics));
         return factory.getProxy();
     }
 
@@ -197,10 +207,42 @@ class AuditWriteCoverageTest {
     // 反射完整性兜底：带 operator 参数的公有方法必须 @Audited
     // ---------------------------------------------------------------
 
+    /**
+     * classpath 扫描 com.sjherp.domain 下全部具体 *Service 类（D-8 同批 P2：
+     * 替换硬编码名单）——M3 起新增的领域 Service <b>自动</b>纳入防漂移断言，
+     * 不再依赖人工登记。扫描在测试侧用 Spring 类路径工具（main 不加任何依赖）。
+     */
     static Stream<Class<?>> auditedServiceClasses() {
-        return Stream.of(ProductService.class, CategoryService.class, UnitService.class,
-                CustomerService.class, SupplierService.class, WarehouseService.class,
-                UserService.class, GapRecordService.class);
+        return scanDomainServiceClasses().stream();
+    }
+
+    private static List<Class<?>> scanDomainServiceClasses() {
+        ClassPathScanningCandidateComponentProvider scanner =
+                new ClassPathScanningCandidateComponentProvider(false);
+        scanner.addIncludeFilter(new RegexPatternTypeFilter(Pattern.compile(".+Service")));
+        return scanner.findCandidateComponents("com.sjherp.domain").stream()
+                .map(BeanDefinition::getBeanClassName)
+                .sorted()
+                .map(AuditWriteCoverageTest::loadClass)
+                .collect(Collectors.toList());
+    }
+
+    private static Class<?> loadClass(String className) {
+        try {
+            return Class.forName(className);
+        } catch (ClassNotFoundException e) {
+            throw new IllegalStateException("加载领域 Service 类失败: " + className, e);
+        }
+    }
+
+    @Test
+    void 类路径扫描能发现全部已知领域Service_防扫描静默失效() {
+        List<Class<?>> scanned = scanDomainServiceClasses();
+        assertTrue(scanned.containsAll(List.of(ProductService.class, CategoryService.class,
+                        UnitService.class, CustomerService.class, SupplierService.class,
+                        WarehouseService.class, UserService.class, GapRecordService.class)),
+                "扫描结果应至少包含 M2 已知的 8 个领域 Service（扫描失效会让防漂移断言变空转）: "
+                        + scanned);
     }
 
     @ParameterizedTest

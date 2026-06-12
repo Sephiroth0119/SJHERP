@@ -56,7 +56,9 @@ class AuditAspectTest {
         CustomerService target = new CustomerService(customerRepository, numberGenerator);
         AspectJProxyFactory factory = new AspectJProxyFactory(target);
         factory.setProxyTargetClass(true);
-        factory.addAspect(new AuditAspect(auditRepository, metrics));
+        // 无事务环境：写入器走「立即插入」路径，行为与 D-8 修复前一致（回归保障）
+        factory.addAspect(new AuditAspect(
+                new TransactionAwareAuditWriter(auditRepository, metrics), metrics));
         proxiedService = factory.getProxy();
     }
 

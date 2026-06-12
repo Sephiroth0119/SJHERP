@@ -19,8 +19,11 @@ import com.sjherp.domain.common.PageResult;
  * <p>时间列 DATETIME(6) 一律按 UTC 读写（约定同 JdbcAgentInvocationRepository）。
  * 只插入与查询：审计记录不可修改/删除。
  *
- * <p>插入使用 REQUIRES_NEW 独立事务：审计记录的提交不依赖业务事务，
- * 也不会因审计失败回滚业务（双向隔离；失败兜底在 AuditAspect 侧 WARN + 计数）。
+ * <p>插入使用 REQUIRES_NEW 独立事务（D-8 后角色调整）：调用方（app 层
+ * TransactionAwareAuditWriter）已做事务感知——有外层业务事务时延迟到 afterCommit
+ * 回调中才调用本方法。afterCommit 中原连接虽已提交但事务资源仍绑定线程，
+ * Spring 约定此处的数据访问应开新事务，REQUIRES_NEW 正是该约定的落点；
+ * 无事务路径下它就是原来的独立事务语义。失败兜底在 writer 侧 WARN + 计数。
  */
 @Transactional
 public class JdbcAuditLogRepository implements AuditLogRepository {

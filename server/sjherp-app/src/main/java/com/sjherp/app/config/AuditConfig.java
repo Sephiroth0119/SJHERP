@@ -9,6 +9,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import com.sjherp.app.audit.AuditAspect;
 import com.sjherp.app.audit.AuditDomainEventListener;
 import com.sjherp.app.audit.AuditMetrics;
+import com.sjherp.app.audit.TransactionAwareAuditWriter;
 import com.sjherp.app.event.SyncDomainEventPublisher;
 import com.sjherp.domain.common.event.DomainEventPublisher;
 import com.sjherp.infra.persistence.audit.AuditLogRepository;
@@ -40,17 +41,28 @@ public class AuditConfig {
         return new AuditMetrics();
     }
 
+    /**
+     * 事务感知的审计写入器（D-8 幽灵审计修复）：有活动业务事务时 afterCommit 后插
+     * （回滚不写），无事务时立即插。切面与事件监听器统一经它落库。
+     */
+    @Bean
+    public TransactionAwareAuditWriter transactionAwareAuditWriter(AuditLogRepository auditLogRepository,
+                                                                   AuditMetrics auditMetrics) {
+        return new TransactionAwareAuditWriter(auditLogRepository, auditMetrics);
+    }
+
     /** 统一审计切面：每笔业务写操作（@Audited 标注）必有审计记录 */
     @Bean
-    public AuditAspect auditAspect(AuditLogRepository auditLogRepository, AuditMetrics auditMetrics) {
-        return new AuditAspect(auditLogRepository, auditMetrics);
+    public AuditAspect auditAspect(TransactionAwareAuditWriter transactionAwareAuditWriter,
+                                   AuditMetrics auditMetrics) {
+        return new AuditAspect(transactionAwareAuditWriter, auditMetrics);
     }
 
     /** 领域事件 → 审计日志监听器（document.status_changed） */
     @Bean
-    public AuditDomainEventListener auditDomainEventListener(AuditLogRepository auditLogRepository,
+    public AuditDomainEventListener auditDomainEventListener(TransactionAwareAuditWriter transactionAwareAuditWriter,
                                                              AuditMetrics auditMetrics) {
-        return new AuditDomainEventListener(auditLogRepository, auditMetrics);
+        return new AuditDomainEventListener(transactionAwareAuditWriter, auditMetrics);
     }
 
     /**

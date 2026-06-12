@@ -38,10 +38,11 @@ jobs:
           java-version: '21'
           cache: maven
       - name: 构建依赖模块（跳过测试）
-        run: mvn -B -ntp -DskipTests install -pl sjherp-infra -am
-      - name: 运行 integration-db 测试（全量 Flyway 迁移 + 仓储往返）
+        run: mvn -B -ntp -DskipTests install -pl sjherp-app -am
+      - name: 运行 integration-db 测试（全量 Flyway 迁移 + 仓储往返 + 幽灵审计防护）
         # 父 POM 默认 excludedGroups=integration,integration-db；此处显式反转只跑 integration-db
-        run: mvn -B -ntp test -pl sjherp-infra -Dgroups=integration-db -DexcludedGroups=none
+        # sjherp-app 含 GhostAuditPreventionIntegrationTest（D-8：外层事务回滚后 audit_log 必须无记录）
+        run: mvn -B -ntp test -pl sjherp-infra,sjherp-app -Dgroups=integration-db -DexcludedGroups=none
 
   frontend:
     name: 前端 (tsc + build)

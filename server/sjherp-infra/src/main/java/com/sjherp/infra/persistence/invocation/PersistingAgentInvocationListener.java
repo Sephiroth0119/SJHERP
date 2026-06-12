@@ -49,6 +49,23 @@ public class PersistingAgentInvocationListener implements AgentInvocationListene
                 error == null, detail.toString(), Instant.now()));
     }
 
+    /**
+     * AgentLoop 之外的辅助 LLM 调用（如历史摘要，M1-T07 接入观测）：
+     * type 仍为 LLM，purpose 写进 detail 以便与主链路调用区分。
+     */
+    @Override
+    public void onAuxiliaryLlmCall(String sessionId, String purpose, String model, long durationMs,
+                                   Integer promptTokens, Integer completionTokens, String error) {
+        ObjectNode detail = mapper.createObjectNode();
+        detail.put("purpose", purpose);
+        if (error != null) {
+            detail.put("error", truncate(error));
+        }
+        insertQuietly(new AgentInvocation(null, sessionId, AgentInvocationType.LLM,
+                model, null, durationMs, promptTokens, completionTokens,
+                error == null, detail.toString(), Instant.now()));
+    }
+
     @Override
     public void onToolCall(String sessionId, String toolName, String argumentsJson, boolean success,
                            String resultSummary, long durationMs, ToolRiskLevel riskLevel,

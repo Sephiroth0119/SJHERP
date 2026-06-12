@@ -32,8 +32,10 @@ class DomainEventAuditTest {
 
     private final AuditLogRepository auditRepository = mock(AuditLogRepository.class);
     private final AuditMetrics metrics = new AuditMetrics();
+    // 无事务环境：写入器走「立即插入」路径（事务感知行为见 TransactionAwareAuditWriterTest）
     private final DomainEventPublisher publisher = new SyncDomainEventPublisher(
-            List.of(new AuditDomainEventListener(auditRepository, metrics)));
+            List.of(new AuditDomainEventListener(
+                    new TransactionAwareAuditWriter(auditRepository, metrics), metrics)));
 
     @Test
     void 单据状态流转事件写审计记录() {

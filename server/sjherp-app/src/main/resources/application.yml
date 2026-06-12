@@ -28,15 +28,37 @@ sjherp:
     jwt-secret: ${SJHERP_JWT_SECRET:sjherp-dev-only-secret-change-me-in-production-0123456789}
     jwt-expire-hours: 12   # token 有效期（小时）
 
-  # LLM 接入（当前实现：DeepSeek，OpenAI 兼容 API）。
-  # api-key 绝不写进任何会被 git 跟踪的文件：用环境变量 SJHERP_LLM_API_KEY，
-  # 或本地开发用 local profile（src/main/resources/application-local.yml，已被 .gitignore 忽略）。
+  # LLM 接入（M1-T07 多 provider 配置化，切换模型不改代码）。
+  # - providers（map）：provider 名 → 连接配置（base-url / model / api-key / temperature /
+  #   timeout-seconds）。所有 provider 走 OpenAI 兼容协议（OpenAiCompatibleLlmClient 一套实现），
+  #   DeepSeek / 通义 compatible-mode / Kimi / GPT 均可，新增 provider 只加配置。
+  # - roles（map）：Agent 角色 → provider 名。chat=对话主链路、summarizer=历史摘要、
+  #   checker=数据一致性检查 Agent（M6 接入，先留配置位）；未配置的角色回落 default-provider。
+  #   roles / default-provider 指向未定义的 provider 名会在启动期 fail-fast 报错。
+  # - api-key 绝不写进任何会被 git 跟踪的文件：用环境变量引用（如下），或本地开发用
+  #   local profile（src/main/resources/application-local.yml，已被 .gitignore 忽略，
+  #   写法：sjherp.llm.providers.<名>.api-key: sk-xxx）。
+  # - 迁移说明（2026-06 干净迁移，不保留兼容）：原平铺结构 sjherp.llm.api-key /
+  #   base-url / model / temperature / timeout-seconds 已废弃，等价于现在的
+  #   providers.deepseek.* + 全部角色指向 deepseek；local profile 需同步改为嵌套写法。
   llm:
-    api-key: ${SJHERP_LLM_API_KEY:}
-    base-url: https://api.deepseek.com
-    model: deepseek-chat
-    temperature: 0.7
-    timeout-seconds: 60
+    default-provider: deepseek
+    providers:
+      deepseek:
+        base-url: https://api.deepseek.com
+        model: deepseek-chat
+        api-key: ${SJHERP_LLM_API_KEY:}
+        temperature: 0.7
+        timeout-seconds: 60
+      # 示例：再接一个通义（OpenAI compatible-mode），把某个角色指过去即可——
+      # qwen:
+      #   base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      #   model: qwen-plus
+      #   api-key: ${SJHERP_LLM_QWEN_API_KEY:}
+    roles:
+      chat: deepseek        # 对话主链路（LlmAgent + AgentLoop）
+      summarizer: deepseek  # 会话历史摘要（M1-T05；失败时硬截断兜底，不影响对话）
+      checker: deepseek     # 检查 Agent（M6 接入，建议配强模型）
   # 聊天 Agent 模式：auto（默认，api-key 非空用 LlmAgent，否则回退 PlaceholderAgent 并打 WARN）
   # / llm（强制 LLM，缺 key 启动失败）/ placeholder（强制规则占位）
   agent:

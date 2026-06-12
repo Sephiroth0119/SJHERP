@@ -355,8 +355,10 @@ public class LlmAgent implements Agent {
         String summary = session.getHistorySummary();
         List<HistoryMessage> window = candidates;
         if (historyTrimmer != null) {
+            // forSession：摘要的 LLM 调用观测（M1-T07）记录携带会话 id（purpose=summarize）
             HistoryTrimResult trimmed = historyTrimmer.trim(candidates, summary,
-                    session.getSummarizedUntilSeq(), historySummarizer);
+                    session.getSummarizedUntilSeq(),
+                    historySummarizer == null ? null : historySummarizer.forSession(session.getSessionId()));
             if (trimmed.summaryUpdated()) {
                 // 新摘要写回会话，随本轮 ChatService.save 落库（history_summary 列）
                 session.updateHistorySummary(trimmed.summary(), trimmed.summarizedUntilSeq());

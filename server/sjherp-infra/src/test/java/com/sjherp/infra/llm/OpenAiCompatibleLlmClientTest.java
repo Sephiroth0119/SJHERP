@@ -18,11 +18,11 @@ import com.sjherp.agent.llm.ToolChoice;
 import com.sjherp.agent.llm.ToolDefinition;
 
 /**
- * DeepSeekLlmClient 单元测试（不发真实请求）：
+ * OpenAiCompatibleLlmClient 单元测试（不发真实请求，M1-T07 由 DeepSeekLlmClientTest 改名）：
  * 请求体 JSON 组装（tools/tool_choice/response_format/temperature/消息回灌序列化）
  * 与响应解析（tool_calls）。
  */
-class DeepSeekLlmClientTest {
+class OpenAiCompatibleLlmClientTest {
 
     private static final String INVENTORY_SCHEMA = """
             {"type":"object","properties":{"product_name":{"type":"string","description":"商品名称"}},\
@@ -30,9 +30,9 @@ class DeepSeekLlmClientTest {
 
     private final ObjectMapper mapper = new ObjectMapper();
 
-    private DeepSeekLlmClient client() {
-        return new DeepSeekLlmClient("test-key", "https://api.deepseek.com", "deepseek-chat",
-                0.7, Duration.ofSeconds(30));
+    private OpenAiCompatibleLlmClient client() {
+        return new OpenAiCompatibleLlmClient("deepseek", "test-key", "https://api.deepseek.com",
+                "deepseek-chat", 0.7, Duration.ofSeconds(30));
     }
 
     private JsonNode buildBody(List<LlmMessage> messages, LlmRequestOptions options) throws Exception {

@@ -46,4 +46,24 @@ public interface AgentInvocationListener {
      */
     void onToolCall(String sessionId, String toolName, String argumentsJson, boolean success,
                     String resultSummary, long durationMs, ToolRiskLevel riskLevel, boolean confirmed);
+
+    /**
+     * 一次 {@link AgentLoop} 之外的辅助 LLM 调用（如历史摘要，M1-T05/M1-T07）完成后回调。
+     * 落库口径：type 仍为 LLM，purpose 进 detail（区分主链路调用）。
+     *
+     * <p>default 空实现：既有实现与测试替身无需感知本方法；调用方（如
+     * {@code LlmHistorySummarizer}）须自行 try-catch——观测失败绝不能中断主流程。
+     *
+     * @param sessionId        会话 id（无会话上下文时可为 null）
+     * @param purpose          调用目的（如 "summarize"），进 detail JSON
+     * @param model            实际应答的模型名（调用失败未获响应时为 null）
+     * @param durationMs       调用耗时（毫秒）
+     * @param promptTokens     输入 token 数（厂商未返回 usage 时为 null）
+     * @param completionTokens 输出 token 数（厂商未返回 usage 时为 null）
+     * @param error            错误信息（调用成功时为 null）
+     */
+    default void onAuxiliaryLlmCall(String sessionId, String purpose, String model, long durationMs,
+                                    Integer promptTokens, Integer completionTokens, String error) {
+        // 默认不观测：需要落库的实现（PersistingAgentInvocationListener）覆写本方法
+    }
 }

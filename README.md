@@ -13,7 +13,7 @@
 | 前端 | React + TypeScript（Vite） | 聊天界面已对接后端会话 API（mock 可用 VITE_USE_MOCK=true 切回） |
 | 业务数据库 | MySQL 8.x（InnoDB，强事务） | 开发环境已接入（Flyway 迁移） |
 | 向量库（大记忆） | 候选 Qdrant（待定） | 开发环境已部署，待接入 |
-| LLM 接入 | 自建抽象层，可切换 DeepSeek / 通义 / Claude / GPT | DeepSeek 已接入（聊天链路 LLM 驱动），工具调用待接入 |
+| LLM 接入 | 自建抽象层，OpenAI 兼容多 provider 配置化（DeepSeek / 通义 / Kimi / GPT） | 多 provider + 角色（chat/summarizer/checker）配置化（M1-T07），DeepSeek 已接入 |
 
 ## 目录结构
 
@@ -44,11 +44,37 @@ SJHERP/
    然后用环境变量 `SJHERP_DB_URL` 指向自己的 MySQL（账号/密码默认 `sjherp_app` / `sjherp_dev_2026`，
    可用 `SJHERP_DB_USERNAME` / `SJHERP_DB_PASSWORD` 覆盖；生产环境必须覆盖）。
 
-### LLM 配置（DeepSeek）
+### LLM 配置（多 provider，M1-T07）
 
-聊天链路由 LLM 驱动（`sjherp.agent.mode=auto`，默认）：配置了 API Key 走 `LlmAgent`，
-否则回退规则占位 `PlaceholderAgent`（启动日志有 WARN 提示）。API Key **绝不写进任何会被
-git 跟踪的文件**，二选一：
+LLM 接入为**多 provider 配置化**（前缀 `sjherp.llm`），切换/新增模型只改配置不改代码。
+所有 provider 走 OpenAI 兼容协议（`OpenAiCompatibleLlmClient` 一套实现），DeepSeek /
+通义 compatible-mode / Kimi / GPT 均可接入。结构（见 `application.yml`）：
+
+```yaml
+sjherp:
+  llm:
+    default-provider: deepseek    # roles 未覆盖的角色回落到它
+    providers:                    # provider 名 → 连接配置
+      deepseek:
+        base-url: https://api.deepseek.com
+        model: deepseek-chat
+        api-key: ${SJHERP_LLM_API_KEY:}   # 环境变量引用，绝不写明文
+        temperature: 0.7          # 可省略，默认 0.7
+        timeout-seconds: 60       # 可省略，默认 60
+    roles:                        # Agent 角色 → provider 名
+      chat: deepseek              # 对话主链路
+      summarizer: deepseek        # 会话历史摘要（M1-T05）
+      checker: deepseek           # 检查 Agent（M6 接入，建议配强模型）
+```
+
+`roles` / `default-provider` 指向未定义的 provider 名会在**启动期 fail-fast** 报错；
+同一 provider 被多个角色引用时共用同一客户端实例。
+
+聊天链路由 LLM 驱动（`sjherp.agent.mode=auto`，默认）：chat 角色的 provider 配置了
+API Key 走 `LlmAgent`，否则回退规则占位 `PlaceholderAgent`（启动日志有 WARN 提示）。
+`sjherp.agent.mode` 可显式指定 `llm` / `placeholder`。
+
+API Key **绝不写进任何会被 git 跟踪的文件**，二选一：
 
 1. **环境变量**（推荐，生产唯一方式）：
 
@@ -58,13 +84,15 @@ git 跟踪的文件**，二选一：
    ```
 
 2. **local profile**（本地开发）：创建 `server/sjherp-app/src/main/resources/application-local.yml`
-   （已被 .gitignore 忽略），内容：
+   （已被 .gitignore 忽略），按 provider 嵌套写法（原平铺 `sjherp.llm.api-key` 已废弃）：
 
    ```yaml
    # 本地开发密钥，勿提交
    sjherp:
      llm:
-       api-key: sk-xxx
+       providers:
+         deepseek:
+           api-key: sk-xxx
    ```
 
    然后带 local profile 启动：
@@ -72,10 +100,6 @@ git 跟踪的文件**，二选一：
    ```bash
    mvn spring-boot:run -pl sjherp-app "-Dspring-boot.run.profiles=local"
    ```
-
-其余可选配置（`application.yml`，前缀 `sjherp.llm`）：`base-url`（默认 https://api.deepseek.com）、
-`model`（默认 deepseek-chat）、`temperature`（默认 0.7）、`timeout-seconds`（默认 60）；
-`sjherp.agent.mode` 可显式指定 `llm` / `placeholder`。
 
 ### 登录与默认账号（M2-T05）
 

@@ -28,10 +28,14 @@ import com.sjherp.agent.llm.ToolDefinition;
 import com.sjherp.agent.session.MessageRole;
 
 /**
- * {@link LlmClient} 的 DeepSeek 实现（LLM 抽象层第一个具体厂商实现）。
+ * {@link LlmClient} 的 OpenAI 兼容协议实现（M1-T07 由 DeepSeekLlmClient 泛化改名）。
  *
- * <p>DeepSeek 提供 OpenAI 兼容 API：POST {baseUrl}/chat/completions，Bearer 鉴权。
- * 刻意只用 JDK 自带 {@link HttpClient} + infra 已有的 Jackson，不引入任何厂商 SDK；
+ * <p>OpenAI 兼容协议是当前实现的全部假设：POST {baseUrl}/chat/completions，Bearer 鉴权，
+ * function calling 走 tools / tool_calls 字段。DeepSeek、通义 compatible-mode、Kimi、GPT
+ * 等厂商共用本类，靠 sjherp.llm.providers 配置区分（base-url / model / api-key），
+ * 切换厂商不改代码。
+ *
+ * <p>刻意只用 JDK 自带 {@link HttpClient} + infra 已有的 Jackson，不引入任何厂商 SDK；
  * sjherp-agent 模块保持零依赖，本类只实现其接口。
  *
  * <p>按次参数（response_format / temperature 覆盖 / tools / tool_choice）经
@@ -40,10 +44,10 @@ import com.sjherp.agent.session.MessageRole;
  * （包级可见以便单元测试结构断言）。
  *
  * <p>本类不加 Spring 注解（infra 实现类保持可独立测试），由 app 层显式装配。
- * 错误处理：非 200、超时、网络异常一律抛 {@link LlmClientException}（带上下文），
+ * 错误处理：非 200、超时、网络异常一律抛 {@link LlmClientException}（带 provider 名等上下文），
  * 由上层决定兜底。
  */
-public class DeepSeekLlmClient implements LlmClient {
+public class OpenAiCompatibleLlmClient implements LlmClient {
 
     private static final String CHAT_COMPLETIONS_PATH = "/chat/completions";
 
@@ -56,6 +60,8 @@ public class DeepSeekLlmClient implements LlmClient {
     private final ObjectMapper mapper = new ObjectMapper();
     private final HttpClient httpClient;
 
+    /** provider 名（配置 key，如 deepseek / qwen），只用于日志与异常上下文 */
+    private final String providerName;
     private final String apiKey;
     private final String baseUrl;
     private final String model;
@@ -63,20 +69,29 @@ public class DeepSeekLlmClient implements LlmClient {
     private final Duration timeout;
 
     /**
-     * @param apiKey      DeepSeek API Key（必填）
-     * @param baseUrl     API 根地址，默认 https://api.deepseek.com
-     * @param model       模型名，默认 deepseek-chat
-     * @param temperature 默认采样温度（可被 {@link LlmRequestOptions#temperature()} 按次覆盖）
-     * @param timeout     单次请求整体超时
+     * @param providerName provider 名（sjherp.llm.providers 的 key，进异常/日志上下文）
+     * @param apiKey       API Key（必填）
+     * @param baseUrl      API 根地址（必填，如 https://api.deepseek.com）
+     * @param model        模型名（必填）
+     * @param temperature  默认采样温度（可被 {@link LlmRequestOptions#temperature()} 按次覆盖）
+     * @param timeout      单次请求整体超时
      */
-    public DeepSeekLlmClient(String apiKey, String baseUrl, String model,
-                             double temperature, Duration timeout) {
+    public OpenAiCompatibleLlmClient(String providerName, String apiKey, String baseUrl,
+                                     String model, double temperature, Duration timeout) {
+        this.providerName = providerName == null || providerName.isBlank() ? "unknown" : providerName;
         if (apiKey == null || apiKey.isBlank()) {
-            throw new IllegalArgumentException("DeepSeek api-key 不能为空（配置 sjherp.llm.api-key）");
+            throw new IllegalArgumentException("LLM api-key 不能为空（provider=" + this.providerName
+                    + "，配置 sjherp.llm.providers." + this.providerName + ".api-key）");
+        }
+        if (baseUrl == null || baseUrl.isBlank()) {
+            throw new IllegalArgumentException("LLM base-url 不能为空（provider=" + this.providerName + "）");
+        }
+        if (model == null || model.isBlank()) {
+            throw new IllegalArgumentException("LLM model 不能为空（provider=" + this.providerName + "）");
         }
         this.apiKey = apiKey;
-        this.baseUrl = stripTrailingSlash(Objects.requireNonNullElse(baseUrl, "https://api.deepseek.com"));
-        this.model = Objects.requireNonNullElse(model, "deepseek-chat");
+        this.baseUrl = stripTrailingSlash(baseUrl);
+        this.model = model;
         this.temperature = temperature;
         this.timeout = Objects.requireNonNull(timeout, "timeout 不能为空");
         this.httpClient = HttpClient.newBuilder()
@@ -104,20 +119,18 @@ public class DeepSeekLlmClient implements LlmClient {
             response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         } catch (HttpTimeoutException e) {
             throw new LlmClientException(
-                    "DeepSeek 请求超时（timeout=" + timeout.toSeconds() + "s, model=" + model
-                            + ", endpoint=" + endpoint() + "）", e);
+                    "LLM 请求超时（" + context() + ", timeout=" + timeout.toSeconds() + "s）", e);
         } catch (IOException e) {
-            throw new LlmClientException(
-                    "DeepSeek 网络异常（model=" + model + ", endpoint=" + endpoint() + "）", e);
+            throw new LlmClientException("LLM 网络异常（" + context() + "）", e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new LlmClientException("DeepSeek 请求被中断（model=" + model + "）", e);
+            throw new LlmClientException("LLM 请求被中断（" + context() + "）", e);
         }
 
         if (response.statusCode() != 200) {
             throw new LlmClientException(
-                    "DeepSeek 返回非 200（status=" + response.statusCode() + ", model=" + model
-                            + ", endpoint=" + endpoint() + "）: " + abbreviate(response.body()));
+                    "LLM 返回非 200（status=" + response.statusCode() + ", " + context()
+                            + "）: " + abbreviate(response.body()));
         }
         return parseResponse(response.body());
     }
@@ -232,7 +245,7 @@ public class DeepSeekLlmClient implements LlmClient {
         try {
             root = mapper.readTree(body);
         } catch (JsonProcessingException e) {
-            throw new LlmClientException("DeepSeek 响应 JSON 解析失败（model=" + model + "）: " + abbreviate(body), e);
+            throw new LlmClientException("LLM 响应 JSON 解析失败（" + context() + "）: " + abbreviate(body), e);
         }
         JsonNode message = root.path("choices").path(0).path("message");
         JsonNode contentNode = message.path("content");
@@ -247,7 +260,7 @@ public class DeepSeekLlmClient implements LlmClient {
                 String name = function.path("name").asText(null);
                 if (name == null || name.isBlank()) {
                     throw new LlmClientException(
-                            "DeepSeek tool_calls 缺少 function.name（model=" + model + "）: " + abbreviate(body));
+                            "LLM tool_calls 缺少 function.name（" + context() + "）: " + abbreviate(body));
                 }
                 // arguments 在 OpenAI 兼容格式中是 JSON 字符串，原样透传，由上层解析校验
                 String arguments = function.path("arguments").asText("{}");
@@ -257,7 +270,7 @@ public class DeepSeekLlmClient implements LlmClient {
 
         if (content == null && toolCalls.isEmpty()) {
             throw new LlmClientException(
-                    "DeepSeek 响应既无 content 也无 tool_calls（model=" + model + "）: " + abbreviate(body));
+                    "LLM 响应既无 content 也无 tool_calls（" + context() + "）: " + abbreviate(body));
         }
         // 观测信息（M1-T06）：实际应答模型名 + token 用量（usage 缺失时为 null，不影响主流程）
         return new LlmResponse(content, toolCalls, root.path("model").asText(model), parseUsage(root));
@@ -284,6 +297,11 @@ public class DeepSeekLlmClient implements LlmClient {
             case ASSISTANT -> "assistant";
             case TOOL -> "tool";
         };
+    }
+
+    /** 异常/日志上下文：provider 名 + 模型 + 端点 */
+    private String context() {
+        return "provider=" + providerName + ", model=" + model + ", endpoint=" + endpoint();
     }
 
     private String endpoint() {

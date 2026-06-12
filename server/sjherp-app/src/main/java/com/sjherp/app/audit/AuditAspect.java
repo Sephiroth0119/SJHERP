@@ -14,7 +14,6 @@ import org.slf4j.LoggerFactory;
 import com.sjherp.domain.common.audit.AuditTarget;
 import com.sjherp.domain.common.audit.Audited;
 import com.sjherp.infra.persistence.audit.AuditLogEntry;
-import com.sjherp.infra.persistence.audit.AuditLogRepository;
 
 /**
  * 统一审计切面（M2-T07，CLAUDE.md 原则 3）：拦截 app 装配的领域 Service Bean
@@ -31,6 +30,9 @@ import com.sjherp.infra.persistence.audit.AuditLogRepository;
  * <p>失败兜底：审计取材/落库的任何异常只 WARN + 计数（{@link AuditMetrics}），
  * 绝不影响业务方法的返回（与 PersistingAgentInvocationListener 同哲学）；
  * 业务方法本身抛异常时不记审计（写操作未发生）。
+ *
+ * <p>落库经 {@link TransactionAwareAuditWriter}（D-8 幽灵审计修复）：存在外层业务
+ * 事务时延迟到事务提交后插入（回滚则不写），无事务时立即插入。
  */
 @Aspect
 public class AuditAspect {
@@ -40,11 +42,11 @@ public class AuditAspect {
     /** summary 列防御性截断长度（TEXT 列本身够大，截断只为防极端膨胀） */
     private static final int SUMMARY_MAX_LENGTH = 2000;
 
-    private final AuditLogRepository repository;
+    private final TransactionAwareAuditWriter auditWriter;
     private final AuditMetrics metrics;
 
-    public AuditAspect(AuditLogRepository repository, AuditMetrics metrics) {
-        this.repository = repository;
+    public AuditAspect(TransactionAwareAuditWriter auditWriter, AuditMetrics metrics) {
+        this.auditWriter = auditWriter;
         this.metrics = metrics;
     }
 
@@ -81,13 +83,15 @@ public class AuditAspect {
                 targetId = extractLeadingIdArg(signature.getMethod(), joinPoint.getArgs());
             }
 
-            repository.insert(new AuditLogEntry(null, operator, audited.action(),
+            // 事务感知写入：有外层业务事务 → afterCommit 后插（回滚不写）；无事务 → 立即插
+            auditWriter.write(new AuditLogEntry(null, operator, audited.action(),
                     audited.targetType(), targetId, targetCode,
                     buildSummary(beforeSummary, afterSummary),
                     AuditContext.sessionId(), Instant.now()));
         } catch (RuntimeException e) {
+            // 此处兜底的是「取材/注册」阶段的异常；插入阶段的异常由 writer 内部兜底
             metrics.recordFailure();
-            log.warn("审计日志写入失败（action={}, method={}），业务不受影响但审计缺失，需尽快排查"
+            log.warn("审计日志取材失败（action={}, method={}），业务不受影响但审计缺失，需尽快排查"
                             + "（累计失败 {} 次）",
                     audited.action(), joinPoint.getSignature().toShortString(),
                     metrics.failureCount(), e);

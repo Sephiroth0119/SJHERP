@@ -90,6 +90,40 @@ class PersistingAgentInvocationListenerTest {
     }
 
     @Test
+    void auxiliaryLlmCallMapsToLlmRowWithPurposeInDetail() throws Exception {
+        // M1-T07：摘要等 AgentLoop 之外的辅助 LLM 调用——type 仍为 LLM，purpose 进 detail
+        listener.onAuxiliaryLlmCall("session-1", "summarize", "deepseek-chat", 800L, 1500, 120, null);
+
+        AgentInvocation row = repository.inserted.get(0);
+        assertThat(row.sessionId()).isEqualTo("session-1");
+        assertThat(row.type()).isEqualTo(AgentInvocationType.LLM);
+        assertThat(row.model()).isEqualTo("deepseek-chat");
+        assertThat(row.toolName()).isNull();
+        assertThat(row.durationMs()).isEqualTo(800L);
+        assertThat(row.promptTokens()).isEqualTo(1500);
+        assertThat(row.completionTokens()).isEqualTo(120);
+        assertThat(row.success()).isTrue();
+
+        JsonNode detail = detailOf(row);
+        assertThat(detail.get("purpose").asText()).isEqualTo("summarize");
+        assertThat(detail.has("error")).isFalse();
+        assertThat(detail.has("round")).isFalse();
+    }
+
+    @Test
+    void auxiliaryLlmFailureMapsToUnsuccessfulRowWithTruncatedError() throws Exception {
+        listener.onAuxiliaryLlmCall("session-1", "summarize", null, 60_000L, null, null, "E".repeat(600));
+
+        AgentInvocation row = repository.inserted.get(0);
+        assertThat(row.success()).isFalse();
+        assertThat(row.model()).isNull();
+
+        JsonNode detail = detailOf(row);
+        assertThat(detail.get("purpose").asText()).isEqualTo("summarize");
+        assertThat(detail.get("error").asText()).endsWith("...(已截断)");
+    }
+
+    @Test
     void toolCallMapsToToolRowWithDetail() throws Exception {
         listener.onToolCall("session-1", "echo", "{\"message\":\"hi\"}", true,
                 "{\"success\":true,\"data\":{\"echo\":\"hi\"}}", 7L, ToolRiskLevel.NORMAL, false);
@@ -156,5 +190,7 @@ class PersistingAgentInvocationListenerTest {
                 .doesNotThrowAnyException();
         assertThatCode(() -> failing.onToolCall("s", "t", "{}", true, "ok", 1L,
                 ToolRiskLevel.NORMAL, false)).doesNotThrowAnyException();
+        assertThatCode(() -> failing.onAuxiliaryLlmCall("s", "summarize", "m", 1L, 1, 1, null))
+                .doesNotThrowAnyException();
     }
 }
