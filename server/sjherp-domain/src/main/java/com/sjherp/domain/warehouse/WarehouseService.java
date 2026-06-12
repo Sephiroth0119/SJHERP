@@ -6,6 +6,7 @@ import com.sjherp.domain.common.PageResult;
 import com.sjherp.domain.common.audit.Audited;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
 import com.sjherp.domain.common.numbering.DocumentNumberRule;
+import com.sjherp.domain.inventory.StockChecker;
 
 /**
  * 仓库档案领域服务（所有仓库写操作的唯一入口，CLAUDE.md 原则 1）。
@@ -25,9 +26,18 @@ public class WarehouseService {
     private final WarehouseRepository warehouseRepository;
     private final DocumentNumberGenerator numberGenerator;
 
+    /** 库存占用检查端口（M3-T01c）；可空 = 库存模块未装配时跳过停用前检查（兼容旧装配/测试） */
+    private final StockChecker stockChecker;
+
     public WarehouseService(WarehouseRepository warehouseRepository, DocumentNumberGenerator numberGenerator) {
+        this(warehouseRepository, numberGenerator, null);
+    }
+
+    public WarehouseService(WarehouseRepository warehouseRepository, DocumentNumberGenerator numberGenerator,
+                            StockChecker stockChecker) {
         this.warehouseRepository = Objects.requireNonNull(warehouseRepository);
         this.numberGenerator = Objects.requireNonNull(numberGenerator);
+        this.stockChecker = stockChecker;
     }
 
     /** 创建仓库：编码为空则自动编号；落库后回填 id */
@@ -80,13 +90,18 @@ public class WarehouseService {
     /**
      * 停用仓库。
      *
-     * <p>TODO（M3 引入库存后补齐）：停用前的引用约束检查——存在非零库存
-     * 余额或在途出入库单据时应给出阻断或警告策略；本期仅做状态切换，
-     * 新单据不得引用停用仓库的约束由各单据领域服务校验。
+     * <p>引用约束检查（M3-T01c 补齐 M2 遗留 TODO）：存在非零库存余额时阻断停用
+     * （经 {@link StockChecker} 端口，app 层以只读 SQL 装配）。在途出入库单据的
+     * 检查待相应单据（M3-T03+）落地后扩展；新单据不得引用停用仓库的约束
+     * 由各单据领域服务校验。
      */
     @Audited(action = "warehouse.disable", targetType = "warehouse")
     public Warehouse disable(long id, String operator) {
         Warehouse warehouse = get(id);
+        if (stockChecker != null && stockChecker.warehouseHasStock(id)) {
+            throw new IllegalArgumentException("仓库存在非零库存余额，禁止停用: " + warehouse.getName()
+                    + "（" + warehouse.getCode() + "）。请先将库存调拨或出库清零后再停用。");
+        }
         warehouse.disable(operator);
         warehouseRepository.save(warehouse);
         return warehouse;

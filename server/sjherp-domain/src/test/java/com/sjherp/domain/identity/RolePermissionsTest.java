@@ -34,6 +34,7 @@ class RolePermissionsTest {
                 Permission.CATALOG_WRITE,
                 Permission.PARTNER_WRITE,
                 Permission.WAREHOUSE_WRITE,
+                Permission.INVENTORY_ADJUST,
                 Permission.GAP_TRIAGE), boss);
         assertFalse(boss.contains(Permission.DEMO_POST_DOCUMENT));
     }
@@ -51,8 +52,9 @@ class RolePermissionsTest {
     }
 
     @Test
-    void WAREHOUSE_仓库域全部_无其他域() {
-        assertEquals(EnumSet.of(Permission.WAREHOUSE_CREATE_WAREHOUSE, Permission.WAREHOUSE_WRITE),
+    void WAREHOUSE_仓库域全部加库存调整_无其他域() {
+        assertEquals(EnumSet.of(Permission.WAREHOUSE_CREATE_WAREHOUSE, Permission.WAREHOUSE_WRITE,
+                        Permission.INVENTORY_ADJUST),
                 RolePermissions.permissionsOf(Role.WAREHOUSE));
     }
 
@@ -96,6 +98,11 @@ class RolePermissionsTest {
         assertTrue(RolePermissions.isGrantedCode(Set.of(Role.PURCHASER), "partner:create_supplier"));
         assertTrue(RolePermissions.isGrantedCode(Set.of(Role.WAREHOUSE), "warehouse:create_warehouse"));
         assertTrue(RolePermissions.isGrantedCode(Set.of(Role.ADMIN), "catalog:create_product"));
+        // 库存调整（M3-T01c）：ADMIN/BOSS/WAREHOUSE 持有，其余角色拒绝
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.WAREHOUSE), "inventory:adjust"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.BOSS), "inventory:adjust"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.SALES), "inventory:adjust"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.ACCOUNTANT), "inventory:adjust"));
         assertFalse(RolePermissions.isGrantedCode(Set.of(Role.WAREHOUSE), "partner:create_customer"));
     }
 

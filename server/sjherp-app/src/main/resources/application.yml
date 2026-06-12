@@ -28,6 +28,16 @@ sjherp:
     jwt-secret: ${SJHERP_JWT_SECRET:sjherp-dev-only-secret-change-me-in-production-0123456789}
     jwt-expire-hours: 12   # token 有效期（小时）
 
+  # 库存与成本（M3-T01，拆解见 docs/M3拆解-库存与成本.md）。
+  inventory:
+    # 负库存开关（§1.5）：默认禁止——出库后数量为负时抛 InsufficientStockException 整体回滚。
+    # 设为 true 仅解除数量校验，成本口径退化（数量 ≤ 0 时取最近一笔流水单价，估计值，
+    # 回正后不追溯重算）；打开需在部署文档确认，检查 Agent（M6-T06）会标红负库存行。
+    allow-negative-stock: false
+    # 成本核算方法（Q-2 预留，全局统一不可按商品混用）：v1.0 仅支持 MOVING_AVERAGE（移动加权，
+    # 单价 6 位 HALF_UP / 金额 2 位 HALF_UP / 出空清零）；FIFO 留实现位，配置其他值启动期报错。
+    costing-method: MOVING_AVERAGE
+
   # LLM 接入（M1-T07 多 provider 配置化，切换模型不改代码）。
   # - providers（map）：provider 名 → 连接配置（base-url / model / api-key / temperature /
   #   timeout-seconds）。所有 provider 走 OpenAI 兼容协议（OpenAiCompatibleLlmClient 一套实现），

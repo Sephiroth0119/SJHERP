@@ -48,6 +48,15 @@ public enum Permission {
     /** 仓库域档案维护：仓库的更新与启停 */
     WAREHOUSE_WRITE("warehouse:write", "仓库档案维护"),
 
+    // ------------------------------------------------- 库存（M3-T01c）
+
+    /**
+     * 库存调整：期初建账（OPENING）与成本调整（COST_ADJUST）的写入口
+     * （Agent 工具 adjust_inventory / REST POST /api/inventory/adjustments）。
+     * 库存余额/流水查询照例不设权限点（登录即可）。
+     */
+    INVENTORY_ADJUST("inventory:adjust", "库存调整"),
+
     // ------------------------------------------------- 流程缺口
 
     /** 缺口状态流转（GapController POST /api/gaps/{id}/status，开发侧操作） */

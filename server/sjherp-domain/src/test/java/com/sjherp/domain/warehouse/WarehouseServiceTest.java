@@ -25,6 +25,7 @@ import com.sjherp.domain.common.ArchiveStatus;
 import com.sjherp.domain.common.PageResult;
 import com.sjherp.domain.common.numbering.DefaultDocumentNumberGenerator;
 import com.sjherp.domain.common.numbering.InMemorySequenceProvider;
+import com.sjherp.domain.inventory.StockChecker;
 
 /**
  * 仓库档案领域服务测试：自动编号、编码唯一、必填校验、库位开关、启停规则。
@@ -117,6 +118,55 @@ class WarehouseServiceTest {
         assertEquals(ArchiveStatus.ENABLED, enabled.getStatus());
         // 重复启用 → 拒绝
         assertThrows(IllegalArgumentException.class, () -> service.enable(id, OPERATOR));
+    }
+
+    // ---------------------------------------------------------------- 停用前库存占用检查（M3-T01c）
+
+    /** 固定返回值的 StockChecker 桩（仓库维度） */
+    private static StockChecker warehouseStock(boolean hasStock) {
+        return new StockChecker() {
+            @Override
+            public boolean warehouseHasStock(long warehouseId) {
+                return hasStock;
+            }
+
+            @Override
+            public boolean productHasStock(long productId) {
+                return false;
+            }
+        };
+    }
+
+    private WarehouseService serviceWithStockChecker(StockChecker stockChecker) {
+        return new WarehouseService(warehouseRepository,
+                new DefaultDocumentNumberGenerator(new InMemorySequenceProvider(), FIXED_CLOCK),
+                stockChecker);
+    }
+
+    @Test
+    void 停用前检查_存在非零库存余额被拒_状态不变() {
+        WarehouseService guarded = serviceWithStockChecker(warehouseStock(true));
+        Warehouse warehouse = guarded.create(command(null, "原料仓"), OPERATOR);
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> guarded.disable(warehouse.getId(), OPERATOR));
+        assertTrue(e.getMessage().contains("非零库存"));
+        assertEquals(ArchiveStatus.ENABLED, guarded.get(warehouse.getId()).getStatus());
+    }
+
+    @Test
+    void 停用前检查_无库存放行() {
+        WarehouseService guarded = serviceWithStockChecker(warehouseStock(false));
+        Warehouse warehouse = guarded.create(command(null, "原料仓"), OPERATOR);
+
+        assertEquals(ArchiveStatus.DISABLED, guarded.disable(warehouse.getId(), OPERATOR).getStatus());
+    }
+
+    @Test
+    void 停用前检查_未装配StockChecker时跳过检查_兼容旧装配() {
+        // setUp 中的 service 用两参构造（stockChecker=null），停用不受库存检查影响
+        Warehouse warehouse = service.create(command(null, "原料仓"), OPERATOR);
+        assertEquals(ArchiveStatus.DISABLED, service.disable(warehouse.getId(), OPERATOR).getStatus());
     }
 
     @Test

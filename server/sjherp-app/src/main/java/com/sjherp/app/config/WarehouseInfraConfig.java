@@ -5,6 +5,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
+import com.sjherp.domain.inventory.StockChecker;
 import com.sjherp.domain.warehouse.WarehouseRepository;
 import com.sjherp.domain.warehouse.WarehouseService;
 import com.sjherp.infra.persistence.warehouse.JdbcWarehouseRepository;
@@ -15,6 +16,9 @@ import com.sjherp.infra.persistence.warehouse.JdbcWarehouseRepository;
  * <p>domain/infra 的类不加 Spring 注解（保持可独立测试），统一在此显式装配
  * （约定同 {@link CatalogInfraConfig}）。单据编号生成器复用 CatalogInfraConfig
  * 中定义的 {@link DocumentNumberGenerator} Bean。
+ *
+ * <p>M3-T01c：注入 {@link StockChecker}（app/inventory/JdbcStockChecker，只读 SQL）——
+ * 仓库停用前存在非零库存余额时阻断（补 M2 遗留 TODO）。
  */
 @Configuration
 public class WarehouseInfraConfig {
@@ -26,7 +30,8 @@ public class WarehouseInfraConfig {
 
     @Bean
     public WarehouseService warehouseService(WarehouseRepository warehouseRepository,
-                                             DocumentNumberGenerator documentNumberGenerator) {
-        return new WarehouseService(warehouseRepository, documentNumberGenerator);
+                                             DocumentNumberGenerator documentNumberGenerator,
+                                             StockChecker stockChecker) {
+        return new WarehouseService(warehouseRepository, documentNumberGenerator, stockChecker);
     }
 }

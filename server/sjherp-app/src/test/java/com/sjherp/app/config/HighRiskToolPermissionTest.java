@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import com.sjherp.agent.tool.Tool;
 import com.sjherp.agent.tool.ToolRegistry;
 import com.sjherp.agent.tool.ToolRiskLevel;
+import com.sjherp.app.inventory.InventoryAdjustmentService;
 import com.sjherp.domain.catalog.ProductService;
 import com.sjherp.domain.catalog.UnitService;
 import com.sjherp.domain.partner.CustomerService;
@@ -35,13 +36,15 @@ class HighRiskToolPermissionTest {
     /** 按生产装配方式（各 ToolConfig 构造器）注册全部工具 */
     private static ToolRegistry registryWithAllTools() {
         ToolRegistry registry = new ToolRegistry();
-        // 常驻：基础档案工具（M2-T08）
+        // 常驻：基础档案工具（M2-T08）+ 库存工具（M3-T01c）
         new DomainToolConfig(registry,
                 mock(ProductService.class),
                 mock(UnitService.class),
                 mock(CustomerService.class),
                 mock(SupplierService.class),
-                mock(WarehouseService.class));
+                mock(WarehouseService.class),
+                mock(TransactionalInventoryService.class),
+                mock(InventoryAdjustmentService.class));
         // dev-only：演示工具（EchoTool NORMAL + DemoHighRiskTool HIGH），一并纳入断言
         new ToolConfig.DemoToolConfig(registry);
         return registry;
@@ -66,9 +69,10 @@ class HighRiskToolPermissionTest {
 
     @Test
     void 注册清单覆盖既有工具规模_防注册清单漂移() {
-        // M2 基线：常驻 9 个（查询 5 NORMAL + 创建 4 HIGH）+ 演示 2 个（echo + demo_post_document）。
+        // M3-T01c 基线：常驻 11 个（查询 6 NORMAL + 写 5 HIGH，含 query_inventory_balance /
+        // adjust_inventory）+ 演示 2 个（echo + demo_post_document）。
         // 新增工具装配类后此处会先于权限断言提醒维护注册清单。
-        assertTrue(registryWithAllTools().all().size() >= 11,
-                "注册工具数少于 M2 基线（11 个）——若调整了工具装配，请同步维护本测试的注册清单");
+        assertTrue(registryWithAllTools().all().size() >= 13,
+                "注册工具数少于 M3-T01c 基线（13 个）——若调整了工具装配，请同步维护本测试的注册清单");
     }
 }

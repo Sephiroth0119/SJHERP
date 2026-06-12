@@ -21,6 +21,7 @@ import com.sjherp.domain.common.ArchiveStatus;
 import com.sjherp.domain.common.PageResult;
 import com.sjherp.domain.common.numbering.DefaultDocumentNumberGenerator;
 import com.sjherp.domain.common.numbering.InMemorySequenceProvider;
+import com.sjherp.domain.inventory.StockChecker;
 
 /**
  * 商品档案领域服务测试：自动编号、编码唯一、引用完整性、启停规则。
@@ -150,6 +151,55 @@ class ProductServiceTest {
     @Test
     void 查询不存在的商品抛404异常() {
         assertThrows(CatalogNotFoundException.class, () -> service.get(999L));
+    }
+
+    // ---------------------------------------------------------------- 停用前库存占用检查（M3-T01c）
+
+    /** 固定返回值的 StockChecker 桩（商品维度） */
+    private static StockChecker productStock(boolean hasStock) {
+        return new StockChecker() {
+            @Override
+            public boolean warehouseHasStock(long warehouseId) {
+                return false;
+            }
+
+            @Override
+            public boolean productHasStock(long productId) {
+                return hasStock;
+            }
+        };
+    }
+
+    private ProductService serviceWithStockChecker(StockChecker stockChecker) {
+        return new ProductService(productRepository, categoryRepository, unitRepository,
+                new DefaultDocumentNumberGenerator(new InMemorySequenceProvider(), FIXED_CLOCK),
+                stockChecker);
+    }
+
+    @Test
+    void 停用前检查_存在非零库存余额被拒_状态不变() {
+        ProductService guarded = serviceWithStockChecker(productStock(true));
+        Product product = guarded.create(command(null, "可乐"), OPERATOR);
+
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> guarded.disable(product.getId(), OPERATOR));
+        assertTrue(e.getMessage().contains("非零库存"));
+        assertEquals(ArchiveStatus.ENABLED, guarded.get(product.getId()).getStatus());
+    }
+
+    @Test
+    void 停用前检查_无库存放行() {
+        ProductService guarded = serviceWithStockChecker(productStock(false));
+        Product product = guarded.create(command(null, "可乐"), OPERATOR);
+
+        assertEquals(ArchiveStatus.DISABLED, guarded.disable(product.getId(), OPERATOR).getStatus());
+    }
+
+    @Test
+    void 停用前检查_未装配StockChecker时跳过检查_兼容旧装配() {
+        // setUp 中的 service 用四参构造（stockChecker=null），停用不受库存检查影响
+        Product product = service.create(command(null, "可乐"), OPERATOR);
+        assertEquals(ArchiveStatus.DISABLED, service.disable(product.getId(), OPERATOR).getStatus());
     }
 
     @Test

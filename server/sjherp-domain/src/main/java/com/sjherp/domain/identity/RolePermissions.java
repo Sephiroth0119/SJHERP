@@ -46,6 +46,7 @@ public final class RolePermissions {
                 Permission.CATALOG_WRITE,
                 Permission.PARTNER_WRITE,
                 Permission.WAREHOUSE_WRITE,
+                Permission.INVENTORY_ADJUST,
                 Permission.GAP_TRIAGE)));
 
         // PURCHASER：采购线只开供应商创建（商品/供应商查询登录即可）
@@ -56,10 +57,11 @@ public final class RolePermissions {
         grants.put(Role.SALES, Collections.unmodifiableSet(EnumSet.of(
                 Permission.PARTNER_CREATE_CUSTOMER)));
 
-        // WAREHOUSE：仓库域全部（创建 + 维护），即 warehouse:*
+        // WAREHOUSE：仓库域全部（创建 + 维护 + 库存调整），即 warehouse:* + inventory:adjust
         grants.put(Role.WAREHOUSE, Collections.unmodifiableSet(EnumSet.of(
                 Permission.WAREHOUSE_CREATE_WAREHOUSE,
-                Permission.WAREHOUSE_WRITE)));
+                Permission.WAREHOUSE_WRITE,
+                Permission.INVENTORY_ADJUST)));
 
         // ACCOUNTANT：读为主，本期无写权限点；finance:* 权限点留 M4 在此补充
         grants.put(Role.ACCOUNTANT, Collections.unmodifiableSet(EnumSet.noneOf(Permission.class)));

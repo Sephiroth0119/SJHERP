@@ -13,6 +13,7 @@ import com.sjherp.domain.catalog.UnitService;
 import com.sjherp.domain.common.numbering.DefaultDocumentNumberGenerator;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
 import com.sjherp.domain.common.numbering.SequenceProvider;
+import com.sjherp.domain.inventory.StockChecker;
 import com.sjherp.infra.persistence.JdbcSequenceProvider;
 import com.sjherp.infra.persistence.catalog.JdbcCategoryRepository;
 import com.sjherp.infra.persistence.catalog.JdbcProductRepository;
@@ -71,12 +72,17 @@ public class CatalogInfraConfig {
         return new CategoryService(categoryRepository, productRepository);
     }
 
+    /**
+     * 商品领域服务。M3-T01c：注入 {@link StockChecker}（app/inventory/JdbcStockChecker，
+     * 只读 SQL）——商品停用前存在非零库存余额时阻断（补 M2 遗留 TODO）。
+     */
     @Bean
     public ProductService productService(ProductRepository productRepository,
                                          CategoryRepository categoryRepository,
                                          UnitRepository unitRepository,
-                                         DocumentNumberGenerator documentNumberGenerator) {
+                                         DocumentNumberGenerator documentNumberGenerator,
+                                         StockChecker stockChecker) {
         return new ProductService(productRepository, categoryRepository, unitRepository,
-                documentNumberGenerator);
+                documentNumberGenerator, stockChecker);
     }
 }

@@ -7,6 +7,7 @@ import com.sjherp.domain.common.PageResult;
 import com.sjherp.domain.common.audit.Audited;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
 import com.sjherp.domain.common.numbering.DocumentNumberRule;
+import com.sjherp.domain.inventory.StockChecker;
 
 /**
  * 商品档案领域服务（所有商品写操作的唯一入口，CLAUDE.md 原则 1）。
@@ -29,12 +30,22 @@ public class ProductService {
     private final UnitRepository unitRepository;
     private final DocumentNumberGenerator numberGenerator;
 
+    /** 库存占用检查端口（M3-T01c）；可空 = 库存模块未装配时跳过停用前检查（兼容旧装配/测试） */
+    private final StockChecker stockChecker;
+
     public ProductService(ProductRepository productRepository, CategoryRepository categoryRepository,
                           UnitRepository unitRepository, DocumentNumberGenerator numberGenerator) {
+        this(productRepository, categoryRepository, unitRepository, numberGenerator, null);
+    }
+
+    public ProductService(ProductRepository productRepository, CategoryRepository categoryRepository,
+                          UnitRepository unitRepository, DocumentNumberGenerator numberGenerator,
+                          StockChecker stockChecker) {
         this.productRepository = Objects.requireNonNull(productRepository);
         this.categoryRepository = Objects.requireNonNull(categoryRepository);
         this.unitRepository = Objects.requireNonNull(unitRepository);
         this.numberGenerator = Objects.requireNonNull(numberGenerator);
+        this.stockChecker = stockChecker;
     }
 
     /** 创建商品：编码为空则自动编号；落库后回填 id */
@@ -91,13 +102,18 @@ public class ProductService {
     /**
      * 停用商品。
      *
-     * <p>TODO（M3 引入单据后补齐）：停用前的引用约束检查——存在未完结单据
-     * （在途采购/销售订单、非零库存余额等）时应给出阻断或警告策略；本期
-     * 仅做状态切换，新单据不得引用停用商品的约束由各单据领域服务校验。
+     * <p>引用约束检查（M3-T01c 补齐 M2 遗留 TODO 的库存部分）：存在非零库存余额时
+     * 阻断停用（经 {@link StockChecker} 端口，app 层以只读 SQL 装配）。在途采购/销售
+     * 订单等未完结单据的检查待相应单据（M3-T05+）落地后扩展；新单据不得引用
+     * 停用商品的约束由各单据领域服务校验。
      */
     @Audited(action = "product.disable", targetType = "product")
     public Product disable(long id, String operator) {
         Product product = get(id);
+        if (stockChecker != null && stockChecker.productHasStock(id)) {
+            throw new IllegalArgumentException("商品存在非零库存余额，禁止停用: " + product.getName()
+                    + "（" + product.getCode() + "）。请先将库存出库或盘亏清零后再停用。");
+        }
         product.disable(operator);
         productRepository.save(product);
         return product;
