@@ -39,7 +39,8 @@ public class JdbcAgentSessionRepository implements AgentSessionRepository {
 
     /** 会话行的中间载体（消息单独查询后再 restore 成聚合） */
     private record SessionRow(String id, String userId, String title, SessionStatus status,
-                              String pendingToolCall, Instant createdAt, Instant updatedAt) {
+                              String pendingToolCall, String historySummary, int summarizedUntilSeq,
+                              Instant createdAt, Instant updatedAt) {
     }
 
     private static final RowMapper<SessionRow> SESSION_ROW_MAPPER = (rs, rowNum) -> new SessionRow(
@@ -48,6 +49,8 @@ public class JdbcAgentSessionRepository implements AgentSessionRepository {
             rs.getString("title"),
             SessionStatus.valueOf(rs.getString("status")),
             rs.getString("pending_tool_call"),
+            rs.getString("history_summary"),
+            rs.getInt("summarized_until_seq"),
             fromDb(rs.getObject("created_at", LocalDateTime.class)),
             fromDb(rs.getObject("updated_at", LocalDateTime.class)));
 
@@ -60,15 +63,19 @@ public class JdbcAgentSessionRepository implements AgentSessionRepository {
     public void save(AgentSession session) {
         // 先尝试更新，不存在则插入（无并发建会话冲突场景，无需 upsert 语法）
         int updated = jdbc.update(
-                "UPDATE agent_session SET title = ?, status = ?, pending_tool_call = ?, updated_at = ? WHERE id = ?",
+                "UPDATE agent_session SET title = ?, status = ?, pending_tool_call = ?, "
+                        + "history_summary = ?, summarized_until_seq = ?, updated_at = ? WHERE id = ?",
                 session.getTitle(), session.getStatus().name(), session.getPendingToolCallJson(),
+                session.getHistorySummary(), session.getSummarizedUntilSeq(),
                 toDb(session.getUpdatedAt()), session.getSessionId());
         if (updated == 0) {
             jdbc.update(
-                    "INSERT INTO agent_session (id, user_id, title, status, pending_tool_call, created_at, updated_at) "
-                            + "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO agent_session (id, user_id, title, status, pending_tool_call, "
+                            + "history_summary, summarized_until_seq, created_at, updated_at) "
+                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     session.getSessionId(), session.getUserId(), session.getTitle(),
                     session.getStatus().name(), session.getPendingToolCallJson(),
+                    session.getHistorySummary(), session.getSummarizedUntilSeq(),
                     toDb(session.getCreatedAt()), toDb(session.getUpdatedAt()));
         }
 
@@ -90,7 +97,8 @@ public class JdbcAgentSessionRepository implements AgentSessionRepository {
     @Transactional(readOnly = true)
     public Optional<AgentSession> findById(String sessionId) {
         List<SessionRow> rows = jdbc.query(
-                "SELECT id, user_id, title, status, pending_tool_call, created_at, updated_at "
+                "SELECT id, user_id, title, status, pending_tool_call, history_summary, "
+                        + "summarized_until_seq, created_at, updated_at "
                         + "FROM agent_session WHERE id = ?",
                 SESSION_ROW_MAPPER, sessionId);
         if (rows.isEmpty()) {
@@ -103,7 +111,8 @@ public class JdbcAgentSessionRepository implements AgentSessionRepository {
     @Transactional(readOnly = true)
     public List<AgentSession> findByUserId(String userId) {
         List<SessionRow> rows = jdbc.query(
-                "SELECT id, user_id, title, status, pending_tool_call, created_at, updated_at "
+                "SELECT id, user_id, title, status, pending_tool_call, history_summary, "
+                        + "summarized_until_seq, created_at, updated_at "
                         + "FROM agent_session WHERE user_id = ? ORDER BY updated_at DESC",
                 SESSION_ROW_MAPPER, userId);
         return rows.stream().map(this::toAggregate).toList();
@@ -115,7 +124,8 @@ public class JdbcAgentSessionRepository implements AgentSessionRepository {
                 "SELECT role, content, created_at FROM agent_message WHERE session_id = ? ORDER BY seq",
                 MESSAGE_ROW_MAPPER, row.id());
         return AgentSession.restore(row.id(), row.userId(), row.title(), row.status(),
-                messages, row.pendingToolCall(), row.createdAt(), row.updatedAt());
+                messages, row.pendingToolCall(), row.historySummary(), row.summarizedUntilSeq(),
+                row.createdAt(), row.updatedAt());
     }
 
     /** Instant -> UTC LocalDateTime（DATETIME(6) 列无时区，统一按 UTC 存） */

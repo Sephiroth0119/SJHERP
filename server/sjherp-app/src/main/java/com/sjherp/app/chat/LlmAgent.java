@@ -11,6 +11,10 @@ import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sjherp.agent.history.HistoryMessage;
+import com.sjherp.agent.history.HistorySummarizer;
+import com.sjherp.agent.history.HistoryTrimResult;
+import com.sjherp.agent.history.HistoryTrimmer;
 import com.sjherp.agent.llm.LlmMessage;
 import com.sjherp.agent.loop.AgentLoop;
 import com.sjherp.agent.loop.AgentLoopRequest;
@@ -23,6 +27,7 @@ import com.sjherp.agent.reply.AgentReply;
 import com.sjherp.agent.reply.Option;
 import com.sjherp.agent.session.AgentMessage;
 import com.sjherp.agent.session.AgentSession;
+import com.sjherp.agent.session.MessageRole;
 import com.sjherp.agent.tool.Tool;
 import com.sjherp.agent.tool.ToolContext;
 import com.sjherp.agent.tool.ToolRegistry;
@@ -181,6 +186,10 @@ public class LlmAgent implements Agent {
     private final FinalJsonMode finalJsonMode;
     private final int maxIterations;
     private final Duration loopTimeout;
+    /** 历史窗口裁剪（M1-T05）；null = 不裁剪（兼容旧构造器的测试场景） */
+    private final HistoryTrimmer historyTrimmer;
+    /** 摘要回调（M1-T05，单独调一次 LLM 压缩旧轮次）；裁剪开启时必须提供 */
+    private final HistorySummarizer historySummarizer;
 
     /**
      * @param agentLoop     执行循环（M1-T02，LLM 客户端与各校验器已在装配时注入循环）
@@ -196,6 +205,22 @@ public class LlmAgent implements Agent {
     public LlmAgent(AgentLoop agentLoop, AgentReplyJsonCodec codec,
                     PendingToolCallJsonCodec pendingCodec, ToolRegistry toolRegistry,
                     FinalJsonMode finalJsonMode, int maxIterations, Duration loopTimeout) {
+        this(agentLoop, codec, pendingCodec, toolRegistry, finalJsonMode,
+                maxIterations, loopTimeout, null, null);
+    }
+
+    /**
+     * 全参构造（M1-T05 会话上下文治理）：
+     *
+     * @param historyTrimmer    历史窗口裁剪纯函数（null = 不裁剪）；超 token 预算时把最旧的
+     *                          若干轮压缩为摘要，摘要随会话落库（history_summary 列，V8 迁移），
+     *                          完整历史仍在 agent_message 表、回放不受影响
+     * @param historySummarizer 摘要回调（单独调一次 LLM）；摘要失败时本次硬截断兜底，不阻塞对话
+     */
+    public LlmAgent(AgentLoop agentLoop, AgentReplyJsonCodec codec,
+                    PendingToolCallJsonCodec pendingCodec, ToolRegistry toolRegistry,
+                    FinalJsonMode finalJsonMode, int maxIterations, Duration loopTimeout,
+                    HistoryTrimmer historyTrimmer, HistorySummarizer historySummarizer) {
         this.agentLoop = Objects.requireNonNull(agentLoop, "agentLoop 不能为空");
         this.codec = Objects.requireNonNull(codec, "codec 不能为空");
         this.pendingCodec = Objects.requireNonNull(pendingCodec, "pendingCodec 不能为空");
@@ -203,6 +228,8 @@ public class LlmAgent implements Agent {
         this.finalJsonMode = Objects.requireNonNull(finalJsonMode, "finalJsonMode 不能为空");
         this.maxIterations = maxIterations;
         this.loopTimeout = loopTimeout;
+        this.historyTrimmer = historyTrimmer;
+        this.historySummarizer = historySummarizer;
     }
 
     @Override
@@ -304,22 +331,64 @@ public class LlmAgent implements Agent {
                 Option.of(ToolConfirmation.CANCEL_OPTION_ID, "取消")));
     }
 
-    /** 组装一次循环输入：系统提示 + 历史 + 当前用户输入 + 已注册工具 + 防护参数 */
+    /**
+     * 组装一次循环输入：系统提示（+ 历史摘要）+ 裁剪后的历史 + 当前用户输入 +
+     * 已注册工具 + 防护参数。
+     *
+     * <p>会话上下文治理（M1-T05）：历史先经 {@link HistoryTrimmer} 裁剪——估算 token
+     * 超预算时最旧若干轮压缩为摘要（摘要写回会话，随 ChatService 落库），摘要作为
+     * 系统提示的「早前对话摘要」小节注入；摘要失败则本次硬截断并打 WARN。
+     * 裁剪只影响发给 LLM 的内容，agent_message 中的完整历史与回放 API 不受影响。
+     */
     private AgentLoopRequest loopRequest(AgentSession session, String currentUserText) {
-        List<LlmMessage> history = new ArrayList<>();
-        for (AgentMessage message : session.getMessages()) {
-            switch (message.role()) {
-                case USER -> history.add(LlmMessage.user(message.content()));
-                // assistant 消息落库时即为 AgentReply 协议 JSON，原样作为 assistant 上下文
-                case ASSISTANT -> history.add(LlmMessage.assistant(message.content()));
-                default -> { /* SYSTEM/TOOL 历史暂不进入上下文 */ }
+        // 候选消息：USER / ASSISTANT 进入上下文（SYSTEM/TOOL 历史暂不进入），
+        // seq = 列表下标 + 1，与 agent_message.seq 的持久化口径一致（仓储按此插入）
+        List<AgentMessage> all = session.getMessages();
+        List<HistoryMessage> candidates = new ArrayList<>();
+        for (int i = 0; i < all.size(); i++) {
+            AgentMessage message = all.get(i);
+            if (message.role() == MessageRole.USER || message.role() == MessageRole.ASSISTANT) {
+                candidates.add(new HistoryMessage(i + 1, message.role(), message.content()));
             }
+        }
+
+        String summary = session.getHistorySummary();
+        List<HistoryMessage> window = candidates;
+        if (historyTrimmer != null) {
+            HistoryTrimResult trimmed = historyTrimmer.trim(candidates, summary,
+                    session.getSummarizedUntilSeq(), historySummarizer);
+            if (trimmed.summaryUpdated()) {
+                // 新摘要写回会话，随本轮 ChatService.save 落库（history_summary 列）
+                session.updateHistorySummary(trimmed.summary(), trimmed.summarizedUntilSeq());
+                log.info("会话历史已压缩为摘要（sessionId={}, summarizedUntilSeq={}, 摘要长度={} 字符, "
+                                + "窗口内消息数={}）", session.getSessionId(), trimmed.summarizedUntilSeq(),
+                        trimmed.summary().length(), trimmed.recentMessages().size());
+            }
+            if (trimmed.hardTruncated()) {
+                // 摘要失败兜底：本次只带最近 N 轮，不阻塞对话；完整历史在库中，下一轮重试摘要
+                log.warn("历史摘要生成失败，本次硬截断（sessionId={}, 窗口内消息数={}, 原因: {}）",
+                        session.getSessionId(), trimmed.recentMessages().size(), trimmed.failureReason());
+            }
+            summary = trimmed.summary();
+            window = trimmed.recentMessages();
+        } else if (session.getSummarizedUntilSeq() > 0) {
+            // 裁剪未启用但会话带有历史摘要状态（如配置回退）：仍按摘要覆盖范围过滤，保证语义一致
+            int untilSeq = session.getSummarizedUntilSeq();
+            window = candidates.stream().filter(m -> m.seq() > untilSeq).toList();
+        }
+
+        List<LlmMessage> history = new ArrayList<>();
+        for (HistoryMessage message : window) {
+            // assistant 消息落库时即为 AgentReply 协议 JSON，原样作为 assistant 上下文
+            history.add(message.role() == MessageRole.USER
+                    ? LlmMessage.user(message.content())
+                    : LlmMessage.assistant(message.content()));
         }
         history.add(LlmMessage.user(currentUserText));
 
         List<Tool> tools = List.copyOf(toolRegistry.all());
         return AgentLoopRequest.builder()
-                .systemPrompt(systemPrompt(tools.isEmpty()))
+                .systemPrompt(systemPrompt(tools.isEmpty(), summary))
                 .history(history)
                 .tools(tools)
                 // 审计上下文：谁、哪个会话、依据什么指令（CLAUDE.md 原则 3）
@@ -330,10 +399,18 @@ public class LlmAgent implements Agent {
                 .build();
     }
 
-    private static String systemPrompt(boolean noTools) {
-        return SYSTEM_PROMPT_BASE
+    /** 系统提示 = 主体 + 能力边界（按有无工具二选一）+ 语言约定 + 早前对话摘要（如有） */
+    private static String systemPrompt(boolean noTools, String historySummary) {
+        String prompt = SYSTEM_PROMPT_BASE
                 + (noTools ? SYSTEM_PROMPT_NO_TOOLS : SYSTEM_PROMPT_WITH_TOOLS)
                 + SYSTEM_PROMPT_LANGUAGE;
+        if (historySummary != null && !historySummary.isBlank()) {
+            // 摘要作为 system 上下文注入（M1-T05）：更早的对话已压缩，单据号/金额以摘要为准
+            prompt += "\n\n## 早前对话摘要\n本会话更早的对话已被压缩为以下要点"
+                    + "（其中的单据号、客户名、金额等业务信息真实有效，可直接引用）：\n"
+                    + historySummary;
+        }
+        return prompt;
     }
 
     /** 工具调用记录结构化日志（落库已由 AgentInvocationListener 负责，此处保留便于按日志排查） */

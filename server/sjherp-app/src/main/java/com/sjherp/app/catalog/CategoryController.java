@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -41,7 +42,8 @@ public class CategoryController {
         this.categoryService = categoryService;
     }
 
-    /** 创建类目（parentId 留空为根类目） */
+    /** 创建类目（parentId 留空为根类目）；写操作须 catalog:write（M2-T06） */
+    @PreAuthorize("@perm.has('catalog:write')")
     @PostMapping
     public ResponseEntity<CategoryResponse> create(@Valid @RequestBody CategoryCreateRequest request) {
         CategoryResponse body = CategoryResponse.from(
@@ -50,12 +52,14 @@ public class CategoryController {
     }
 
     /** 重命名类目 */
+    @PreAuthorize("@perm.has('catalog:write')")
     @PutMapping("/{id}")
     public CategoryResponse rename(@PathVariable long id, @Valid @RequestBody CategoryRenameRequest request) {
         return CategoryResponse.from(categoryService.rename(id, request.name(), CurrentUser.operator()));
     }
 
     /** 删除类目（有子类目或被商品引用则拒绝） */
+    @PreAuthorize("@perm.has('catalog:write')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable long id) {
         categoryService.delete(id);

@@ -6,6 +6,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import com.sjherp.agent.loop.AgentInvocationListener;
 import com.sjherp.agent.session.AgentSessionRepository;
+import com.sjherp.agent.tool.ToolPermissionChecker;
+import com.sjherp.app.security.RolePermissionToolChecker;
+import com.sjherp.domain.identity.UserRepository;
 import com.sjherp.infra.agent.AgentReplyJsonCodec;
 import com.sjherp.infra.agent.PendingToolCallJsonCodec;
 import com.sjherp.infra.persistence.JdbcAgentSessionRepository;
@@ -51,5 +54,15 @@ public class AgentInfraConfig {
     @Bean
     public AgentInvocationListener agentInvocationListener(AgentInvocationRepository repository) {
         return new PersistingAgentInvocationListener(repository);
+    }
+
+    /**
+     * 工具权限校验（M2-T06）：真实实现替换框架占位 allowAll。
+     * 按 ToolContext.userId 实时查用户角色 → RolePermissions 静态矩阵判定，
+     * 由 ChatAgentConfig 装配进 AgentLoop。
+     */
+    @Bean
+    public ToolPermissionChecker toolPermissionChecker(UserRepository userRepository) {
+        return new RolePermissionToolChecker(userRepository);
     }
 }

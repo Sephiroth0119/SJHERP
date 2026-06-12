@@ -49,3 +49,9 @@ sjherp:
     # 但模型稳定不发起工具调用（4/4 复现），故必须用 separate-final-call
     # （工具轮不带 json_object，模型不再调工具后终轮单独调一次 json_object）。
     final-json-mode: separate-final-call
+    # 会话上下文治理（M1-T05）：发给 LLM 的历史估算 token（字符数启发式，非精确值）
+    # 超过预算时，把最旧的若干轮压缩为摘要（保留最近 keep-recent-rounds 轮），
+    # 摘要存 agent_session.history_summary（V8 迁移）。完整历史仍在 agent_message 表，
+    # 会话回放 API 不受影响；摘要生成失败时本次硬截断（只带最近 N 轮），不阻塞对话。
+    history-token-budget: 8000   # 历史窗口 token 预算
+    keep-recent-rounds: 6        # 压缩时保留的最近对话轮数

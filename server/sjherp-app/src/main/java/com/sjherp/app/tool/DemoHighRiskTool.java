@@ -45,7 +45,7 @@ public class DemoHighRiskTool implements Tool {
 
     @Override
     public String requiredPermission() {
-        // 本期权限只声明接口（ToolPermissionChecker.allowAll 放行），M2-T06 接真实权限模型
+        // M2-T06 起真实生效（RolePermissionToolChecker）：矩阵中仅 ADMIN 持有该演示权限点
         return "demo:post_document";
     }
 

@@ -11,6 +11,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 
+import com.sjherp.agent.history.HistoryTrimmer;
+import com.sjherp.agent.history.LlmHistorySummarizer;
 import com.sjherp.agent.loop.AgentInvocationListener;
 import com.sjherp.agent.loop.AgentLoop;
 import com.sjherp.agent.loop.FinalJsonMode;
@@ -35,8 +37,8 @@ import com.sjherp.infra.llm.DeepSeekLlmClient;
  * </ul>
  *
  * <p>M1-T02 起 LlmAgent 基于 AgentLoop 执行循环：LLM 客户端、参数编解码
- * （Jackson）、JSON Schema 校验、权限校验（本期 allowAll 占位，M2-T06 接真实
- * 权限）在此注入；ToolRegistry 为空时循环行为退化为单轮对话。
+ * （Jackson）、JSON Schema 校验、权限校验（M2-T06 起为基于用户角色的
+ * RolePermissionToolChecker）在此注入；ToolRegistry 为空时循环行为退化为单轮对话。
  *
  * <p>终轮 JSON 模式（sjherp.agent.final-json-mode）：DeepSeek 实测（2026-06）
  * response_format=json_object 与 tools 同时携带不报错、但模型稳定不发起工具调用，
@@ -58,11 +60,14 @@ public class ChatAgentConfig {
                            @Value("${sjherp.agent.final-json-mode:separate-final-call}") String finalJsonMode,
                            @Value("${sjherp.agent.max-iterations:8}") int maxIterations,
                            @Value("${sjherp.agent.loop-timeout-seconds:300}") long loopTimeoutSeconds,
+                           @Value("${sjherp.agent.history-token-budget:8000}") int historyTokenBudget,
+                           @Value("${sjherp.agent.keep-recent-rounds:6}") int keepRecentRounds,
                            PlaceholderAgent placeholderAgent,
                            AgentReplyJsonCodec codec,
                            PendingToolCallJsonCodec pendingCodec,
                            ToolRegistry toolRegistry,
-                           AgentInvocationListener invocationListener) {
+                           AgentInvocationListener invocationListener,
+                           ToolPermissionChecker permissionChecker) {
         String normalized = mode == null ? "auto" : mode.strip().toLowerCase(Locale.ROOT);
         return switch (normalized) {
             case "placeholder" -> {
@@ -75,12 +80,14 @@ public class ChatAgentConfig {
                             + "（设置环境变量 SJHERP_LLM_API_KEY 或启用 local profile）");
                 }
                 yield llmAgent(llm, codec, pendingCodec, toolRegistry, invocationListener,
-                        parseFinalJsonMode(finalJsonMode), maxIterations, loopTimeoutSeconds);
+                        permissionChecker, parseFinalJsonMode(finalJsonMode), maxIterations,
+                        loopTimeoutSeconds, historyTokenBudget, keepRecentRounds);
             }
             case "auto" -> {
                 if (llm.hasApiKey()) {
                     yield llmAgent(llm, codec, pendingCodec, toolRegistry, invocationListener,
-                            parseFinalJsonMode(finalJsonMode), maxIterations, loopTimeoutSeconds);
+                            permissionChecker, parseFinalJsonMode(finalJsonMode), maxIterations,
+                            loopTimeoutSeconds, historyTokenBudget, keepRecentRounds);
                 }
                 log.warn("未配置 sjherp.llm.api-key，聊天回退到 PlaceholderAgent（规则占位演示模式）。"
                         + "设置环境变量 SJHERP_LLM_API_KEY 或启用 local profile 以启用 LLM");
@@ -94,23 +101,31 @@ public class ChatAgentConfig {
     private Agent llmAgent(LlmProperties llm, AgentReplyJsonCodec codec,
                            PendingToolCallJsonCodec pendingCodec, ToolRegistry toolRegistry,
                            AgentInvocationListener invocationListener,
-                           FinalJsonMode finalJsonMode, int maxIterations, long loopTimeoutSeconds) {
+                           ToolPermissionChecker permissionChecker,
+                           FinalJsonMode finalJsonMode, int maxIterations, long loopTimeoutSeconds,
+                           int historyTokenBudget, int keepRecentRounds) {
         // 注意：工具按请求时从 ToolRegistry 实时读取，此处不打印数量（演示工具等可能在本 Bean 之后注册）
         log.info("聊天 Agent：使用 LlmAgent + AgentLoop（provider=DeepSeek, model={}, baseUrl={}, "
-                        + "timeout={}s, finalJsonMode={}, maxIterations={}, loopTimeout={}s）",
+                        + "timeout={}s, finalJsonMode={}, maxIterations={}, loopTimeout={}s, "
+                        + "historyTokenBudget={}, keepRecentRounds={}）",
                 llm.model(), llm.baseUrl(), llm.timeoutSeconds(), finalJsonMode,
-                maxIterations, loopTimeoutSeconds);
+                maxIterations, loopTimeoutSeconds, historyTokenBudget, keepRecentRounds);
         DeepSeekLlmClient client = new DeepSeekLlmClient(
                 llm.apiKey(), llm.baseUrl(), llm.model(), llm.temperature(),
                 Duration.ofSeconds(llm.timeoutSeconds()));
-        // 执行循环（M1-T02/T03）：参数编解码 + JSON Schema 校验 + 权限校验（占位）经接口注入；
+        // 执行循环（M1-T02/T03）：参数编解码 + JSON Schema 校验 + 权限校验
+        // （M2-T06 起为 RolePermissionToolChecker 真实实现，AgentInfraConfig 装配）经接口注入；
         // 调用观测 listener（M1-T06）：每次 LLM 调用与工具调用落 agent_invocation 表，
         // 终轮单独 JSON 调用也在 AgentLoop 内发起，同样会被记录
         AgentLoop agentLoop = new AgentLoop(client, new JacksonToolArgumentsCodec(),
-                new JsonSchemaToolArgumentValidator(), ToolPermissionChecker.allowAll(),
+                new JsonSchemaToolArgumentValidator(), permissionChecker,
                 invocationListener);
+        // 会话上下文治理（M1-T05）：历史超预算时最旧若干轮压缩为摘要，
+        // 摘要由同一个 LlmClient 单独调一次生成（低温度），失败时硬截断兜底不阻塞对话
         return new LlmAgent(agentLoop, codec, pendingCodec, toolRegistry,
-                finalJsonMode, maxIterations, Duration.ofSeconds(loopTimeoutSeconds));
+                finalJsonMode, maxIterations, Duration.ofSeconds(loopTimeoutSeconds),
+                new HistoryTrimmer(historyTokenBudget, keepRecentRounds),
+                new LlmHistorySummarizer(client));
     }
 
     /** 配置值 → FinalJsonMode（with-tools / separate-final-call） */

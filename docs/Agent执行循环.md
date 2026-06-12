@@ -1,6 +1,6 @@
 # Agent 执行循环（AgentLoop）
 
-> 状态：v1.1（2026-06，M1-T02 + M1-T03 + M1-T06 交付）
+> 状态：v1.2（2026-06，M1-T02 + M1-T03 + M1-T06 + M1-T05 交付）
 > 代码：`server/sjherp-agent/src/main/java/com/sjherp/agent/loop/`（框架，零运行时依赖）
 > 关联：[CLAUDE.md](../CLAUDE.md)「自研 Agent 框架设计要点」、[选项返回协议.md](./选项返回协议.md)「框架级工具确认选项」
 
@@ -166,14 +166,77 @@ AgentLoop ──回调──► AgentInvocationListener（sjherp-agent 接口，
 
 查询 API（开发/运营侧）：`GET /api/agent/invocations?sessionId=xxx&page=1&size=20` → 分页列表（created_at 倒序）+ 会话累计 token 汇总（totalPromptTokens / totalCompletionTokens，针对整个会话不随分页变化）；参数缺失/非法 → 400 `{"error"}`。
 
-## 8. 测试
+## 8. 会话上下文治理（M1-T05，还 D-2）
+
+长会话发给 LLM 的历史不再无限膨胀：构建上下文前先经 `HistoryTrimmer`（sjherp-agent
+`history` 包，零依赖纯函数）裁剪，超预算的最旧轮次压缩为一段摘要随会话落库。
+**裁剪只影响发给 LLM 的内容**——完整历史仍在 agent_message 表，会话回放 API 不受影响。
+
+### 8.1 token 估算（TokenEstimator）
+
+无 tokenizer 依赖的字符数启发式（**是估算，不是精确 token 数**）：CJK / 全角字符按
+1 字 ≈ 1 token，其余字符（英文/数字/半角标点）按 4 字符 ≈ 1 token 向上取整。与
+DeepSeek/OpenAI 系 tokenizer 同数量级（中文略偏高、英文略偏低），用于触发判断足够，
+预算本身留余量。
+
+### 8.2 触发与切分（HistoryTrimmer 纯函数）
+
+```
+输入：候选消息（USER/ASSISTANT，带 seq）+ 既有摘要 + summarized_until_seq + 摘要回调
+  │
+  ├─ seq <= summarized_until_seq 的消息已被摘要覆盖，不再进入上下文
+  ├─ 估算（摘要 + 未覆盖消息）总量 <= 预算 → 原样返回，什么都不动
+  ▼
+超预算 → 按 USER 消息划轮（一轮 = 一条 USER 及其后到下一条 USER 之前的全部消息）
+  ├─ 轮数 <= keep-recent-rounds → 原样返回（预算是软约束，绝不破坏最近上下文）
+  ▼
+最旧的 (轮数 - keep-recent-rounds) 轮 → 摘要回调（既有摘要一并交给回调合并）
+  ├─ 成功 → 新摘要 + summarized_until_seq 前进到被压缩的最后一条消息 seq
+  └─ 失败（异常/空回复）→ 硬截断兜底：本次只带最近 N 轮，摘要状态不变，
+      WARN 日志，不阻塞对话（完整历史在库中，下一次对话自动重试摘要）
+```
+
+配置（application.yml）：
+
+```yaml
+sjherp:
+  agent:
+    history-token-budget: 8000   # 历史窗口 token 预算（估算口径）
+    keep-recent-rounds: 6        # 压缩时保留的最近对话轮数
+```
+
+### 8.3 摘要生成与持久化
+
+- 摘要由 `LlmHistorySummarizer`（sjherp-agent，经 LlmClient 接口、与主循环同一个
+  DeepSeek 客户端实例）**单独调一次** LLM 生成（温度 0.2）：提示词要求压缩为中文要点
+  清单，保留业务关键信息（单据号/客户名/供应商名/商品名/数量/金额/未完成事项），
+  **金额数字必须原样保留不得改写**；既有摘要必须全部合并进新摘要（滚动摘要，不丢旧要点）；
+- 持久化：`agent_session.history_summary`（TEXT）+ `summarized_until_seq`（INT，
+  摘要覆盖到的 agent_message.seq），V8 迁移；LlmAgent 把新摘要写回 AgentSession，
+  随 ChatService 的正常 save 落库，杀进程后摘要状态可恢复（ADR-001 一致）；
+- 后续构建历史：系统提示尾部追加「## 早前对话摘要」小节（作为 system 上下文）+
+  summarized_until_seq 之后的消息 + 当前用户输入。
+
+### 8.4 实现位置
+
+| 件 | 位置 |
+|---|---|
+| `TokenEstimator` / `HistoryMessage` / `HistoryTrimmer` / `HistoryTrimResult` / `HistorySummarizer`（回调接口） | sjherp-agent `com.sjherp.agent.history`（零依赖纯函数） |
+| `LlmHistorySummarizer` | 同上（只依赖 LlmClient 接口） |
+| 接线（裁剪 → 摘要写回会话 → system 注入） | `LlmAgent.loopRequest`（sjherp-app） |
+| 摘要状态字段 | `AgentSession.historySummary / summarizedUntilSeq` |
+| 列读写 | infra `JdbcAgentSessionRepository`（V8__session_summary.sql） |
+
+## 9. 测试
 
 - `AgentLoopTest`（sjherp-agent，假 LlmClient + 假 Tool，16 例）：正常往返 / 业务失败回灌 / 未知工具 / 异常回灌 / 参数非法 / 校验失败 / 权限不足 / 最大迭代强制收尾 / 超时 / 两种 JSON 模式 / 高风险拦截 / 确认恢复 / 取消恢复 / 混合批次部分执行；
 - `AgentLoopInvocationListenerTest`（sjherp-agent，假 listener，11 例）：LLM 调用序号与 usage 透传 / 终轮单独调用与强制收尾计入 / LLM 失败上报后原样抛出 / 工具成功失败口径 / 摘要截断 / 拦截不上报、确认与取消上报 / 回调异常不影响主流程；
+- `HistoryTrimmerTest` / `TokenEstimatorTest`（sjherp-agent，15 例，M1-T05）：不超阈值不动 / 超阈值正确切分 / 摘要回调入参（既有摘要 + 待压缩消息）/ 回调失败与空回复硬截断 / 覆盖范围过滤 / 轮数不足不裁剪 / 估算边界（ASCII 取整、CJK、全角标点、混排）；
+- `LlmAgentHistoryTrimTest`（sjherp-app，假 LlmClient，4 例）：摘要后的消息结构（system 含摘要小节 + 仅最近 N 轮 + 当前输入）、摘要写回会话、摘要失败硬截断但对话不中断、既有摘要复用；
 - `ChatServiceToolConfirmationTest`(sjherp-app)：对话触发 → 确认卡片 + 现场落库 → 确认执行 / 取消 / 待确认期间改发文本视为取消；
 - infra：`JacksonToolArgumentsCodecTest` / `JsonSchemaToolArgumentValidatorTest` / `PendingToolCallJsonCodecTest` / `DeepSeekLlmClientTest`（含 usage 与 model 解析）/ `PersistingAgentInvocationListenerTest`（假仓储，字段映射 / detail JSON / 错误截断 / 落库失败兜底）。
 
-## 9. 已知边界与后续
+## 10. 已知边界与后续
 
 - 工具轮的中间消息（assistant tool_calls 与 TOOL 结果）不落会话历史，只有最终协议回复落库——下一轮对话依赖最终文本携带必要信息；调用明细经 agent_invocation 表可查（§7）；
 - 观测落库为同步写入，高并发异步化留 TODO（§7）；

@@ -60,8 +60,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        // 登录与健康检查无需解析 token（即便带了也忽略，避免无谓的库查询）
+        // 登录与健康检查无需解析 token（即便带了也忽略，避免无谓的库查询）；
+        // 与 SecurityConfig 白名单同口径限定 method（登录仅 POST），其余 method 仍走 token 解析
         String path = request.getServletPath();
-        return "/api/auth/login".equals(path) || "/api/health".equals(path);
+        return ("/api/auth/login".equals(path) && "POST".equalsIgnoreCase(request.getMethod()))
+                || ("/api/health".equals(path) && "GET".equalsIgnoreCase(request.getMethod()));
     }
 }

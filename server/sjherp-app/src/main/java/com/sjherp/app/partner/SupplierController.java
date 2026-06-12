@@ -4,6 +4,7 @@ import java.util.Locale;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -33,6 +34,9 @@ import jakarta.validation.Valid;
  *   <li>GET    /api/partner/suppliers/{id} → 200 供应商，不存在 404 {"error"}</li>
  * </ul>
  * 错误响应与既有契约一致：404/400 均为 {"error": "..."}（见 {@link PartnerExceptionHandler}）。
+ *
+ * <p>权限（M2-T06，矩阵见 docs/权限矩阵.md）：创建须 partner:create_supplier，
+ * 更新/启停须 partner:write；查询登录即可。权限不足统一 403 {"error":"无权限执行该操作"}。
  */
 @RestController
 @RequestMapping("/api/partner/suppliers")
@@ -45,6 +49,7 @@ public class SupplierController {
     }
 
     /** 创建供应商（code 留空自动编号） */
+    @PreAuthorize("@perm.has('partner:create_supplier')")
     @PostMapping
     public ResponseEntity<SupplierResponse> create(@Valid @RequestBody SupplierRequest request) {
         SupplierResponse body = SupplierResponse.from(
@@ -53,6 +58,7 @@ public class SupplierController {
     }
 
     /** 更新供应商（整体更新；更新时编码必填） */
+    @PreAuthorize("@perm.has('partner:write')")
     @PutMapping("/{id}")
     public SupplierResponse update(@PathVariable long id, @Valid @RequestBody SupplierRequest request) {
         return SupplierResponse.from(
@@ -60,12 +66,14 @@ public class SupplierController {
     }
 
     /** 启用供应商 */
+    @PreAuthorize("@perm.has('partner:write')")
     @PostMapping("/{id}/enable")
     public SupplierResponse enable(@PathVariable long id) {
         return SupplierResponse.from(supplierService.enable(id, CurrentUser.operator()));
     }
 
     /** 停用供应商（停用后新单据不得引用，历史数据不受影响） */
+    @PreAuthorize("@perm.has('partner:write')")
     @PostMapping("/{id}/disable")
     public SupplierResponse disable(@PathVariable long id) {
         return SupplierResponse.from(supplierService.disable(id, CurrentUser.operator()));

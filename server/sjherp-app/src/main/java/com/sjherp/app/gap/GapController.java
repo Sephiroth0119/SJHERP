@@ -2,6 +2,7 @@ package com.sjherp.app.gap;
 
 import java.util.Locale;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -57,7 +58,8 @@ public class GapController {
         return GapResponse.from(gapRecordService.get(id));
     }
 
-    /** 状态流转（开发侧：TRIAGED / IN_DEVELOPMENT / RESOLVED / REJECTED；非法流转 400） */
+    /** 状态流转（开发侧：TRIAGED / IN_DEVELOPMENT / RESOLVED / REJECTED；非法流转 400）；须 gap:triage（ADMIN/BOSS，M2-T06） */
+    @PreAuthorize("@perm.has('gap:triage')")
     @PostMapping("/{id}/status")
     public GapResponse transition(@PathVariable long id,
                                   @Valid @RequestBody StatusTransitionRequest request) {

@@ -4,6 +4,7 @@ import java.util.List;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -40,7 +41,8 @@ public class UnitController {
         this.unitService = unitService;
     }
 
-    /** 创建单位 */
+    /** 创建单位；写操作须 catalog:write（M2-T06，单位精度影响出入库舍入，仅 ADMIN/BOSS） */
+    @PreAuthorize("@perm.has('catalog:write')")
     @PostMapping
     public ResponseEntity<UnitResponse> create(@Valid @RequestBody UnitRequest request) {
         UnitResponse body = UnitResponse.from(
@@ -49,6 +51,7 @@ public class UnitController {
     }
 
     /** 更新单位（精度调整只影响后续录入的舍入，不回溯历史数据） */
+    @PreAuthorize("@perm.has('catalog:write')")
     @PutMapping("/{id}")
     public UnitResponse update(@PathVariable long id, @Valid @RequestBody UnitRequest request) {
         return UnitResponse.from(
@@ -56,6 +59,7 @@ public class UnitController {
     }
 
     /** 删除单位（被商品引用则拒绝） */
+    @PreAuthorize("@perm.has('catalog:write')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable long id) {
         unitService.delete(id);

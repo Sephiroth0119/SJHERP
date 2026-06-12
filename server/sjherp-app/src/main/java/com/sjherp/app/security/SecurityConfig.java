@@ -5,6 +5,7 @@ import java.nio.charset.StandardCharsets;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.Customizer;
@@ -26,7 +27,8 @@ import jakarta.servlet.http.HttpServletResponse;
  * <ul>
  *   <li>白名单：POST /api/auth/login（登录入口）、GET /api/health（探活）；</li>
  *   <li>其余 /api/** 一律要求 Bearer token，未认证统一 401 {"error": "未登录或登录已过期"}；</li>
- *   <li>角色不足（如非 ADMIN 调用用户管理 API）统一 403 {"error": "无权限执行该操作"}；</li>
+ *   <li>角色/权限点不足（如非 ADMIN 调用用户管理 API、无写权限调用档案写接口
+ *       ——M2-T06 权限矩阵见 docs/权限矩阵.md）统一 403 {"error": "无权限执行该操作"}；</li>
  *   <li>无会话（STATELESS）、关 CSRF（纯 token API，不用 Cookie）；</li>
  *   <li>CORS 沿用 {@code WebCorsConfig} 的 MVC 配置（cors() 默认回退 HandlerMappingIntrospector）。</li>
  * </ul>
@@ -65,7 +67,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // ERROR 转发（Spring Boot /error）放行，避免业务异常被误报成 401
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
-                        .requestMatchers("/api/auth/login", "/api/health").permitAll()
+                        // 登录白名单限定 POST（2026-06-12 交叉校验 P2：其余 method 不放行）
+                        .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/health").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(handling -> handling
                         .authenticationEntryPoint((request, response, e) ->

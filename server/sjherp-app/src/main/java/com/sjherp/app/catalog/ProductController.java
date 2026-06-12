@@ -4,6 +4,7 @@ import java.util.Locale;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -33,6 +34,9 @@ import jakarta.validation.Valid;
  *   <li>GET    /api/catalog/products/{id} → 200 商品，不存在 404 {"error"}</li>
  * </ul>
  * 错误响应与既有契约一致：404/400 均为 {"error": "..."}（见 {@link CatalogExceptionHandler}）。
+ *
+ * <p>权限（M2-T06，矩阵见 docs/权限矩阵.md）：创建须 catalog:create_product，
+ * 更新/启停须 catalog:write；查询登录即可。权限不足统一 403 {"error":"无权限执行该操作"}。
  */
 @RestController
 @RequestMapping("/api/catalog/products")
@@ -45,6 +49,7 @@ public class ProductController {
     }
 
     /** 创建商品（code 留空自动编号） */
+    @PreAuthorize("@perm.has('catalog:create_product')")
     @PostMapping
     public ResponseEntity<ProductResponse> create(@Valid @RequestBody ProductRequest request) {
         ProductResponse body = ProductResponse.from(
@@ -53,6 +58,7 @@ public class ProductController {
     }
 
     /** 更新商品（整体更新，含换算表替换；更新时编码必填） */
+    @PreAuthorize("@perm.has('catalog:write')")
     @PutMapping("/{id}")
     public ProductResponse update(@PathVariable long id, @Valid @RequestBody ProductRequest request) {
         return ProductResponse.from(
@@ -60,12 +66,14 @@ public class ProductController {
     }
 
     /** 启用商品 */
+    @PreAuthorize("@perm.has('catalog:write')")
     @PostMapping("/{id}/enable")
     public ProductResponse enable(@PathVariable long id) {
         return ProductResponse.from(productService.enable(id, CurrentUser.operator()));
     }
 
     /** 停用商品（停用后新单据不得引用，历史数据不受影响） */
+    @PreAuthorize("@perm.has('catalog:write')")
     @PostMapping("/{id}/disable")
     public ProductResponse disable(@PathVariable long id) {
         return ProductResponse.from(productService.disable(id, CurrentUser.operator()));

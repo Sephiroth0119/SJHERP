@@ -40,6 +40,21 @@ public class AgentSession {
      */
     private String pendingToolCallJson;
 
+    /**
+     * 历史对话摘要（M1-T05 会话上下文治理）。
+     *
+     * <p>长会话发给 LLM 的历史超过 token 预算时，最旧的若干轮被压缩为本摘要
+     * （LLM 生成的要点清单），持久化到 agent_session.history_summary 列（V8 迁移）。
+     * null 表示尚未做过摘要。完整历史仍在 agent_message 表，会话回放不受影响。
+     */
+    private String historySummary;
+
+    /**
+     * 摘要已覆盖到的消息 seq（agent_message.seq，0 = 未覆盖任何消息）。
+     * seq 不大于该值的消息已被 {@link #historySummary} 覆盖，构建 LLM 上下文时不再携带原文。
+     */
+    private int summarizedUntilSeq;
+
     /** 创建时间 */
     private final Instant createdAt;
 
@@ -77,11 +92,23 @@ public class AgentSession {
                                        SessionStatus status, List<AgentMessage> messages,
                                        String pendingToolCallJson,
                                        Instant createdAt, Instant updatedAt) {
+        return restore(sessionId, userId, title, status, messages, pendingToolCallJson,
+                null, 0, createdAt, updatedAt);
+    }
+
+    /** 同上，含历史摘要状态（agent_session.history_summary / summarized_until_seq 列，M1-T05） */
+    public static AgentSession restore(String sessionId, String userId, String title,
+                                       SessionStatus status, List<AgentMessage> messages,
+                                       String pendingToolCallJson,
+                                       String historySummary, int summarizedUntilSeq,
+                                       Instant createdAt, Instant updatedAt) {
         AgentSession session = new AgentSession(sessionId, userId, title, status, createdAt, updatedAt);
         if (messages != null) {
             session.messages.addAll(messages);
         }
         session.pendingToolCallJson = pendingToolCallJson;
+        session.historySummary = historySummary;
+        session.summarizedUntilSeq = summarizedUntilSeq;
         return session;
     }
 
@@ -132,6 +159,33 @@ public class AgentSession {
     /** 写入 / 清除（传 null）待确认调用现场，并刷新更新时间 */
     public void setPendingToolCallJson(String pendingToolCallJson) {
         this.pendingToolCallJson = pendingToolCallJson;
+        this.updatedAt = Instant.now();
+    }
+
+    /** 历史对话摘要；null 表示尚未做过摘要（M1-T05） */
+    public String getHistorySummary() {
+        return historySummary;
+    }
+
+    /** 摘要已覆盖到的消息 seq（0 = 未覆盖任何消息） */
+    public int getSummarizedUntilSeq() {
+        return summarizedUntilSeq;
+    }
+
+    /**
+     * 写入新摘要及其覆盖范围（M1-T05，两者必须一起更新保证一致），并刷新更新时间。
+     *
+     * @param historySummary     新摘要文本（非空）
+     * @param summarizedUntilSeq 摘要覆盖到的消息 seq，必须不小于当前值（覆盖范围只前进不回退）
+     */
+    public void updateHistorySummary(String historySummary, int summarizedUntilSeq) {
+        Objects.requireNonNull(historySummary, "historySummary 不能为空");
+        if (summarizedUntilSeq < this.summarizedUntilSeq) {
+            throw new IllegalArgumentException("summarizedUntilSeq 只能前进不能回退（当前 "
+                    + this.summarizedUntilSeq + "，传入 " + summarizedUntilSeq + "）");
+        }
+        this.historySummary = historySummary;
+        this.summarizedUntilSeq = summarizedUntilSeq;
         this.updatedAt = Instant.now();
     }
 

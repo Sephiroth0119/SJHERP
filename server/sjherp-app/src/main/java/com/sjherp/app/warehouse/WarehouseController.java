@@ -4,6 +4,7 @@ import java.util.Locale;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -33,6 +34,9 @@ import jakarta.validation.Valid;
  *   <li>GET    /api/warehouse/warehouses/{id} → 200 仓库，不存在 404 {"error"}</li>
  * </ul>
  * 错误响应与既有契约一致：404/400 均为 {"error": "..."}（见 {@link WarehouseExceptionHandler}）。
+ *
+ * <p>权限（M2-T06，矩阵见 docs/权限矩阵.md）：创建须 warehouse:create_warehouse，
+ * 更新/启停须 warehouse:write；查询登录即可。权限不足统一 403 {"error":"无权限执行该操作"}。
  */
 @RestController
 @RequestMapping("/api/warehouse/warehouses")
@@ -45,6 +49,7 @@ public class WarehouseController {
     }
 
     /** 创建仓库（code 留空自动编号） */
+    @PreAuthorize("@perm.has('warehouse:create_warehouse')")
     @PostMapping
     public ResponseEntity<WarehouseResponse> create(@Valid @RequestBody WarehouseRequest request) {
         WarehouseResponse body = WarehouseResponse.from(
@@ -53,6 +58,7 @@ public class WarehouseController {
     }
 
     /** 更新仓库（整体更新；更新时编码必填） */
+    @PreAuthorize("@perm.has('warehouse:write')")
     @PutMapping("/{id}")
     public WarehouseResponse update(@PathVariable long id, @Valid @RequestBody WarehouseRequest request) {
         return WarehouseResponse.from(
@@ -60,12 +66,14 @@ public class WarehouseController {
     }
 
     /** 启用仓库 */
+    @PreAuthorize("@perm.has('warehouse:write')")
     @PostMapping("/{id}/enable")
     public WarehouseResponse enable(@PathVariable long id) {
         return WarehouseResponse.from(warehouseService.enable(id, CurrentUser.operator()));
     }
 
     /** 停用仓库（停用后新单据不得引用，历史数据不受影响） */
+    @PreAuthorize("@perm.has('warehouse:write')")
     @PostMapping("/{id}/disable")
     public WarehouseResponse disable(@PathVariable long id) {
         return WarehouseResponse.from(warehouseService.disable(id, CurrentUser.operator()));
