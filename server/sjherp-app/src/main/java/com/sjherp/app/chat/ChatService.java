@@ -43,18 +43,29 @@ public class ChatService {
         return session;
     }
 
-    /** 按 ID 加载会话（不存在抛 404） */
-    public AgentSession getSession(String sessionId) {
-        return repository.findById(sessionId)
+    /**
+     * 按 ID 加载会话并校验归属（P1 越权修复）：不存在或不属于当前用户都抛
+     * {@link SessionNotFoundException}（API 404）。统一按「不存在」处理而非 403，
+     * 避免向越权方泄露会话存在性。
+     *
+     * <p>从严约定：ADMIN 不豁免——管理员查看任意会话留给以后管理界面的专门接口。
+     */
+    public AgentSession getSession(String sessionId, String currentUserId) {
+        AgentSession session = repository.findById(sessionId)
                 .orElseThrow(() -> new SessionNotFoundException(sessionId));
+        if (!session.getUserId().equals(currentUserId)) {
+            throw new SessionNotFoundException(sessionId);
+        }
+        return session;
     }
 
     /**
      * 处理一条用户消息（text / optionId / formId 三选一），
      * 持久化用户消息与 Agent 回复后返回回复。
+     * 仅会话归属人可发消息（归属校验同 {@link #getSession}）。
      */
-    public AgentReply handleMessage(String sessionId, SendMessageRequest request) {
-        AgentSession session = getSession(sessionId);
+    public AgentReply handleMessage(String sessionId, String currentUserId, SendMessageRequest request) {
+        AgentSession session = getSession(sessionId, currentUserId);
 
         // 约定：先以「只含历史」的 session 调 Agent（Agent 接口约定），拿到回复后再统一落库
         AgentReply reply;

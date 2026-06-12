@@ -125,7 +125,7 @@ class ChatServiceToolConfirmationTest {
         llm.scripted.add(toolCallResponse());
 
         AgentSession session = chatService.createSession("test-user");
-        AgentReply reply = chatService.handleMessage(session.getSessionId(),
+        AgentReply reply = chatService.handleMessage(session.getSessionId(), "test-user",
                 new SendMessageRequest("把单据 DOC-1 过账", null, null, null));
 
         // 工具未执行，回复是确认卡片：requiresConfirmation=true + 固定选项 id + 确认项 risk=high
@@ -149,11 +149,11 @@ class ChatServiceToolConfirmationTest {
         llm.scripted.add(finalText("单据 DOC-1 已成功过账"));
 
         AgentSession session = chatService.createSession("test-user");
-        chatService.handleMessage(session.getSessionId(),
+        chatService.handleMessage(session.getSessionId(), "test-user",
                 new SendMessageRequest("把单据 DOC-1 过账", null, null, null));
 
         // 用户点击「确认执行」（前端只回传固定 optionId）
-        AgentReply reply = chatService.handleMessage(session.getSessionId(),
+        AgentReply reply = chatService.handleMessage(session.getSessionId(), "test-user",
                 new SendMessageRequest(null, ToolConfirmation.CONFIRM_OPTION_ID, null, null));
 
         assertThat(highRiskTool.executions).isEqualTo(1);
@@ -170,10 +170,10 @@ class ChatServiceToolConfirmationTest {
         llm.scripted.add(finalText("好的，已取消过账操作"));
 
         AgentSession session = chatService.createSession("test-user");
-        chatService.handleMessage(session.getSessionId(),
+        chatService.handleMessage(session.getSessionId(), "test-user",
                 new SendMessageRequest("把单据 DOC-1 过账", null, null, null));
 
-        AgentReply reply = chatService.handleMessage(session.getSessionId(),
+        AgentReply reply = chatService.handleMessage(session.getSessionId(), "test-user",
                 new SendMessageRequest(null, ToolConfirmation.CANCEL_OPTION_ID, null, null));
 
         assertThat(highRiskTool.executions).isZero();
@@ -187,11 +187,11 @@ class ChatServiceToolConfirmationTest {
         llm.scripted.add(finalText("好的，先不过账了"));
 
         AgentSession session = chatService.createSession("test-user");
-        chatService.handleMessage(session.getSessionId(),
+        chatService.handleMessage(session.getSessionId(), "test-user",
                 new SendMessageRequest("把单据 DOC-1 过账", null, null, null));
 
         // 待确认期间用户改发自由文本：按取消语义恢复，工具一律不执行
-        AgentReply reply = chatService.handleMessage(session.getSessionId(),
+        AgentReply reply = chatService.handleMessage(session.getSessionId(), "test-user",
                 new SendMessageRequest("等等，先不要", null, null, null));
 
         assertThat(highRiskTool.executions).isZero();

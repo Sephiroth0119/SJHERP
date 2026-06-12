@@ -9,6 +9,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
+import com.sjherp.app.chat.SessionNotFoundException;
+
 /**
  * Agent 调用观测 API 统一错误响应（仅作用于本包的控制器）。
  *
@@ -16,6 +18,12 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
  */
 @RestControllerAdvice(basePackageClasses = AgentInvocationExceptionHandler.class)
 public class AgentInvocationExceptionHandler {
+
+    /** 会话不存在或不属于当前用户 → 404 {"error"}（与会话 API 的 404 风格一致） */
+    @ExceptionHandler(SessionNotFoundException.class)
+    public ResponseEntity<Map<String, String>> handleNotFound(SessionNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", e.getMessage()));
+    }
 
     /** 缺少必填参数（sessionId）→ 400 {"error"} */
     @ExceptionHandler(MissingServletRequestParameterException.class)

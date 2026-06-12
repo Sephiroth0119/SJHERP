@@ -53,10 +53,10 @@ public class ChatSessionController {
                 "createdAt", session.getCreatedAt().toString()));
     }
 
-    /** 查询会话（消息按 seq 升序回放） */
+    /** 查询会话（消息按 seq 升序回放；仅会话归属人可见，非本人 404） */
     @GetMapping("/{id}")
     public Map<String, Object> getSession(@PathVariable String id) {
-        AgentSession session = chatService.getSession(id);
+        AgentSession session = chatService.getSession(id, CurrentUser.userId());
 
         List<Map<String, Object>> messages = new ArrayList<>();
         int seq = 0;
@@ -86,10 +86,10 @@ public class ChatSessionController {
         return body;
     }
 
-    /** 发送消息（text / optionId / formId 三选一），响应体直接是 AgentReply 协议 JSON */
+    /** 发送消息（text / optionId / formId 三选一），响应体直接是 AgentReply 协议 JSON；仅会话归属人可发，非本人 404 */
     @PostMapping(value = "/{id}/messages", produces = MediaType.APPLICATION_JSON_VALUE)
     public String sendMessage(@PathVariable String id, @RequestBody SendMessageRequest request) {
-        AgentReply reply = chatService.handleMessage(id, request);
+        AgentReply reply = chatService.handleMessage(id, CurrentUser.userId(), request);
         // 用协议编解码器序列化（枚举小写、可选字段省略），不走 Spring 默认 ObjectMapper
         return codec.toJson(reply);
     }
