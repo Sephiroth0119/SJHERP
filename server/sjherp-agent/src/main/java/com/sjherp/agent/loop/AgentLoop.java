@@ -285,7 +285,8 @@ public final class AgentLoop {
         if (tool == null) {
             content = errorContent("未知工具: " + call.name() + "。该工具未注册，请改用已提供的工具或直接回答。");
         } else if (tool.requiredPermission() != null && !permissionChecker.isAllowed(tool, context)) {
-            // 权限点校验：本期为接口占位（默认放行），M2-T06 接真实权限
+            // 权限点校验（M2-T06 已接真实实现）。注意：requiredPermission 为 null 时跳过校验，
+            // HIGH 风险工具必须声明权限点，否则仅剩发起人自己的 HITL 确认（无第二道防线）
             content = errorContent("权限不足: 当前用户无权执行工具 " + call.name()
                     + "（需要权限点 " + tool.requiredPermission() + "）。请告知用户并改用其他方式。");
         } else {
