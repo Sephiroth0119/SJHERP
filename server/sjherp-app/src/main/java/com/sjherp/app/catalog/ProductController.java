@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.sjherp.app.catalog.CatalogDtos.PageResponse;
 import com.sjherp.app.catalog.CatalogDtos.ProductRequest;
 import com.sjherp.app.catalog.CatalogDtos.ProductResponse;
+import com.sjherp.app.security.CurrentUser;
 import com.sjherp.domain.catalog.ProductQuery;
 import com.sjherp.domain.catalog.ProductService;
 import com.sjherp.domain.common.ArchiveStatus;
@@ -47,7 +48,7 @@ public class ProductController {
     @PostMapping
     public ResponseEntity<ProductResponse> create(@Valid @RequestBody ProductRequest request) {
         ProductResponse body = ProductResponse.from(
-                productService.create(request.toCommand(), CatalogApiSupport.OPERATOR));
+                productService.create(request.toCommand(), CurrentUser.operator()));
         return ResponseEntity.status(HttpStatus.CREATED).body(body);
     }
 
@@ -55,19 +56,19 @@ public class ProductController {
     @PutMapping("/{id}")
     public ProductResponse update(@PathVariable long id, @Valid @RequestBody ProductRequest request) {
         return ProductResponse.from(
-                productService.update(id, request.toCommand(), CatalogApiSupport.OPERATOR));
+                productService.update(id, request.toCommand(), CurrentUser.operator()));
     }
 
     /** 启用商品 */
     @PostMapping("/{id}/enable")
     public ProductResponse enable(@PathVariable long id) {
-        return ProductResponse.from(productService.enable(id, CatalogApiSupport.OPERATOR));
+        return ProductResponse.from(productService.enable(id, CurrentUser.operator()));
     }
 
     /** 停用商品（停用后新单据不得引用，历史数据不受影响） */
     @PostMapping("/{id}/disable")
     public ProductResponse disable(@PathVariable long id) {
-        return ProductResponse.from(productService.disable(id, CatalogApiSupport.OPERATOR));
+        return ProductResponse.from(productService.disable(id, CurrentUser.operator()));
     }
 
     /** 分页列表（keyword 模糊匹配编码/名称/条码；status 可选 ENABLED/DISABLED） */

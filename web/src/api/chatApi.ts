@@ -8,12 +8,18 @@
  *
  * mock 切换收敛在本文件：VITE_USE_MOCK=true 时全部走内存 mock（src/mock/mockAgent.ts），
  * 默认走真实后端（相对路径 /api，经 vite 开发代理转发到 Spring Boot）。
+ *
+ * 请求封装与 Authorization 头统一走 src/api/http.ts（M2-T05 认证）。
  */
 import { AGENT_PROTOCOL_VERSION, type AgentReply } from '../types/agent';
 import { GREETING_REPLY, getMockReply } from '../mock/mockAgent';
+import { ApiError, request } from './http';
 
 /** 是否启用 mock 模式（默认 false，走真实后端） */
 export const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
+
+/** localStorage 键：当前聊天会话 id（退出登录时一并清除，避免串到他人会话） */
+export const CHAT_SESSION_STORAGE_KEY = 'sjherp.chat.sessionId';
 
 /** POST /api/chat/sessions 的响应体 */
 export interface ChatSessionCreated {
@@ -48,51 +54,10 @@ export type SendMessagePayload =
   | { formId: string; values: Record<string, string> };
 
 /**
- * 统一的 API 错误：message 为可直接展示给用户的中文文案；
- * status 为 HTTP 状态码，网络层失败（无响应）时为 undefined。
+ * 聊天 API 错误类型：沿用通用 ApiError（历史名 ChatApiError 保留为别名，
+ * 既有组件的 instanceof 判断不受影响）。
  */
-export class ChatApiError extends Error {
-  readonly status?: number;
-
-  constructor(message: string, status?: number) {
-    super(message);
-    this.name = 'ChatApiError';
-    this.status = status;
-  }
-}
-
-/** 通用 fetch 封装：网络异常与非 2xx 统一抛 ChatApiError */
-async function request<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
-  let response: Response;
-  try {
-    response = await fetch(path, {
-      method: init?.method ?? 'GET',
-      headers: init?.body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
-      body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
-    });
-  } catch {
-    // fetch 本身 reject：网络不可达 / 后端未启动
-    throw new ChatApiError('无法连接服务器，请检查网络或稍后重试');
-  }
-  if (!response.ok) {
-    // 契约：错误响应体为 { "error": "..." }，解析失败时退回通用文案
-    let message = `请求失败（HTTP ${response.status}）`;
-    try {
-      const body = (await response.json()) as { error?: unknown };
-      if (typeof body.error === 'string' && body.error !== '') {
-        message = body.error;
-      }
-    } catch {
-      // 响应体不是 JSON，忽略，用通用文案
-    }
-    throw new ChatApiError(message, response.status);
-  }
-  try {
-    return (await response.json()) as T;
-  } catch {
-    throw new ChatApiError('服务器响应格式异常，请稍后重试', response.status);
-  }
-}
+export { ApiError as ChatApiError };
 
 // ============================================================
 // mock 实现：内存会话，仅 VITE_USE_MOCK=true 时启用。
@@ -135,7 +100,7 @@ async function mockGetSession(sessionId: string): Promise<ChatSessionDetail> {
   await delay(MOCK_DELAY_MS / 2);
   const messages = mockSessions.get(sessionId);
   if (!messages) {
-    throw new ChatApiError('会话不存在', 404);
+    throw new ApiError('会话不存在', 404);
   }
   return { sessionId, status: 'active', messages };
 }
@@ -144,7 +109,7 @@ async function mockSendMessage(sessionId: string, payload: SendMessagePayload): 
   await delay(MOCK_DELAY_MS);
   const messages = mockSessions.get(sessionId);
   if (!messages) {
-    throw new ChatApiError('会话不存在', 404);
+    throw new ApiError('会话不存在', 404);
   }
   // mockAgent 是关键词路由：把结构化载荷还原成语义化文本驱动它
   let routeText: string;

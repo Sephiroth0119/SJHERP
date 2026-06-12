@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.sjherp.app.partner.PartnerDtos.CustomerRequest;
 import com.sjherp.app.partner.PartnerDtos.CustomerResponse;
 import com.sjherp.app.partner.PartnerDtos.PageResponse;
+import com.sjherp.app.security.CurrentUser;
 import com.sjherp.domain.common.ArchiveStatus;
 import com.sjherp.domain.partner.CustomerQuery;
 import com.sjherp.domain.partner.CustomerService;
@@ -47,7 +48,7 @@ public class CustomerController {
     @PostMapping
     public ResponseEntity<CustomerResponse> create(@Valid @RequestBody CustomerRequest request) {
         CustomerResponse body = CustomerResponse.from(
-                customerService.create(request.toCommand(), PartnerApiSupport.OPERATOR));
+                customerService.create(request.toCommand(), CurrentUser.operator()));
         return ResponseEntity.status(HttpStatus.CREATED).body(body);
     }
 
@@ -55,19 +56,19 @@ public class CustomerController {
     @PutMapping("/{id}")
     public CustomerResponse update(@PathVariable long id, @Valid @RequestBody CustomerRequest request) {
         return CustomerResponse.from(
-                customerService.update(id, request.toCommand(), PartnerApiSupport.OPERATOR));
+                customerService.update(id, request.toCommand(), CurrentUser.operator()));
     }
 
     /** 启用客户 */
     @PostMapping("/{id}/enable")
     public CustomerResponse enable(@PathVariable long id) {
-        return CustomerResponse.from(customerService.enable(id, PartnerApiSupport.OPERATOR));
+        return CustomerResponse.from(customerService.enable(id, CurrentUser.operator()));
     }
 
     /** 停用客户（停用后新单据不得引用，历史数据不受影响） */
     @PostMapping("/{id}/disable")
     public CustomerResponse disable(@PathVariable long id) {
-        return CustomerResponse.from(customerService.disable(id, PartnerApiSupport.OPERATOR));
+        return CustomerResponse.from(customerService.disable(id, CurrentUser.operator()));
     }
 
     /** 分页列表（keyword 模糊匹配编码/名称/联系人/电话；status 可选 ENABLED/DISABLED） */

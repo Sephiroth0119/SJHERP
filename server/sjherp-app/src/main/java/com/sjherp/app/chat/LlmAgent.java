@@ -320,7 +320,7 @@ public class LlmAgent implements Agent {
                 + SYSTEM_PROMPT_LANGUAGE;
     }
 
-    /** 工具调用记录结构化日志（M1-T06 agent_invocation 表落库前的过渡形态） */
+    /** 工具调用记录结构化日志（落库已由 AgentInvocationListener 负责，此处保留便于按日志排查） */
     private static void logToolCallRecords(AgentSession session, List<ToolCallRecord> records) {
         for (ToolCallRecord record : records) {
             log.info("工具调用记录（sessionId={}）: tool={}, success={}, elapsedMillis={}, arguments={}, result={}",

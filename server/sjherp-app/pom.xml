@@ -20,6 +20,11 @@
     <name>SJHERP Application</name>
     <description>应用层：API、Agent 工具定义、编排入口</description>
 
+    <properties>
+        <!-- JWT（M2-T05 认证）：jjwt 不在 Spring Boot BOM 内，版本在此统一管理 -->
+        <jjwt.version>0.12.6</jjwt.version>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>com.sjherp</groupId>
@@ -41,6 +46,29 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+        <!-- 认证与授权（M2-T05）：JWT 过滤器链 + 角色限定（@PreAuthorize） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <!-- JWT 签发与校验（HS256）：jjwt 三件套（api 编译期，impl/jackson 仅运行期） -->
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-api</artifactId>
+            <version>${jjwt.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-impl</artifactId>
+            <version>${jjwt.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-jackson</artifactId>
+            <version>${jjwt.version}</version>
+            <scope>runtime</scope>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

@@ -21,6 +21,7 @@ import com.sjherp.agent.llm.LlmClient;
 import com.sjherp.agent.llm.LlmMessage;
 import com.sjherp.agent.llm.LlmRequestOptions;
 import com.sjherp.agent.llm.LlmResponse;
+import com.sjherp.agent.llm.LlmUsage;
 import com.sjherp.agent.llm.ToolCall;
 import com.sjherp.agent.llm.ToolChoice;
 import com.sjherp.agent.llm.ToolDefinition;
@@ -258,7 +259,21 @@ public class DeepSeekLlmClient implements LlmClient {
             throw new LlmClientException(
                     "DeepSeek 响应既无 content 也无 tool_calls（model=" + model + "）: " + abbreviate(body));
         }
-        return new LlmResponse(content, toolCalls);
+        // 观测信息（M1-T06）：实际应答模型名 + token 用量（usage 缺失时为 null，不影响主流程）
+        return new LlmResponse(content, toolCalls, root.path("model").asText(model), parseUsage(root));
+    }
+
+    /** 解析 OpenAI 兼容 usage 字段（prompt_tokens / completion_tokens）；缺失时返回 null */
+    private static LlmUsage parseUsage(JsonNode root) {
+        JsonNode usage = root.path("usage");
+        if (!usage.isObject()) {
+            return null;
+        }
+        JsonNode prompt = usage.path("prompt_tokens");
+        JsonNode completion = usage.path("completion_tokens");
+        return new LlmUsage(
+                prompt.isNumber() ? prompt.asInt() : null,
+                completion.isNumber() ? completion.asInt() : null);
     }
 
     /** 统一角色枚举 → OpenAI 兼容角色字符串 */

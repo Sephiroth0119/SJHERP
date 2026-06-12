@@ -39,6 +39,10 @@ import com.sjherp.agent.tool.ToolRiskLevel;
  *
  * <p>零依赖约束：LLM 调用、参数 JSON 编解码、参数校验、权限校验全部经接口注入，
  * 本类不感知任何具体实现。
+ *
+ * <p>可观测性（M1-T06）：注入 {@link AgentInvocationListener} 后，每次 LLM 调用与
+ * 工具调用处理完成都会回调（含终轮单独 JSON 调用与强制收尾调用）；listener 为 null
+ * 时零开销，回调异常一律吞掉——观测失败绝不中断对话。
  */
 public final class AgentLoop {
 
@@ -46,13 +50,22 @@ public final class AgentLoop {
     private final ToolArgumentsCodec argumentsCodec;
     private final ToolArgumentValidator argumentValidator;
     private final ToolPermissionChecker permissionChecker;
+    /** 调用观测回调（可为 null = 不观测、无开销） */
+    private final AgentInvocationListener invocationListener;
 
     public AgentLoop(LlmClient llmClient, ToolArgumentsCodec argumentsCodec,
                      ToolArgumentValidator argumentValidator, ToolPermissionChecker permissionChecker) {
+        this(llmClient, argumentsCodec, argumentValidator, permissionChecker, null);
+    }
+
+    public AgentLoop(LlmClient llmClient, ToolArgumentsCodec argumentsCodec,
+                     ToolArgumentValidator argumentValidator, ToolPermissionChecker permissionChecker,
+                     AgentInvocationListener invocationListener) {
         this.llmClient = Objects.requireNonNull(llmClient, "llmClient 不能为空");
         this.argumentsCodec = Objects.requireNonNull(argumentsCodec, "argumentsCodec 不能为空");
         this.argumentValidator = Objects.requireNonNull(argumentValidator, "argumentValidator 不能为空");
         this.permissionChecker = Objects.requireNonNull(permissionChecker, "permissionChecker 不能为空");
+        this.invocationListener = invocationListener;
     }
 
     /** 从头开始一次执行循环 */
@@ -102,11 +115,14 @@ public final class AgentLoop {
             }
         } else {
             // 取消：待确认调用与剩余调用一律回灌"用户已取消"（每个 tool_call_id 都必须有应答）
+            Map<String, Tool> toolsByName = toolsByName(request);
             for (int i = pendingIndex; i < pending.toolCalls().size(); i++) {
                 ToolCall call = pending.toolCalls().get(i);
                 String content = errorContent("用户已取消该高风险操作，工具未执行。请告知用户并继续对话。");
                 records.add(new ToolCallRecord(call.id(), call.name(), call.argumentsJson(), content, false, 0));
                 toolMessages.add(LlmMessage.tool(call.id(), content));
+                // 观测：取消的调用也上报（success=false、耗时 0、未经确认），口径与 ToolCallRecord 一致
+                notifyToolCall(request, call, toolsByName.get(call.name()), false, content, 0, false);
             }
         }
         messages.addAll(toolMessages);
@@ -123,19 +139,21 @@ public final class AgentLoop {
                                  List<ToolCallRecord> records, Long deadline) {
         List<ToolDefinition> definitions = ToolDefinitions.fromAll(request.tools());
         boolean hasTools = !definitions.isEmpty();
+        // LLM 调用序号（观测用，1 起）：含终轮单独 JSON 调用与强制收尾调用
+        int llmRound = 0;
 
         for (int iteration = 1; iteration <= request.maxIterations(); iteration++) {
             checkDeadline(request, deadline);
             // 无工具时直接按终轮参数调用：行为退化为单轮对话
             LlmRequestOptions options = hasTools ? toolRoundOptions(request, definitions)
                     : finalRoundOptions(request);
-            LlmResponse response = llmClient.chat(messages, options);
+            LlmResponse response = observedChat(request, messages, options, ++llmRound);
 
             if (!response.hasToolCalls()) {
                 if (hasTools && request.finalJsonMode() == FinalJsonMode.JSON_SEPARATE_FINAL_CALL) {
                     // 厂商不支持 tools+json_object 同时携带：终轮单独再调一次（丢弃本次自由文本）
                     checkDeadline(request, deadline);
-                    LlmResponse finalResponse = llmClient.chat(messages, finalRoundOptions(request));
+                    LlmResponse finalResponse = observedChat(request, messages, finalRoundOptions(request), ++llmRound);
                     return AgentLoopResult.completed(finalResponse.content(), records);
                 }
                 return AgentLoopResult.completed(response.content(), records);
@@ -154,8 +172,68 @@ public final class AgentLoop {
 
         // 迭代预算用尽：强制终轮（不带工具），保证循环必然收敛产出文本
         checkDeadline(request, deadline);
-        LlmResponse forced = llmClient.chat(messages, finalRoundOptions(request));
+        LlmResponse forced = observedChat(request, messages, finalRoundOptions(request), ++llmRound);
         return AgentLoopResult.completed(forced.content(), records);
+    }
+
+    /**
+     * 带观测的 LLM 调用（M1-T06）：成功与失败都回调 {@link AgentInvocationListener#onLlmCall}，
+     * 失败时记录错误信息后原样抛出（由上层兜底）。listener 为 null 时等价于直接调用。
+     */
+    private LlmResponse observedChat(AgentLoopRequest request, List<LlmMessage> messages,
+                                     LlmRequestOptions options, int round) {
+        if (invocationListener == null) {
+            return llmClient.chat(messages, options);
+        }
+        long start = System.nanoTime();
+        LlmResponse response;
+        try {
+            response = llmClient.chat(messages, options);
+        } catch (RuntimeException e) {
+            String error = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            notifyLlmCall(request, round, null, elapsedMillis(start), null, null, false, error);
+            throw e;
+        }
+        notifyLlmCall(request, round, response.model(), elapsedMillis(start),
+                response.usage() == null ? null : response.usage().promptTokens(),
+                response.usage() == null ? null : response.usage().completionTokens(),
+                response.hasToolCalls(), null);
+        return response;
+    }
+
+    /** 观测回调兜底：回调异常一律吞掉，绝不影响主流程 */
+    private void notifyLlmCall(AgentLoopRequest request, int round, String model, long durationMs,
+                               Integer promptTokens, Integer completionTokens,
+                               boolean hasToolCalls, String error) {
+        try {
+            invocationListener.onLlmCall(sessionIdOf(request), round, model, durationMs,
+                    promptTokens, completionTokens, hasToolCalls, error);
+        } catch (RuntimeException ignored) {
+            // 观测失败不中断对话（实现方自行记录日志）
+        }
+    }
+
+    /** 观测回调兜底：回调异常一律吞掉，绝不影响主流程 */
+    private void notifyToolCall(AgentLoopRequest request, ToolCall call, Tool tool, boolean success,
+                                String resultContent, long durationMs, boolean confirmed) {
+        if (invocationListener == null) {
+            return;
+        }
+        try {
+            invocationListener.onToolCall(sessionIdOf(request), call.name(), call.argumentsJson(),
+                    success, truncateSummary(resultContent), durationMs,
+                    tool == null ? null : tool.riskLevel(), confirmed);
+        } catch (RuntimeException ignored) {
+            // 观测失败不中断对话（实现方自行记录日志）
+        }
+    }
+
+    private static String sessionIdOf(AgentLoopRequest request) {
+        return request.context() == null ? null : request.context().sessionId();
+    }
+
+    private static long elapsedMillis(long startNanos) {
+        return (System.nanoTime() - startNanos) / 1_000_000;
     }
 
     /**
@@ -185,7 +263,8 @@ public final class AgentLoop {
                         confirmationSummary(tool, call));
             }
 
-            String content = executeSingle(tool, call, request.context(), records);
+            String content = executeSingle(request, tool, call,
+                    Objects.equals(call.id(), confirmedCallId), records);
             toolMessages.add(LlmMessage.tool(call.id(), content));
         }
         return null;
@@ -194,9 +273,12 @@ public final class AgentLoop {
     /**
      * 执行单个工具调用并记录。所有失败情形（未知工具 / 权限不足 / 参数非法 /
      * 校验失败 / 执行异常）都转成错误 JSON 回灌，不抛出、不中断循环。
+     *
+     * @param confirmed 本次执行是否经过用户高风险确认（观测记录用）
      */
-    private String executeSingle(Tool tool, ToolCall call, ToolContext context,
-                                 List<ToolCallRecord> records) {
+    private String executeSingle(AgentLoopRequest request, Tool tool, ToolCall call,
+                                 boolean confirmed, List<ToolCallRecord> records) {
+        ToolContext context = request.context();
         long start = System.nanoTime();
         boolean success = false;
         String content;
@@ -213,6 +295,7 @@ public final class AgentLoop {
         long elapsedMillis = (System.nanoTime() - start) / 1_000_000;
         records.add(new ToolCallRecord(call.id(), call.name(), call.argumentsJson(),
                 content, success, elapsedMillis));
+        notifyToolCall(request, call, tool, success, content, elapsedMillis, confirmed);
         return content;
     }
 
@@ -241,6 +324,17 @@ public final class AgentLoop {
 
     /** 成功结果回灌内容的固定前缀（serialize 保持插入顺序，success 在最前） */
     private static final String SUCCESS_PREFIX = "{\"success\":true";
+
+    /** 观测回调中工具结果摘要的最大长度（完整结果只回灌给模型，观测侧截断防膨胀） */
+    private static final int RESULT_SUMMARY_MAX_LENGTH = 500;
+
+    /** 工具结果 → 观测摘要（超长截断） */
+    private static String truncateSummary(String content) {
+        if (content == null || content.length() <= RESULT_SUMMARY_MAX_LENGTH) {
+            return content;
+        }
+        return content.substring(0, RESULT_SUMMARY_MAX_LENGTH) + "...(已截断)";
+    }
 
     /** 工具成功 / 业务拒绝的结果 → 回灌 JSON */
     private String resultContent(ToolResult result) {

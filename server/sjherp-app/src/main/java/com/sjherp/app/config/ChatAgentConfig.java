@@ -11,6 +11,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 
+import com.sjherp.agent.loop.AgentInvocationListener;
 import com.sjherp.agent.loop.AgentLoop;
 import com.sjherp.agent.loop.FinalJsonMode;
 import com.sjherp.agent.tool.ToolPermissionChecker;
@@ -60,7 +61,8 @@ public class ChatAgentConfig {
                            PlaceholderAgent placeholderAgent,
                            AgentReplyJsonCodec codec,
                            PendingToolCallJsonCodec pendingCodec,
-                           ToolRegistry toolRegistry) {
+                           ToolRegistry toolRegistry,
+                           AgentInvocationListener invocationListener) {
         String normalized = mode == null ? "auto" : mode.strip().toLowerCase(Locale.ROOT);
         return switch (normalized) {
             case "placeholder" -> {
@@ -72,12 +74,12 @@ public class ChatAgentConfig {
                     throw new IllegalStateException("sjherp.agent.mode=llm 但未配置 sjherp.llm.api-key"
                             + "（设置环境变量 SJHERP_LLM_API_KEY 或启用 local profile）");
                 }
-                yield llmAgent(llm, codec, pendingCodec, toolRegistry,
+                yield llmAgent(llm, codec, pendingCodec, toolRegistry, invocationListener,
                         parseFinalJsonMode(finalJsonMode), maxIterations, loopTimeoutSeconds);
             }
             case "auto" -> {
                 if (llm.hasApiKey()) {
-                    yield llmAgent(llm, codec, pendingCodec, toolRegistry,
+                    yield llmAgent(llm, codec, pendingCodec, toolRegistry, invocationListener,
                             parseFinalJsonMode(finalJsonMode), maxIterations, loopTimeoutSeconds);
                 }
                 log.warn("未配置 sjherp.llm.api-key，聊天回退到 PlaceholderAgent（规则占位演示模式）。"
@@ -91,6 +93,7 @@ public class ChatAgentConfig {
 
     private Agent llmAgent(LlmProperties llm, AgentReplyJsonCodec codec,
                            PendingToolCallJsonCodec pendingCodec, ToolRegistry toolRegistry,
+                           AgentInvocationListener invocationListener,
                            FinalJsonMode finalJsonMode, int maxIterations, long loopTimeoutSeconds) {
         // 注意：工具按请求时从 ToolRegistry 实时读取，此处不打印数量（演示工具等可能在本 Bean 之后注册）
         log.info("聊天 Agent：使用 LlmAgent + AgentLoop（provider=DeepSeek, model={}, baseUrl={}, "
@@ -100,9 +103,12 @@ public class ChatAgentConfig {
         DeepSeekLlmClient client = new DeepSeekLlmClient(
                 llm.apiKey(), llm.baseUrl(), llm.model(), llm.temperature(),
                 Duration.ofSeconds(llm.timeoutSeconds()));
-        // 执行循环（M1-T02/T03）：参数编解码 + JSON Schema 校验 + 权限校验（占位）经接口注入
+        // 执行循环（M1-T02/T03）：参数编解码 + JSON Schema 校验 + 权限校验（占位）经接口注入；
+        // 调用观测 listener（M1-T06）：每次 LLM 调用与工具调用落 agent_invocation 表，
+        // 终轮单独 JSON 调用也在 AgentLoop 内发起，同样会被记录
         AgentLoop agentLoop = new AgentLoop(client, new JacksonToolArgumentsCodec(),
-                new JsonSchemaToolArgumentValidator(), ToolPermissionChecker.allowAll());
+                new JsonSchemaToolArgumentValidator(), ToolPermissionChecker.allowAll(),
+                invocationListener);
         return new LlmAgent(agentLoop, codec, pendingCodec, toolRegistry,
                 finalJsonMode, maxIterations, Duration.ofSeconds(loopTimeoutSeconds));
     }

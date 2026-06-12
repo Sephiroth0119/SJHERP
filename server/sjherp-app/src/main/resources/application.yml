@@ -21,6 +21,13 @@ server:
   port: 8080
 
 sjherp:
+  # 认证（M2-T05）：JWT HS256。
+  # 警告：jwt-secret 默认值仅限本地开发！生产环境必须用环境变量 SJHERP_JWT_SECRET
+  # 覆盖（≥ 32 字节随机串），否则任何人都能伪造登录态。
+  security:
+    jwt-secret: ${SJHERP_JWT_SECRET:sjherp-dev-only-secret-change-me-in-production-0123456789}
+    jwt-expire-hours: 12   # token 有效期（小时）
+
   # LLM 接入（当前实现：DeepSeek，OpenAI 兼容 API）。
   # api-key 绝不写进任何会被 git 跟踪的文件：用环境变量 SJHERP_LLM_API_KEY，
   # 或本地开发用 local profile（src/main/resources/application-local.yml，已被 .gitignore 忽略）。

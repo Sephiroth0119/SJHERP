@@ -58,6 +58,12 @@
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
         </dependency>
+        <!-- 密码哈希（M2-T05）：仅引 crypto 单模块（轻量，不含 Spring Security 全家桶），
+             实现 domain 的 PasswordHasher 端口（BCrypt）；版本走 Spring Boot BOM -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-crypto</artifactId>
+        </dependency>
         <!-- 单元测试（JUnit5 + AssertJ；DeepSeek 请求体组装/响应解析的结构断言） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

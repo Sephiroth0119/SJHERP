@@ -1,6 +1,6 @@
 # Agent 执行循环（AgentLoop）
 
-> 状态：v1.0（2026-06，M1-T02 + M1-T03 交付）
+> 状态：v1.1（2026-06，M1-T02 + M1-T03 + M1-T06 交付）
 > 代码：`server/sjherp-agent/src/main/java/com/sjherp/agent/loop/`（框架，零运行时依赖）
 > 关联：[CLAUDE.md](../CLAUDE.md)「自研 Agent 框架设计要点」、[选项返回协议.md](./选项返回协议.md)「框架级工具确认选项」
 
@@ -133,15 +133,48 @@ app 层（LlmAgent）：
   - `echo`（NORMAL）：原样回显，验证普通工具往返；
   - `demo_post_document`（HIGH，权限点 demo:post_document）：模拟单据过账，**不写任何真实数据**，验证完整确认流程。
 
-## 7. 测试
+## 7. 调用观测（M1-T06）
+
+审计原则对 Agent 的延伸：每次 LLM 调用与每次工具调用各落一行 `agent_invocation` 表（V7 迁移），只插入不更新，X-6 成本看板数据源。
+
+```
+AgentLoop ──回调──► AgentInvocationListener（sjherp-agent 接口，零依赖）
+                         │
+                         ▼
+        PersistingAgentInvocationListener（infra，同步落库）
+                         │
+                         ▼
+        JdbcAgentInvocationRepository ──► agent_invocation 表
+                         ▲
+        GET /api/agent/invocations?sessionId=xxx（app，只读查询）
+```
+
+回调点与口径：
+
+| 回调 | 时机 | 内容 |
+|---|---|---|
+| `onLlmCall` | 每次 LLM 调用完成（成功或抛错） | 会话 id、循环内调用序号（1 起，**含终轮单独 JSON 调用与强制收尾调用**）、实际应答模型名、耗时 ms、prompt/completion tokens（`LlmResponse.usage`，DeepSeekLlmClient 解析 OpenAI 兼容 `usage` 字段填充；厂商未返回时为 null）、是否含 toolCalls、错误信息（失败时记录后原样抛出） |
+| `onToolCall` | 每次工具调用处理完成 | 会话 id、工具名（未知工具原样上报）、参数 JSON、success、结果摘要（500 字符截断）、耗时 ms（未实际执行为 0）、风险等级（未知工具为 null）、是否经高风险确认（resume 确认链路为 true）。口径与 `ToolCallRecord` 一致：未知工具 / 校验失败 / 执行异常 / 用户取消都上报；**被拦截待确认的调用不上报**（尚未执行，确认或取消后才有结果） |
+
+设计要点：
+
+- listener 为 null 时零开销；AgentLoop 对回调 try-catch 吞掉一切异常，落库实现侧也只记 ERROR 日志——观测失败绝不中断对话（双保险）；
+- 当前为**同步落库**（循环线程上单行 INSERT，相对 LLM 调用耗时可忽略）；高并发异步化留 TODO（PersistingAgentInvocationListener）；
+- 终轮单独 JSON 调用（`JSON_SEPARATE_FINAL_CALL`）在 AgentLoop 内部发起，无需 app 层手动补记；
+- 表结构：tenant_id（ADR-002 预留恒 0）、session_id、type ENUM('LLM','TOOL')、model/tool_name、duration_ms、prompt/completion_tokens、success、detail JSON（LLM：round/hasToolCalls/error；TOOL：arguments/resultSummary/riskLevel/confirmed）、created_at，`(session_id, created_at)` 索引。
+
+查询 API（开发/运营侧）：`GET /api/agent/invocations?sessionId=xxx&page=1&size=20` → 分页列表（created_at 倒序）+ 会话累计 token 汇总（totalPromptTokens / totalCompletionTokens，针对整个会话不随分页变化）；参数缺失/非法 → 400 `{"error"}`。
+
+## 8. 测试
 
 - `AgentLoopTest`（sjherp-agent，假 LlmClient + 假 Tool，16 例）：正常往返 / 业务失败回灌 / 未知工具 / 异常回灌 / 参数非法 / 校验失败 / 权限不足 / 最大迭代强制收尾 / 超时 / 两种 JSON 模式 / 高风险拦截 / 确认恢复 / 取消恢复 / 混合批次部分执行；
+- `AgentLoopInvocationListenerTest`（sjherp-agent，假 listener，11 例）：LLM 调用序号与 usage 透传 / 终轮单独调用与强制收尾计入 / LLM 失败上报后原样抛出 / 工具成功失败口径 / 摘要截断 / 拦截不上报、确认与取消上报 / 回调异常不影响主流程；
 - `ChatServiceToolConfirmationTest`(sjherp-app)：对话触发 → 确认卡片 + 现场落库 → 确认执行 / 取消 / 待确认期间改发文本视为取消；
-- infra：`JacksonToolArgumentsCodecTest` / `JsonSchemaToolArgumentValidatorTest` / `PendingToolCallJsonCodecTest`。
+- infra：`JacksonToolArgumentsCodecTest` / `JsonSchemaToolArgumentValidatorTest` / `PendingToolCallJsonCodecTest` / `DeepSeekLlmClientTest`（含 usage 与 model 解析）/ `PersistingAgentInvocationListenerTest`（假仓储，字段映射 / detail JSON / 错误截断 / 落库失败兜底）。
 
-## 8. 已知边界与后续
+## 9. 已知边界与后续
 
-- 工具轮的中间消息（assistant tool_calls 与 TOOL 结果）不落会话历史，只有最终协议回复落库——下一轮对话依赖最终文本携带必要信息；M1-T06（agent_invocation 表）落地后调用明细可查；
-- `ToolCallRecord` 当前仅打结构化日志，未落库（M1-T06）；
+- 工具轮的中间消息（assistant tool_calls 与 TOOL 结果）不落会话历史，只有最终协议回复落库——下一轮对话依赖最终文本携带必要信息；调用明细经 agent_invocation 表可查（§7）；
+- 观测落库为同步写入，高并发异步化留 TODO（§7）；
 - 权限校验为 allowAll 占位（M2-T06）；
 - 恢复执行过程中 LLM 调用失败时，已执行的工具不回滚（现场已清，避免重复执行高风险操作），用户会收到兜底致歉文案。

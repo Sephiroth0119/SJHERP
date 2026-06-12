@@ -21,6 +21,7 @@ import com.sjherp.agent.reply.AgentReply;
 import com.sjherp.agent.session.AgentMessage;
 import com.sjherp.agent.session.AgentSession;
 import com.sjherp.agent.session.MessageRole;
+import com.sjherp.app.security.CurrentUser;
 import com.sjherp.infra.agent.AgentReplyJsonCodec;
 
 /**
@@ -43,10 +44,10 @@ public class ChatSessionController {
         this.codec = codec;
     }
 
-    /** 创建会话 */
+    /** 创建会话（归属当前登录用户：user_id 落库为 sys_user.id，M2-T05） */
     @PostMapping
     public ResponseEntity<Map<String, String>> createSession() {
-        AgentSession session = chatService.createSession();
+        AgentSession session = chatService.createSession(CurrentUser.userId());
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
                 "sessionId", session.getSessionId(),
                 "createdAt", session.getCreatedAt().toString()));

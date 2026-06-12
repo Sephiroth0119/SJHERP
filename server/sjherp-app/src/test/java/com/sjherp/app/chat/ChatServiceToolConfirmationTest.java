@@ -124,7 +124,7 @@ class ChatServiceToolConfirmationTest {
     void highRiskCallTriggersConfirmationCardAndPersistsPendingState() {
         llm.scripted.add(toolCallResponse());
 
-        AgentSession session = chatService.createSession();
+        AgentSession session = chatService.createSession("test-user");
         AgentReply reply = chatService.handleMessage(session.getSessionId(),
                 new SendMessageRequest("把单据 DOC-1 过账", null, null, null));
 
@@ -148,7 +148,7 @@ class ChatServiceToolConfirmationTest {
         llm.scripted.add(toolCallResponse());
         llm.scripted.add(finalText("单据 DOC-1 已成功过账"));
 
-        AgentSession session = chatService.createSession();
+        AgentSession session = chatService.createSession("test-user");
         chatService.handleMessage(session.getSessionId(),
                 new SendMessageRequest("把单据 DOC-1 过账", null, null, null));
 
@@ -169,7 +169,7 @@ class ChatServiceToolConfirmationTest {
         llm.scripted.add(toolCallResponse());
         llm.scripted.add(finalText("好的，已取消过账操作"));
 
-        AgentSession session = chatService.createSession();
+        AgentSession session = chatService.createSession("test-user");
         chatService.handleMessage(session.getSessionId(),
                 new SendMessageRequest("把单据 DOC-1 过账", null, null, null));
 
@@ -186,7 +186,7 @@ class ChatServiceToolConfirmationTest {
         llm.scripted.add(toolCallResponse());
         llm.scripted.add(finalText("好的，先不过账了"));
 
-        AgentSession session = chatService.createSession();
+        AgentSession session = chatService.createSession("test-user");
         chatService.handleMessage(session.getSessionId(),
                 new SendMessageRequest("把单据 DOC-1 过账", null, null, null));
 

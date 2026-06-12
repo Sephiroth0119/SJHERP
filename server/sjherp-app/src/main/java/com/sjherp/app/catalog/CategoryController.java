@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.sjherp.app.catalog.CatalogDtos.CategoryCreateRequest;
 import com.sjherp.app.catalog.CatalogDtos.CategoryRenameRequest;
 import com.sjherp.app.catalog.CatalogDtos.CategoryResponse;
+import com.sjherp.app.security.CurrentUser;
 import com.sjherp.domain.catalog.CategoryService;
 
 import jakarta.validation.Valid;
@@ -44,14 +45,14 @@ public class CategoryController {
     @PostMapping
     public ResponseEntity<CategoryResponse> create(@Valid @RequestBody CategoryCreateRequest request) {
         CategoryResponse body = CategoryResponse.from(
-                categoryService.create(request.name(), request.parentId(), CatalogApiSupport.OPERATOR));
+                categoryService.create(request.name(), request.parentId(), CurrentUser.operator()));
         return ResponseEntity.status(HttpStatus.CREATED).body(body);
     }
 
     /** 重命名类目 */
     @PutMapping("/{id}")
     public CategoryResponse rename(@PathVariable long id, @Valid @RequestBody CategoryRenameRequest request) {
-        return CategoryResponse.from(categoryService.rename(id, request.name(), CatalogApiSupport.OPERATOR));
+        return CategoryResponse.from(categoryService.rename(id, request.name(), CurrentUser.operator()));
     }
 
     /** 删除类目（有子类目或被商品引用则拒绝） */

@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.sjherp.app.partner.PartnerDtos.PageResponse;
 import com.sjherp.app.partner.PartnerDtos.SupplierRequest;
 import com.sjherp.app.partner.PartnerDtos.SupplierResponse;
+import com.sjherp.app.security.CurrentUser;
 import com.sjherp.domain.common.ArchiveStatus;
 import com.sjherp.domain.partner.SupplierQuery;
 import com.sjherp.domain.partner.SupplierService;
@@ -47,7 +48,7 @@ public class SupplierController {
     @PostMapping
     public ResponseEntity<SupplierResponse> create(@Valid @RequestBody SupplierRequest request) {
         SupplierResponse body = SupplierResponse.from(
-                supplierService.create(request.toCommand(), PartnerApiSupport.OPERATOR));
+                supplierService.create(request.toCommand(), CurrentUser.operator()));
         return ResponseEntity.status(HttpStatus.CREATED).body(body);
     }
 
@@ -55,19 +56,19 @@ public class SupplierController {
     @PutMapping("/{id}")
     public SupplierResponse update(@PathVariable long id, @Valid @RequestBody SupplierRequest request) {
         return SupplierResponse.from(
-                supplierService.update(id, request.toCommand(), PartnerApiSupport.OPERATOR));
+                supplierService.update(id, request.toCommand(), CurrentUser.operator()));
     }
 
     /** 启用供应商 */
     @PostMapping("/{id}/enable")
     public SupplierResponse enable(@PathVariable long id) {
-        return SupplierResponse.from(supplierService.enable(id, PartnerApiSupport.OPERATOR));
+        return SupplierResponse.from(supplierService.enable(id, CurrentUser.operator()));
     }
 
     /** 停用供应商（停用后新单据不得引用，历史数据不受影响） */
     @PostMapping("/{id}/disable")
     public SupplierResponse disable(@PathVariable long id) {
-        return SupplierResponse.from(supplierService.disable(id, PartnerApiSupport.OPERATOR));
+        return SupplierResponse.from(supplierService.disable(id, CurrentUser.operator()));
     }
 
     /** 分页列表（keyword 模糊匹配编码/名称/联系人/电话；status 可选 ENABLED/DISABLED） */

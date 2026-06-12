@@ -44,6 +44,132 @@ body {
   flex-direction: column;
 }
 
+/* ===== 顶栏：右上角当前用户 + 退出（M2-T05）===== */
+.app-topbar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 24px;
+  background: #ffffff;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.app-topbar-user {
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.app-topbar-roles {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.app-topbar-logout {
+  appearance: none;
+  padding: 5px 14px;
+  font-size: 13px;
+  color: var(--color-text);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.app-topbar-logout:hover {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+/* ===== 登录页（M2-T05）===== */
+.login-page {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-sidebar);
+}
+
+.login-card {
+  width: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 32px 28px;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+}
+
+.login-brand {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 4px;
+}
+
+.login-brand-name {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.login-brand-sub {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.login-field input {
+  padding: 9px 12px;
+  font-size: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+.login-field input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.login-error {
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--color-danger);
+  background: #fef2f2;
+  border: 1px solid var(--color-danger);
+  border-radius: 6px;
+}
+
+.login-submit {
+  appearance: none;
+  margin-top: 4px;
+  padding: 10px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+  background: var(--color-primary);
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.login-submit:disabled {
+  background: var(--color-text-muted);
+  cursor: default;
+}
+
 /* ===== 左侧导航 ===== */
 .sidebar {
   width: 200px;

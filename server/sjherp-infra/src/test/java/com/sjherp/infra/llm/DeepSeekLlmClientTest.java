@@ -182,4 +182,46 @@ class DeepSeekLlmClientTest {
                 .isInstanceOf(LlmClientException.class)
                 .hasMessageContaining("既无 content 也无 tool_calls");
     }
+
+    // ---------- usage 与 model 解析（M1-T06 可观测性） ----------
+
+    @Test
+    void parseResponseShouldExtractModelAndUsage() {
+        // 固定 JSON 样本：DeepSeek 实际响应形态（model + usage 同时存在）
+        String body = """
+                {"id":"abc","model":"deepseek-chat-v3",
+                 "choices":[{"message":{"role":"assistant","content":"库存 1250 张"},"finish_reason":"stop"}],
+                 "usage":{"prompt_tokens":321,"completion_tokens":87,"total_tokens":408}}""";
+        LlmResponse response = client().parseResponse(body);
+
+        assertThat(response.model()).isEqualTo("deepseek-chat-v3");
+        assertThat(response.usage()).isNotNull();
+        assertThat(response.usage().promptTokens()).isEqualTo(321);
+        assertThat(response.usage().completionTokens()).isEqualTo(87);
+    }
+
+    @Test
+    void parseResponseWithoutUsageShouldFallBackGracefully() {
+        // usage 缺失：usage 为 null；model 缺失：回退到配置的模型名
+        String body = """
+                {"choices":[{"message":{"role":"assistant","content":"你好"},"finish_reason":"stop"}]}""";
+        LlmResponse response = client().parseResponse(body);
+
+        assertThat(response.usage()).isNull();
+        assertThat(response.model()).isEqualTo("deepseek-chat");
+    }
+
+    @Test
+    void parseResponseWithPartialUsageShouldKeepNullForMissingFields() {
+        // usage 字段不完整（只有 prompt_tokens）：缺失项为 null，不抛错
+        String body = """
+                {"model":"deepseek-chat",
+                 "choices":[{"message":{"role":"assistant","content":"ok"}}],
+                 "usage":{"prompt_tokens":10}}""";
+        LlmResponse response = client().parseResponse(body);
+
+        assertThat(response.usage()).isNotNull();
+        assertThat(response.usage().promptTokens()).isEqualTo(10);
+        assertThat(response.usage().completionTokens()).isNull();
+    }
 }

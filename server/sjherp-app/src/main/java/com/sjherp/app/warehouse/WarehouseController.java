@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.sjherp.app.warehouse.WarehouseDtos.PageResponse;
 import com.sjherp.app.warehouse.WarehouseDtos.WarehouseRequest;
 import com.sjherp.app.warehouse.WarehouseDtos.WarehouseResponse;
+import com.sjherp.app.security.CurrentUser;
 import com.sjherp.domain.common.ArchiveStatus;
 import com.sjherp.domain.warehouse.WarehouseQuery;
 import com.sjherp.domain.warehouse.WarehouseService;
@@ -47,7 +48,7 @@ public class WarehouseController {
     @PostMapping
     public ResponseEntity<WarehouseResponse> create(@Valid @RequestBody WarehouseRequest request) {
         WarehouseResponse body = WarehouseResponse.from(
-                warehouseService.create(request.toCommand(), WarehouseApiSupport.OPERATOR));
+                warehouseService.create(request.toCommand(), CurrentUser.operator()));
         return ResponseEntity.status(HttpStatus.CREATED).body(body);
     }
 
@@ -55,19 +56,19 @@ public class WarehouseController {
     @PutMapping("/{id}")
     public WarehouseResponse update(@PathVariable long id, @Valid @RequestBody WarehouseRequest request) {
         return WarehouseResponse.from(
-                warehouseService.update(id, request.toCommand(), WarehouseApiSupport.OPERATOR));
+                warehouseService.update(id, request.toCommand(), CurrentUser.operator()));
     }
 
     /** 启用仓库 */
     @PostMapping("/{id}/enable")
     public WarehouseResponse enable(@PathVariable long id) {
-        return WarehouseResponse.from(warehouseService.enable(id, WarehouseApiSupport.OPERATOR));
+        return WarehouseResponse.from(warehouseService.enable(id, CurrentUser.operator()));
     }
 
     /** 停用仓库（停用后新单据不得引用，历史数据不受影响） */
     @PostMapping("/{id}/disable")
     public WarehouseResponse disable(@PathVariable long id) {
-        return WarehouseResponse.from(warehouseService.disable(id, WarehouseApiSupport.OPERATOR));
+        return WarehouseResponse.from(warehouseService.disable(id, CurrentUser.operator()));
     }
 
     /** 分页列表（keyword 模糊匹配编码/名称/负责人；status 可选 ENABLED/DISABLED） */

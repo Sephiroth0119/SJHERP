@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.sjherp.app.catalog.CatalogDtos.UnitRequest;
 import com.sjherp.app.catalog.CatalogDtos.UnitResponse;
+import com.sjherp.app.security.CurrentUser;
 import com.sjherp.domain.catalog.UnitService;
 
 import jakarta.validation.Valid;
@@ -43,7 +44,7 @@ public class UnitController {
     @PostMapping
     public ResponseEntity<UnitResponse> create(@Valid @RequestBody UnitRequest request) {
         UnitResponse body = UnitResponse.from(
-                unitService.create(request.name(), request.precision(), CatalogApiSupport.OPERATOR));
+                unitService.create(request.name(), request.precision(), CurrentUser.operator()));
         return ResponseEntity.status(HttpStatus.CREATED).body(body);
     }
 
@@ -51,7 +52,7 @@ public class UnitController {
     @PutMapping("/{id}")
     public UnitResponse update(@PathVariable long id, @Valid @RequestBody UnitRequest request) {
         return UnitResponse.from(
-                unitService.update(id, request.name(), request.precision(), CatalogApiSupport.OPERATOR));
+                unitService.update(id, request.name(), request.precision(), CurrentUser.operator()));
     }
 
     /** 删除单位（被商品引用则拒绝） */

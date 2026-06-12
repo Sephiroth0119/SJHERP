@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.sjherp.app.gap.GapDtos.GapResponse;
 import com.sjherp.app.gap.GapDtos.PageResponse;
 import com.sjherp.app.gap.GapDtos.StatusTransitionRequest;
+import com.sjherp.app.security.CurrentUser;
 import com.sjherp.domain.gap.BusinessModule;
 import com.sjherp.domain.gap.GapRecordQuery;
 import com.sjherp.domain.gap.GapRecordService;
@@ -32,14 +33,6 @@ import jakarta.validation.Valid;
 @RestController
 @RequestMapping("/api/gaps")
 public class GapController {
-
-    /**
-     * 状态流转操作人占位。
-     *
-     * <p>TODO（M2-T05 用户/认证落地后）：替换为登录态真实 userId。
-     * 当前流转为开发侧操作，统一记 dev。
-     */
-    private static final String OPERATOR = "dev";
 
     private final GapRecordService gapRecordService;
 
@@ -69,7 +62,8 @@ public class GapController {
     public GapResponse transition(@PathVariable long id,
                                   @Valid @RequestBody StatusTransitionRequest request) {
         return GapResponse.from(
-                gapRecordService.transitionStatus(id, parseRequiredStatus(request.status()), OPERATOR));
+                gapRecordService.transitionStatus(id, parseRequiredStatus(request.status()),
+                        CurrentUser.operator()));
     }
 
     // ---------------------------------------------------------------- 参数解析

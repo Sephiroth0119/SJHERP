@@ -17,6 +17,7 @@ import type {
 } from '../../types/agent';
 import { AGENT_PROTOCOL_VERSION, type AgentReply } from '../../types/agent';
 import {
+  CHAT_SESSION_STORAGE_KEY,
   ChatApiError,
   USE_MOCK,
   createChatSession,
@@ -28,8 +29,8 @@ import {
 import { MessageList, type ChatStreamError } from './MessageList';
 import { MessageInput } from './MessageInput';
 
-/** localStorage 中保存会话 id 的键 */
-const SESSION_STORAGE_KEY = 'sjherp.chat.sessionId';
+/** localStorage 中保存会话 id 的键（退出登录时由 App 一并清除） */
+const SESSION_STORAGE_KEY = CHAT_SESSION_STORAGE_KEY;
 
 /** 本地临时消息 id（用户气泡、本地开场白等），加前缀避免与后端 id 撞车 */
 let localSeq = 0;

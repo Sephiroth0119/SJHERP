@@ -23,9 +23,6 @@ import com.sjherp.infra.agent.AgentReplyJsonCodec;
 @Service
 public class ChatService {
 
-    /** 当前无登录体系，所有会话归属占位用户（接入认证后替换为真实用户标识） */
-    private static final String DEMO_USER_ID = "demo-user";
-
     /** 会话标题取首条用户消息摘要的最大长度 */
     private static final int TITLE_MAX_LENGTH = 50;
 
@@ -39,9 +36,9 @@ public class ChatService {
         this.agent = agent;
     }
 
-    /** 创建新会话并立即落库 */
-    public AgentSession createSession() {
-        AgentSession session = new AgentSession(UUID.randomUUID().toString(), DEMO_USER_ID);
+    /** 创建新会话并立即落库（userId 为登录用户标识，Controller 层从登录态解析，M2-T05） */
+    public AgentSession createSession(String userId) {
+        AgentSession session = new AgentSession(UUID.randomUUID().toString(), userId);
         repository.save(session);
         return session;
     }

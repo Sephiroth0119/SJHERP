@@ -4,10 +4,14 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import com.sjherp.agent.loop.AgentInvocationListener;
 import com.sjherp.agent.session.AgentSessionRepository;
 import com.sjherp.infra.agent.AgentReplyJsonCodec;
 import com.sjherp.infra.agent.PendingToolCallJsonCodec;
 import com.sjherp.infra.persistence.JdbcAgentSessionRepository;
+import com.sjherp.infra.persistence.invocation.AgentInvocationRepository;
+import com.sjherp.infra.persistence.invocation.JdbcAgentInvocationRepository;
+import com.sjherp.infra.persistence.invocation.PersistingAgentInvocationListener;
 
 /**
  * Agent 框架基础设施装配。
@@ -35,5 +39,17 @@ public class AgentInfraConfig {
     @Bean
     public AgentSessionRepository agentSessionRepository(JdbcTemplate jdbcTemplate) {
         return new JdbcAgentSessionRepository(jdbcTemplate);
+    }
+
+    /** Agent 调用观测记录仓储（M1-T06，V7 迁移 agent_invocation 表） */
+    @Bean
+    public AgentInvocationRepository agentInvocationRepository(JdbcTemplate jdbcTemplate) {
+        return new JdbcAgentInvocationRepository(jdbcTemplate);
+    }
+
+    /** 调用观测落库 listener（M1-T06）：由 ChatAgentConfig 装配进 AgentLoop */
+    @Bean
+    public AgentInvocationListener agentInvocationListener(AgentInvocationRepository repository) {
+        return new PersistingAgentInvocationListener(repository);
     }
 }

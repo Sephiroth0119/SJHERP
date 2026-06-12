@@ -5,17 +5,9 @@ import java.util.Locale;
 import com.sjherp.domain.partner.SettlementMethod;
 
 /**
- * partner API 公共常量与解析工具。
+ * partner API 公共解析工具（操作人已改为从登录态解析：CurrentUser.operator()，M2-T05）。
  */
 final class PartnerApiSupport {
-
-    /**
-     * 当前操作人（审计字段 created_by/updated_by 的来源）。
-     *
-     * <p>TODO（M2-T05 用户/认证落地后）：替换为从登录态解析的真实 userId，
-     * Agent 操作则记 Agent 标识。当前无认证体系，统一记 admin（约定同 CatalogApiSupport）。
-     */
-    static final String OPERATOR = "admin";
 
     private PartnerApiSupport() {
     }
