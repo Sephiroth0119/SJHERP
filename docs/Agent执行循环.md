@@ -129,6 +129,7 @@ app 层（LlmAgent）：
 - `LlmAgent`（sjherp-app）改为基于 AgentLoop：组装系统提示（有无工具两套能力边界文案）+ 历史 + `ToolRegistry` 全部工具 + 审计上下文；结果转协议回复；待确认转确认卡片；
 - `ChatService` 无需感知确认流程：固定选项 id 经正常的 optionId 回传机制还原，由 `LlmAgent` 识别语义；
 - 装配（`ChatAgentConfig`）：DeepSeekLlmClient + JacksonToolArgumentsCodec + JsonSchemaToolArgumentValidator + `ToolPermissionChecker.allowAll()`；`ToolRegistry` Bean 默认为空（`ToolConfig`）；
+- 业务工具（常驻注册）：基础档案查询/创建 9 个（M2-T08，`DomainToolConfig`）+ `record_process_gap`（M1-T04，`GapInfraConfig`），清单与参数详见 [领域工具清单.md](./领域工具清单.md)；
 - 演示工具（仅 dev / local profile 注册，`ToolConfig.DemoToolConfig`）：
   - `echo`（NORMAL）：原样回显，验证普通工具往返；
   - `demo_post_document`（HIGH，权限点 demo:post_document）：模拟单据过账，**不写任何真实数据**，验证完整确认流程。
