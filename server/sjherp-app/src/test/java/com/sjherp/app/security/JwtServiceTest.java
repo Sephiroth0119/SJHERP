@@ -71,9 +71,13 @@ class JwtServiceTest {
         JwtService service = new JwtService(SECRET, 12);
         String token = service.issueToken(user(7L));
 
-        // 翻转签名段最后一个字符（保持 base64url 字符集内）
-        char last = token.charAt(token.length() - 1);
-        String tampered = token.substring(0, token.length() - 1) + (last == 'a' ? 'b' : 'a');
+        // 翻转签名段第一个字符（保持 base64url 字符集内）。
+        // 不能改最后一个字符：256 位签名编码为 43 个 base64url 字符（258 位），
+        // 末字符低 2 位是填充位——若恰好只翻转填充位，解码后签名不变，校验仍通过（曾偶发翻车）
+        int signatureStart = token.lastIndexOf('.') + 1;
+        char first = token.charAt(signatureStart);
+        String tampered = token.substring(0, signatureStart) + (first == 'a' ? 'b' : 'a')
+                + token.substring(signatureStart + 1);
 
         assertThat(service.parseUserId(tampered)).isEmpty();
     }

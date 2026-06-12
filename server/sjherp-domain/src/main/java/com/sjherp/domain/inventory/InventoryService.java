@@ -24,7 +24,10 @@ import com.sjherp.domain.inventory.InventoryTxnType.Direction;
  *   <li><b>移动加权口径</b>（拆解 §1.6）：单价 6 位 HALF_UP、金额 2 位 HALF_UP、
  *       用已舍入 total 扣减余额、出空清零吸收尾差；</li>
  *   <li><b>幂等</b>（拆解 §1.3）：idempotencyKey 必填，撞键读回原流水比对参数——
- *       一致返回首次结果（支持单据过账重试），不一致抛 {@link IdempotencyConflictException}；</li>
+ *       一致返回首次结果（支持单据过账重试），不一致抛 {@link IdempotencyConflictException}；
+ *       重放判定在<b>锁定余额行之后</b>（与 {@link #execute} 同序，T01d ④）：并发同键提交
+ *       被行锁串行化，后到事务锁行后必然读到首笔已提交流水，直接返回首次结果，
+ *       而不是撞流水唯一键整事务回滚；</li>
  *   <li><b>锁顺序</b>（拆解 §1.4）：批量/调拨涉及多个余额行时，按
  *       (warehouseId, productId) 升序排序后依次 lockForUpdate，防死锁；</li>
  *   <li><b>负库存</b>（拆解 §1.5）：默认拒绝（{@link InsufficientStockException}）；
@@ -64,8 +67,10 @@ public class InventoryService {
     public StockMovementResult inbound(InboundCommand command, String operator) {
         requireOperator(operator);
         validateInbound(command);
-        return findReplay(command).orElseGet(() -> postInbound(command,
-                lockBalance(command, operator), operator, Map.of()));
+        // 先锁行再判重放（与 execute 同序）：并发同键提交被行锁串行化后，
+        // 后到事务读到首笔流水即返回首次结果（真幂等），而非撞唯一键回滚
+        InventoryBalance balance = lockBalance(command, operator);
+        return findReplay(command).orElseGet(() -> postInbound(command, balance, operator, Map.of()));
     }
 
     /** 出库：SALES_OUT/COUNT_LOSS/TRANSFER_OUT，成本由服务按移动加权计算并返回（COGS 来源） */
@@ -73,8 +78,9 @@ public class InventoryService {
     public StockMovementResult outbound(OutboundCommand command, String operator) {
         requireOperator(operator);
         validateOutbound(command);
-        return findReplay(command).orElseGet(() -> postOutbound(command,
-                lockBalance(command, operator), operator));
+        // 先锁行再判重放（理由同 inbound）
+        InventoryBalance balance = lockBalance(command, operator);
+        return findReplay(command).orElseGet(() -> postOutbound(command, balance, operator));
     }
 
     /** 成本调整：数量不变只调金额（约束见 {@link CostAdjustCommand}） */
@@ -82,8 +88,9 @@ public class InventoryService {
     public StockMovementResult adjustCost(CostAdjustCommand command, String operator) {
         requireOperator(operator);
         validateAdjust(command);
-        return findReplay(command).orElseGet(() -> postAdjust(command,
-                lockBalance(command, operator), operator));
+        // 先锁行再判重放（理由同 inbound）
+        InventoryBalance balance = lockBalance(command, operator);
+        return findReplay(command).orElseGet(() -> postAdjust(command, balance, operator));
     }
 
     /**
