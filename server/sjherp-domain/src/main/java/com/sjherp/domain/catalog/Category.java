@@ -3,6 +3,8 @@ package com.sjherp.domain.catalog;
 import java.time.Instant;
 import java.util.Objects;
 
+import com.sjherp.domain.common.audit.AuditTarget;
+
 /**
  * 商品类目档案（树形）。
  *
@@ -10,7 +12,7 @@ import java.util.Objects;
  * 层级在创建时由父类目层级 + 1 确定并固化；为避免"挪动子树导致超层"
  * 的复杂校验，类目**不支持变更父类目**（建错了删掉重建，删除有引用保护）。
  */
-public final class Category {
+public final class Category implements AuditTarget {
 
     /** 树形层级上限（小企业从简，最多 3 层） */
     public static final int MAX_LEVEL = 3;
@@ -128,5 +130,24 @@ public final class Category {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    // ---------------- 审计目标（M2-T07） ----------------
+
+    @Override
+    public Long auditTargetId() {
+        return id;
+    }
+
+    /** 类目无业务编码，以名称作为审计目标标识 */
+    @Override
+    public String auditTargetCode() {
+        return name;
+    }
+
+    @Override
+    public String auditSummary() {
+        return "名称=" + AuditTarget.text(name)
+                + ", 父类目id=" + (parentId == null ? "-" : parentId) + ", 层级=" + level;
     }
 }

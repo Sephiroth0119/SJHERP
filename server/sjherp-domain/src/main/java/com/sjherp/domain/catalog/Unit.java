@@ -3,6 +3,8 @@ package com.sjherp.domain.catalog;
 import java.time.Instant;
 import java.util.Objects;
 
+import com.sjherp.domain.common.audit.AuditTarget;
+
 /**
  * 计量单位档案（如：瓶、箱、千克）。
  *
@@ -10,7 +12,7 @@ import java.util.Objects;
  * "瓶"通常 0 位（整瓶），"千克"可 3 位。数量运算一律 BigDecimal，
  * 该精度即出入库数量的 setScale 依据。
  */
-public final class Unit {
+public final class Unit implements AuditTarget {
 
     /** 单位精度上限：6 位小数（与数量列 DECIMAL(18,6) 对齐） */
     public static final int MAX_PRECISION = 6;
@@ -122,5 +124,23 @@ public final class Unit {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    // ---------------- 审计目标（M2-T07） ----------------
+
+    @Override
+    public Long auditTargetId() {
+        return id;
+    }
+
+    /** 计量单位无业务编码，以名称作为审计目标标识 */
+    @Override
+    public String auditTargetCode() {
+        return name;
+    }
+
+    @Override
+    public String auditSummary() {
+        return "名称=" + AuditTarget.text(name) + ", 精度=" + precision;
     }
 }

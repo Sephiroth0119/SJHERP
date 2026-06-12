@@ -3,6 +3,7 @@ package com.sjherp.domain.warehouse;
 import java.util.Objects;
 
 import com.sjherp.domain.common.PageResult;
+import com.sjherp.domain.common.audit.Audited;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
 import com.sjherp.domain.common.numbering.DocumentNumberRule;
 
@@ -30,6 +31,7 @@ public class WarehouseService {
     }
 
     /** 创建仓库：编码为空则自动编号；落库后回填 id */
+    @Audited(action = "warehouse.create", targetType = "warehouse")
     public Warehouse create(WarehouseCommand command, String operator) {
         Objects.requireNonNull(command, "command 不能为空");
 
@@ -47,6 +49,7 @@ public class WarehouseService {
     }
 
     /** 更新仓库：编码可改但仍须唯一（更新时编码必填，不触发自动编号） */
+    @Audited(action = "warehouse.update", targetType = "warehouse")
     public Warehouse update(long id, WarehouseCommand command, String operator) {
         Objects.requireNonNull(command, "command 不能为空");
         Warehouse warehouse = get(id);
@@ -66,6 +69,7 @@ public class WarehouseService {
     }
 
     /** 启用仓库 */
+    @Audited(action = "warehouse.enable", targetType = "warehouse")
     public Warehouse enable(long id, String operator) {
         Warehouse warehouse = get(id);
         warehouse.enable(operator);
@@ -80,6 +84,7 @@ public class WarehouseService {
      * 余额或在途出入库单据时应给出阻断或警告策略；本期仅做状态切换，
      * 新单据不得引用停用仓库的约束由各单据领域服务校验。
      */
+    @Audited(action = "warehouse.disable", targetType = "warehouse")
     public Warehouse disable(long id, String operator) {
         Warehouse warehouse = get(id);
         warehouse.disable(operator);

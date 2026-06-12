@@ -8,6 +8,7 @@ import java.util.Objects;
 import java.util.Set;
 
 import com.sjherp.domain.common.ArchiveStatus;
+import com.sjherp.domain.common.audit.AuditTarget;
 
 /**
  * 商品档案聚合根（后续客户/供应商/仓库档案的模式样板）。
@@ -19,7 +20,7 @@ import com.sjherp.domain.common.ArchiveStatus;
  * 换算表不单独存在。code 全局唯一（唯一性经仓储校验，由 {@link ProductService}
  * 把关；数据库 tenant_id+code 联合唯一键兜底）。
  */
-public final class Product {
+public final class Product implements AuditTarget {
 
     private static final int CODE_MAX_LENGTH = 50;
     private static final int NAME_MAX_LENGTH = 200;
@@ -271,5 +272,26 @@ public final class Product {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    // ---------------- 审计目标（M2-T07） ----------------
+
+    @Override
+    public Long auditTargetId() {
+        return id;
+    }
+
+    @Override
+    public String auditTargetCode() {
+        return code;
+    }
+
+    @Override
+    public String auditSummary() {
+        return "编码=" + AuditTarget.text(code) + ", 名称=" + AuditTarget.text(name)
+                + ", 规格=" + AuditTarget.text(spec) + ", 条码=" + AuditTarget.text(barcode)
+                + ", 基本单位id=" + baseUnitId
+                + ", 类目id=" + (categoryId == null ? "-" : categoryId)
+                + ", 换算数=" + unitConversions.size() + ", 状态=" + status.label();
     }
 }

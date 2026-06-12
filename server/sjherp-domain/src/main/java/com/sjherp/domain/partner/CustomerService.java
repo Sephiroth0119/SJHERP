@@ -3,6 +3,7 @@ package com.sjherp.domain.partner;
 import java.util.Objects;
 
 import com.sjherp.domain.common.PageResult;
+import com.sjherp.domain.common.audit.Audited;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
 import com.sjherp.domain.common.numbering.DocumentNumberRule;
 
@@ -30,6 +31,7 @@ public class CustomerService {
     }
 
     /** 创建客户：编码为空则自动编号；落库后回填 id */
+    @Audited(action = "customer.create", targetType = "customer")
     public Customer create(CustomerCommand command, String operator) {
         Objects.requireNonNull(command, "command 不能为空");
 
@@ -48,6 +50,7 @@ public class CustomerService {
     }
 
     /** 更新客户：编码可改但仍须唯一（更新时编码必填，不触发自动编号） */
+    @Audited(action = "customer.update", targetType = "customer")
     public Customer update(long id, CustomerCommand command, String operator) {
         Objects.requireNonNull(command, "command 不能为空");
         Customer customer = get(id);
@@ -68,6 +71,7 @@ public class CustomerService {
     }
 
     /** 启用客户 */
+    @Audited(action = "customer.enable", targetType = "customer")
     public Customer enable(long id, String operator) {
         Customer customer = get(id);
         customer.enable(operator);
@@ -82,6 +86,7 @@ public class CustomerService {
      * （在途销售订单、未核销应收等）时应给出阻断或警告策略；本期仅做状态
      * 切换，新单据不得引用停用客户的约束由各单据领域服务校验。
      */
+    @Audited(action = "customer.disable", targetType = "customer")
     public Customer disable(long id, String operator) {
         Customer customer = get(id);
         customer.disable(operator);

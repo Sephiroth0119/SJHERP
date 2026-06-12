@@ -163,6 +163,7 @@ AgentLoop ──回调──► AgentInvocationListener（sjherp-agent 接口，
 - 当前为**同步落库**（循环线程上单行 INSERT，相对 LLM 调用耗时可忽略）；高并发异步化留 TODO（PersistingAgentInvocationListener）；
 - 终轮单独 JSON 调用（`JSON_SEPARATE_FINAL_CALL`）在 AgentLoop 内部发起，无需 app 层手动补记；
 - 表结构：tenant_id（ADR-002 预留恒 0）、session_id、type ENUM('LLM','TOOL')、model/tool_name、duration_ms、prompt/completion_tokens、success、detail JSON（LLM：round/hasToolCalls/error；TOOL：arguments/resultSummary/riskLevel/confirmed）、created_at，`(session_id, created_at)` 索引。
+  - 勘误：V7 迁移中 session_id 的列注释写作 "agent_session.session_id"，实为 **agent_session.id** 的笔误（agent_session 表主键列名是 id）；迁移脚本已固化不改，以本文为准。
 
 查询 API（开发/运营侧）：`GET /api/agent/invocations?sessionId=xxx&page=1&size=20` → 分页列表（created_at 倒序）+ 会话累计 token 汇总（totalPromptTokens / totalCompletionTokens，针对整个会话不随分页变化）；参数缺失/非法 → 400 `{"error"}`。
 

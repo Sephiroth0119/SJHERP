@@ -7,6 +7,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 import com.sjherp.domain.common.ArchiveStatus;
+import com.sjherp.domain.common.audit.AuditTarget;
 
 /**
  * 用户聚合根（M2-T05，模式样板：{@code Product}）。
@@ -19,7 +20,7 @@ import com.sjherp.domain.common.ArchiveStatus;
  * 强度校验在 {@link UserService}（针对明文），哈希/比对经
  * {@link PasswordHasher} 端口由 infra 实现（BCrypt）。
  */
-public final class User {
+public final class User implements AuditTarget {
 
     private static final int USERNAME_MAX_LENGTH = 50;
     private static final int DISPLAY_NAME_MAX_LENGTH = 50;
@@ -221,5 +222,25 @@ public final class User {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    // ---------------- 审计目标（M2-T07） ----------------
+
+    @Override
+    public Long auditTargetId() {
+        return id;
+    }
+
+    /** 用户以登录名作为审计目标标识（创建后不可改，可长期追溯） */
+    @Override
+    public String auditTargetCode() {
+        return username;
+    }
+
+    /** 摘要绝不包含密码哈希（改密/重置动作由 action 体现，不落任何密码信息） */
+    @Override
+    public String auditSummary() {
+        return "登录名=" + AuditTarget.text(username) + ", 显示名=" + AuditTarget.text(displayName)
+                + ", 角色=" + roles + ", 状态=" + status.label();
     }
 }

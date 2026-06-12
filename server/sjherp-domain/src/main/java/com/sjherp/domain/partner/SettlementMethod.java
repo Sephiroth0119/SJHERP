@@ -15,5 +15,14 @@ public enum SettlementMethod {
     CASH,
 
     /** 预付：先款后货 */
-    PREPAID
+    PREPAID;
+
+    /** 中文标签（审计摘要 / 用户可见文案统一出口） */
+    public String label() {
+        return switch (this) {
+            case MONTHLY -> "月结";
+            case CASH -> "现结";
+            case PREPAID -> "预付";
+        };
+    }
 }

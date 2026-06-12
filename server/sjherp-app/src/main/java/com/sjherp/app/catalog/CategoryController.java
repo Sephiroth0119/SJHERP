@@ -62,7 +62,7 @@ public class CategoryController {
     @PreAuthorize("@perm.has('catalog:write')")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable long id) {
-        categoryService.delete(id);
+        categoryService.delete(id, CurrentUser.operator());
         return ResponseEntity.noContent().build();
     }
 

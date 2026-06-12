@@ -15,5 +15,10 @@ public enum ArchiveStatus {
     ENABLED,
 
     /** 停用：新单据不得引用，历史数据不受影响（档案不可物理删除） */
-    DISABLED
+    DISABLED;
+
+    /** 中文标签（审计摘要 / 用户可见文案统一出口） */
+    public String label() {
+        return this == ENABLED ? "启用" : "停用";
+    }
 }

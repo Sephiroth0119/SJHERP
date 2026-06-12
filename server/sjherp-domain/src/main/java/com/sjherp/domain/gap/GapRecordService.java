@@ -3,6 +3,7 @@ package com.sjherp.domain.gap;
 import java.util.Objects;
 
 import com.sjherp.domain.common.PageResult;
+import com.sjherp.domain.common.audit.Audited;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
 import com.sjherp.domain.common.numbering.DocumentNumberRule;
 
@@ -32,6 +33,7 @@ public class GapRecordService {
     }
 
     /** 创建缺口记录：自动编号 GAP-年月-序号，初始状态 NEW，落库后回填 id */
+    @Audited(action = "gap.create", targetType = "gap")
     public GapRecord create(GapRecordCommand command, String operator) {
         Objects.requireNonNull(command, "command 不能为空");
         String gapNo = numberGenerator.generate(GAP_RULE);
@@ -43,6 +45,7 @@ public class GapRecordService {
     }
 
     /** 状态流转（开发侧 triage / 进入开发 / 解决 / 驳回；非法流转抛 IllegalArgumentException） */
+    @Audited(action = "gap.change_status", targetType = "gap")
     public GapRecord transitionStatus(long id, GapStatus target, String operator) {
         GapRecord record = get(id);
         record.transitionTo(target, operator);

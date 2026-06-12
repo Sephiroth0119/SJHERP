@@ -3,6 +3,8 @@ package com.sjherp.domain.gap;
 import java.time.Instant;
 import java.util.Objects;
 
+import com.sjherp.domain.common.audit.AuditTarget;
+
 /**
  * 流程缺口记录聚合根（M1-T04，自进化闭环第一环）。
  *
@@ -14,7 +16,7 @@ import java.util.Objects;
  * <p>缺口不是单据：没有冲销语义，走 {@link GapStatus} 的简单状态流转；
  * 记录不可物理删除（误报走 REJECTED 终态，过程可追溯）。
  */
-public final class GapRecord {
+public final class GapRecord implements AuditTarget {
 
     private static final int TITLE_MAX_LENGTH = 200;
     private static final int SCENARIO_MAX_LENGTH = 2000;
@@ -230,5 +232,24 @@ public final class GapRecord {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    // ---------------- 审计目标（M2-T07） ----------------
+
+    @Override
+    public Long auditTargetId() {
+        return id;
+    }
+
+    @Override
+    public String auditTargetCode() {
+        return gapNo;
+    }
+
+    @Override
+    public String auditSummary() {
+        return "编号=" + AuditTarget.text(gapNo) + ", 标题=" + AuditTarget.text(title)
+                + ", 模块=" + businessModule + ", 严重度=" + severity
+                + ", 状态=" + status + ", 提出人=" + AuditTarget.text(reporter);
     }
 }

@@ -70,5 +70,12 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Testcontainers MySQL（X-2 DB 集成测试：真实 MySQL 8.4 跑全量 Flyway 迁移 + 仓储往返；
+             @Tag("integration-db")，默认排除，CI 独立 job 执行；版本走 Spring Boot BOM（testcontainers-bom） -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>mysql</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 </project>

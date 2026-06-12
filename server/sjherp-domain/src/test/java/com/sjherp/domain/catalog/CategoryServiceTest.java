@@ -70,7 +70,7 @@ class CategoryServiceTest {
     void 有子类目不可删除() {
         Category parent = service.create("饮料", null, OPERATOR);
         service.create("碳酸饮料", parent.getId(), OPERATOR);
-        assertThrows(IllegalArgumentException.class, () -> service.delete(parent.getId()));
+        assertThrows(IllegalArgumentException.class, () -> service.delete(parent.getId(), OPERATOR));
     }
 
     @Test
@@ -79,13 +79,13 @@ class CategoryServiceTest {
         Product product = new Product("SKU-1", "可乐", null, category.getId(), 1L,
                 null, null, List.of(new UnitConversion(2L, new BigDecimal("12"))), OPERATOR);
         productRepository.save(product);
-        assertThrows(IllegalArgumentException.class, () -> service.delete(category.getId()));
+        assertThrows(IllegalArgumentException.class, () -> service.delete(category.getId(), OPERATOR));
     }
 
     @Test
     void 无引用可删除() {
         Category category = service.create("饮料", null, OPERATOR);
-        service.delete(category.getId());
+        service.delete(category.getId(), OPERATOR);
         assertThrows(CatalogNotFoundException.class, () -> service.get(category.getId()));
     }
 

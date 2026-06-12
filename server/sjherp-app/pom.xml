@@ -52,6 +52,11 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
+        <!-- AOP（M2-T07）：审计切面拦截领域 Service 的 @Audited 写方法 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
         <!-- JWT 签发与校验（HS256）：jjwt 三件套（api 编译期，impl/jackson 仅运行期） -->
         <dependency>
             <groupId>io.jsonwebtoken</groupId>

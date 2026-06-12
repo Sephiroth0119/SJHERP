@@ -44,8 +44,9 @@ public final class CurrentUser {
     }
 
     /**
-     * 审计操作人标识（created_by/updated_by 的来源）：人工操作记登录名。
-     * Agent 自动操作的标识规则待 M2-T07 审计切面统一（区分人工与 Agent）。
+     * 审计操作人标识（created_by/updated_by 与 audit_log.operator 的来源）：
+     * 人工操作记登录名；Agent 自动操作记 agent:&lt;userId&gt;
+     * （见 ArchiveToolSupport.operator，M2-T07 审计切面按该约定区分人工与 Agent）。
      */
     public static String operator() {
         return get().username();

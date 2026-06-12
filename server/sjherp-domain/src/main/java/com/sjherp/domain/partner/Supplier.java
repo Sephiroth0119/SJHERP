@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.Objects;
 
 import com.sjherp.domain.common.ArchiveStatus;
+import com.sjherp.domain.common.audit.AuditTarget;
 
 /**
  * 供应商档案聚合根（模式样板：商品档案 {@code domain/catalog/Product}）。
@@ -14,7 +15,7 @@ import com.sjherp.domain.common.ArchiveStatus;
  * <p>code 租户内唯一（唯一性经仓储校验，由 {@link SupplierService} 把关；
  * 数据库 tenant_id+code 联合唯一键兜底）。
  */
-public final class Supplier {
+public final class Supplier implements AuditTarget {
 
     private static final int CODE_MAX_LENGTH = 50;
     private static final int NAME_MAX_LENGTH = 200;
@@ -243,5 +244,24 @@ public final class Supplier {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    // ---------------- 审计目标（M2-T07） ----------------
+
+    @Override
+    public Long auditTargetId() {
+        return id;
+    }
+
+    @Override
+    public String auditTargetCode() {
+        return code;
+    }
+
+    @Override
+    public String auditSummary() {
+        return "编码=" + AuditTarget.text(code) + ", 名称=" + AuditTarget.text(name)
+                + ", 联系人=" + AuditTarget.text(contactPerson) + ", 电话=" + AuditTarget.text(contactPhone)
+                + ", 结算方式=" + settlementMethod.label() + ", 状态=" + status.label();
     }
 }

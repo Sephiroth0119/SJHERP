@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.util.Objects;
 
 import com.sjherp.domain.common.ArchiveStatus;
+import com.sjherp.domain.common.audit.AuditTarget;
 
 /**
  * 仓库档案聚合根（模式样板：商品档案 {@code domain/catalog/Product}）。
@@ -14,7 +15,7 @@ import com.sjherp.domain.common.ArchiveStatus;
  * <p>小企业从简：仓库必有，库位可选——本期 {@code locationEnabled} 仅为
  * 开关字段，库位表与库位维度的库存留 M3 按需补齐。
  */
-public final class Warehouse {
+public final class Warehouse implements AuditTarget {
 
     private static final int CODE_MAX_LENGTH = 50;
     private static final int NAME_MAX_LENGTH = 200;
@@ -218,5 +219,24 @@ public final class Warehouse {
 
     public Instant getUpdatedAt() {
         return updatedAt;
+    }
+
+    // ---------------- 审计目标（M2-T07） ----------------
+
+    @Override
+    public Long auditTargetId() {
+        return id;
+    }
+
+    @Override
+    public String auditTargetCode() {
+        return code;
+    }
+
+    @Override
+    public String auditSummary() {
+        return "编码=" + AuditTarget.text(code) + ", 名称=" + AuditTarget.text(name)
+                + ", 地址=" + AuditTarget.text(address) + ", 负责人=" + AuditTarget.text(manager)
+                + ", 库位管理=" + (locationEnabled ? "启用" : "未启用") + ", 状态=" + status.label();
     }
 }

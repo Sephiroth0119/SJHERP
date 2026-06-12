@@ -12,6 +12,7 @@ import com.sjherp.agent.session.AgentMessage;
 import com.sjherp.agent.session.AgentSession;
 import com.sjherp.agent.session.AgentSessionRepository;
 import com.sjherp.agent.session.MessageRole;
+import com.sjherp.app.audit.AuditContext;
 import com.sjherp.infra.agent.AgentReplyJsonCodec;
 
 /**
@@ -67,33 +68,40 @@ public class ChatService {
     public AgentReply handleMessage(String sessionId, String currentUserId, SendMessageRequest request) {
         AgentSession session = getSession(sessionId, currentUserId);
 
-        // 约定：先以「只含历史」的 session 调 Agent（Agent 接口约定），拿到回复后再统一落库
-        AgentReply reply;
-        if (request.text() != null && !request.text().isBlank()) {
-            // 自由文本：用户消息原文落库
-            reply = agent.replyToText(session, request.text());
-            session.append(AgentMessage.user(request.text()));
-            if (session.getTitle() == null) {
-                session.setTitle(truncate(request.text()));
+        // 审计上下文（M2-T07）：工具调用在本线程内同步执行，
+        // 切面据此把 Agent 写操作关联到来源会话（audit_log.session_id）
+        AuditContext.setSessionId(sessionId);
+        try {
+            // 约定：先以「只含历史」的 session 调 Agent（Agent 接口约定），拿到回复后再统一落库
+            AgentReply reply;
+            if (request.text() != null && !request.text().isBlank()) {
+                // 自由文本：用户消息原文落库
+                reply = agent.replyToText(session, request.text());
+                session.append(AgentMessage.user(request.text()));
+                if (session.getTitle() == null) {
+                    session.setTitle(truncate(request.text()));
+                }
+            } else if (request.optionId() != null) {
+                // 点击选项：凭最近一条 Agent 回复按 id 还原；用户气泡显示选项 label（协议约定）
+                Option option = resolveOption(session, request.optionId());
+                reply = agent.replyToOption(session, option);
+                session.append(AgentMessage.user(option.label()));
+            } else if (request.formId() != null) {
+                // 提交表单：values 一律字符串（金额/数量后端 BigDecimal 解析，禁止 float/double）
+                Map<String, String> values = request.values() == null ? Map.of() : request.values();
+                reply = agent.replyToForm(session, request.formId(), values);
+                session.append(AgentMessage.user("提交表单 " + request.formId() + "：" + values));
+            } else {
+                throw new IllegalArgumentException("请求体必须提供 text / optionId / formId 三者之一");
             }
-        } else if (request.optionId() != null) {
-            // 点击选项：凭最近一条 Agent 回复按 id 还原；用户气泡显示选项 label（协议约定）
-            Option option = resolveOption(session, request.optionId());
-            reply = agent.replyToOption(session, option);
-            session.append(AgentMessage.user(option.label()));
-        } else if (request.formId() != null) {
-            // 提交表单：values 一律字符串（金额/数量后端 BigDecimal 解析，禁止 float/double）
-            Map<String, String> values = request.values() == null ? Map.of() : request.values();
-            reply = agent.replyToForm(session, request.formId(), values);
-            session.append(AgentMessage.user("提交表单 " + request.formId() + "：" + values));
-        } else {
-            throw new IllegalArgumentException("请求体必须提供 text / optionId / formId 三者之一");
-        }
 
-        // Agent 回复以协议 JSON 形式落库（回放时原样返回）
-        session.append(AgentMessage.assistant(codec.toJson(reply)));
-        repository.save(session);
-        return reply;
+            // Agent 回复以协议 JSON 形式落库（回放时原样返回）
+            session.append(AgentMessage.assistant(codec.toJson(reply)));
+            repository.save(session);
+            return reply;
+        } finally {
+            AuditContext.clear();
+        }
     }
 
     /** 从会话最近一条 Agent 回复中按 id 还原选项（协议「回传机制」第 1 条） */

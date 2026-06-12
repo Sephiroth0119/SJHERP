@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Objects;
 
 import com.sjherp.domain.common.PageResult;
+import com.sjherp.domain.common.audit.Audited;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
 import com.sjherp.domain.common.numbering.DocumentNumberRule;
 
@@ -37,6 +38,7 @@ public class ProductService {
     }
 
     /** 创建商品：编码为空则自动编号；落库后回填 id */
+    @Audited(action = "product.create", targetType = "product")
     public Product create(ProductCommand command, String operator) {
         Objects.requireNonNull(command, "command 不能为空");
         validateReferences(command);
@@ -56,6 +58,7 @@ public class ProductService {
     }
 
     /** 更新商品：编码可改但仍须唯一（更新时编码必填，不触发自动编号） */
+    @Audited(action = "product.update", targetType = "product")
     public Product update(long id, ProductCommand command, String operator) {
         Objects.requireNonNull(command, "command 不能为空");
         Product product = get(id);
@@ -77,6 +80,7 @@ public class ProductService {
     }
 
     /** 启用商品 */
+    @Audited(action = "product.enable", targetType = "product")
     public Product enable(long id, String operator) {
         Product product = get(id);
         product.enable(operator);
@@ -91,6 +95,7 @@ public class ProductService {
      * （在途采购/销售订单、非零库存余额等）时应给出阻断或警告策略；本期
      * 仅做状态切换，新单据不得引用停用商品的约束由各单据领域服务校验。
      */
+    @Audited(action = "product.disable", targetType = "product")
     public Product disable(long id, String operator) {
         Product product = get(id);
         product.disable(operator);

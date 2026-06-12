@@ -40,9 +40,12 @@
     <properties>
         <java.version>21</java.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <!-- 默认排除集成测试（@Tag("integration")，需真实外部服务/API Key），CI 的 mvn verify 不执行；
-             本地手动运行：mvn test -DexcludedGroups=none -Dgroups=integration -->
-        <excludedGroups>integration</excludedGroups>
+        <!-- 默认排除集成测试，CI 的 mvn verify 不执行：
+             - integration：需真实外部服务/API Key（如 DeepSeek、开发 VM 的 MySQL）；
+               本地手动运行：mvn test -DexcludedGroups=none -Dgroups=integration
+             - integration-db：Testcontainers MySQL（需本机 Docker；X-2，CI 有独立 job）；
+               手动运行：mvn test -pl sjherp-infra -Dgroups=integration-db -DexcludedGroups=none -->
+        <excludedGroups>integration,integration-db</excludedGroups>
     </properties>
 
     <!-- 统一管理本工程内部模块版本，子模块互相引用时无需写版本号 -->

@@ -1,4 +1,5 @@
 # X-1：CI 门禁 —— main 与 PR 必须全绿（后端编译+测试，前端类型检查+构建）
+# X-2：DB 集成测试 —— Testcontainers MySQL 8.4 跑全量 Flyway 迁移 + 各 Jdbc 仓储往返（独立 job）
 name: CI
 
 on:
@@ -22,6 +23,25 @@ jobs:
           cache: maven
       - name: Build & test
         run: mvn -B -ntp verify
+
+  backend-integration-db:
+    name: 后端 DB 集成测试 (Testcontainers MySQL)
+    runs-on: ubuntu-latest # ubuntu runner 自带 Docker，Testcontainers 直接可用
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: 构建依赖模块（跳过测试）
+        run: mvn -B -ntp -DskipTests install -pl sjherp-infra -am
+      - name: 运行 integration-db 测试（全量 Flyway 迁移 + 仓储往返）
+        # 父 POM 默认 excludedGroups=integration,integration-db；此处显式反转只跑 integration-db
+        run: mvn -B -ntp test -pl sjherp-infra -Dgroups=integration-db -DexcludedGroups=none
 
   frontend:
     name: 前端 (tsc + build)

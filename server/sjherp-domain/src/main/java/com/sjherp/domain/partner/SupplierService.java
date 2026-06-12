@@ -3,6 +3,7 @@ package com.sjherp.domain.partner;
 import java.util.Objects;
 
 import com.sjherp.domain.common.PageResult;
+import com.sjherp.domain.common.audit.Audited;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
 import com.sjherp.domain.common.numbering.DocumentNumberRule;
 
@@ -30,6 +31,7 @@ public class SupplierService {
     }
 
     /** 创建供应商：编码为空则自动编号；落库后回填 id */
+    @Audited(action = "supplier.create", targetType = "supplier")
     public Supplier create(SupplierCommand command, String operator) {
         Objects.requireNonNull(command, "command 不能为空");
 
@@ -48,6 +50,7 @@ public class SupplierService {
     }
 
     /** 更新供应商：编码可改但仍须唯一（更新时编码必填，不触发自动编号） */
+    @Audited(action = "supplier.update", targetType = "supplier")
     public Supplier update(long id, SupplierCommand command, String operator) {
         Objects.requireNonNull(command, "command 不能为空");
         Supplier supplier = get(id);
@@ -67,6 +70,7 @@ public class SupplierService {
     }
 
     /** 启用供应商 */
+    @Audited(action = "supplier.enable", targetType = "supplier")
     public Supplier enable(long id, String operator) {
         Supplier supplier = get(id);
         supplier.enable(operator);
@@ -81,6 +85,7 @@ public class SupplierService {
      * （在途采购订单、未核销应付等）时应给出阻断或警告策略；本期仅做状态
      * 切换，新单据不得引用停用供应商的约束由各单据领域服务校验。
      */
+    @Audited(action = "supplier.disable", targetType = "supplier")
     public Supplier disable(long id, String operator) {
         Supplier supplier = get(id);
         supplier.disable(operator);

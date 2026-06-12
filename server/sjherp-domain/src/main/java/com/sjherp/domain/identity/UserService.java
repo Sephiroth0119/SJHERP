@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
+import com.sjherp.domain.common.audit.Audited;
+
 /**
  * 用户领域服务（所有用户写操作的唯一入口，CLAUDE.md 原则 1）。
  *
@@ -31,6 +33,7 @@ public class UserService {
     }
 
     /** 创建用户（登录名唯一、密码过强度校验后哈希存储），落库后回填 id */
+    @Audited(action = "user.create", targetType = "user")
     public User create(String username, String displayName, String rawPassword,
                        Set<Role> roles, String operator) {
         validatePasswordStrength(rawPassword);
@@ -60,7 +63,8 @@ public class UserService {
         return user;
     }
 
-    /** 本人改密：须核对旧密码，新密码过强度校验 */
+    /** 本人改密：须核对旧密码，新密码过强度校验（审计只记动作，绝不落任何密码信息） */
+    @Audited(action = "user.change_password", targetType = "user")
     public User changePassword(long id, String oldRawPassword, String newRawPassword, String operator) {
         User user = get(id);
         if (oldRawPassword == null || !passwordHasher.matches(oldRawPassword, user.getPasswordHash())) {
@@ -73,6 +77,7 @@ public class UserService {
     }
 
     /** 管理员重置密码：无需旧密码（调用方需限定 ADMIN 角色），新密码过强度校验 */
+    @Audited(action = "user.reset_password", targetType = "user")
     public User resetPassword(long id, String newRawPassword, String operator) {
         User user = get(id);
         validatePasswordStrength(newRawPassword);
@@ -82,6 +87,7 @@ public class UserService {
     }
 
     /** 整体替换角色集合（至少一个角色） */
+    @Audited(action = "user.assign_roles", targetType = "user")
     public User assignRoles(long id, Set<Role> roles, String operator) {
         User user = get(id);
         user.assignRoles(roles, operator);
@@ -90,6 +96,7 @@ public class UserService {
     }
 
     /** 启用用户 */
+    @Audited(action = "user.enable", targetType = "user")
     public User enable(long id, String operator) {
         User user = get(id);
         user.enable(operator);
@@ -98,6 +105,7 @@ public class UserService {
     }
 
     /** 停用用户（停用后立即不可登录，已签发的 JWT 在过滤器逐请求校验时失效） */
+    @Audited(action = "user.disable", targetType = "user")
     public User disable(long id, String operator) {
         User user = get(id);
         user.disable(operator);
