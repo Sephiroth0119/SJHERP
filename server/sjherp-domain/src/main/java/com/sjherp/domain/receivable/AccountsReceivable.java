@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Objects;
 
+import com.sjherp.domain.common.OverSettlementException;
 import com.sjherp.domain.common.audit.AuditTarget;
 import com.sjherp.domain.inventory.CostingStrategy;
 
@@ -101,6 +102,37 @@ public final class AccountsReceivable implements AuditTarget {
     /** 未核销余额 = 应收金额 − 已核销金额（M4-T03 收款核销用） */
     public BigDecimal openAmount() {
         return amount.subtract(settledAmount);
+    }
+
+    /**
+     * 核销（收款冲应收，M4-T03）：把本次核销金额累加到 {@link #settledAmount} 并推进状态。
+     *
+     * <p>语义（设计真源 §1.2）：
+     * <ul>
+     *   <li>{@code amount <= 0} → {@link IllegalArgumentException}；先 {@code setScale(AMOUNT_SCALE, ROUNDING)} 归一；</li>
+     *   <li>{@code newSettled = settledAmount + amount}；若 {@code newSettled > this.amount}
+     *       抛 {@link OverSettlementException}（绝不允许超额核销）；</li>
+     *   <li>落 {@code settledAmount = newSettled}；状态重算：{@code == amount → SETTLED}，否则 {@code PARTIAL}。</li>
+     * </ul>
+     *
+     * <p>只动 {@link #settledAmount} / {@link #status}（其余 final 字段不变）：原始 {@link #amount} 永不变
+     * （CLAUDE.md 原则 2）。{@code settledAmount} 是只追加核销记录的维护型 rollup，更新它不破坏不变量。
+     *
+     * @param amount 本次核销金额（> 0，2 位精度）
+     */
+    public void settle(BigDecimal amount) {
+        if (amount == null || amount.signum() <= 0) {
+            throw new IllegalArgumentException("核销金额必须大于 0: "
+                    + (amount == null ? "null" : amount.toPlainString()));
+        }
+        BigDecimal delta = amount.setScale(CostingStrategy.AMOUNT_SCALE, CostingStrategy.ROUNDING);
+        BigDecimal newSettled = settledAmount.add(delta);
+        if (newSettled.compareTo(this.amount) > 0) {
+            throw new OverSettlementException(delta, settledAmount, this.amount);
+        }
+        this.settledAmount = newSettled;
+        this.status = newSettled.compareTo(this.amount) == 0
+                ? ReceivableStatus.SETTLED : ReceivableStatus.PARTIAL;
     }
 
     public Long getId() {

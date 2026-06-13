@@ -154,6 +154,14 @@ public enum Permission {
      */
     FINANCE_VOUCHER("finance:voucher", "凭证管理"),
 
+    /**
+     * 应收应付核销与账龄（M4-T03）：本批仅护<b>只读</b>端点——账龄
+     * （GET /api/reports/receivable-aging、/payable-aging，暴露对手方余额+逾期，敏感）与核销历史
+     * （GET /api/settlements）。核销<b>写</b>动作（settle）的 REST/Agent 入口在 M4-T04（收付款单驱动），
+     * 届时复用本权限点。授 ADMIN/BOSS/ACCOUNTANT（与 finance:voucher 同档，核销是会计日常）。
+     */
+    FINANCE_SETTLEMENT("finance:settlement", "应收应付核销与账龄"),
+
     // ------------------------------------------------- 流程缺口
 
     /** 缺口状态流转（GapController POST /api/gaps/{id}/status，开发侧操作） */

@@ -9,6 +9,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -25,7 +26,8 @@ import com.sjherp.domain.payable.PayableStatus;
 /**
  * 应付账款仓储的 MySQL 实现（M3-T07；代码风格照 {@code JdbcTransferRepository}）。
  *
- * <p>应付台账记录只追加、不修改（CLAUDE.md 原则 2）：本期只有 insert + 查询，核销更新 M4-T03。
+ * <p>新建插入 + 回填自增 id；更新（M4-T03 核销）落已核销金额与状态（settled_amount 是只追加核销
+ * 记录的维护型 rollup，更新它不违反原则 2——真源是 settlement_record）。
  * tenant_id v1.0 恒 0（ADR-002）；时间列 DATETIME(6) 按 UTC 读写；金额 DECIMAL。
  */
 @Transactional
@@ -43,8 +45,10 @@ public class JdbcAccountsPayableRepository implements AccountsPayableRepository 
 
     @Override
     public void save(AccountsPayable payable) {
-        // 应付只追加（已分配 id 的不重复落库——本期不更新；核销 M4-T03）
         if (payable.getId() != null) {
+            // M4-T03 核销：落已核销金额与状态（amount/原始字段不动，原则 2）
+            jdbc.update("UPDATE accounts_payable SET settled_amount = ?, status = ? WHERE id = ?",
+                    payable.getSettledAmount(), payable.getStatus().name(), payable.getId());
             return;
         }
         KeyHolder keyHolder = new GeneratedKeyHolder();
@@ -72,6 +76,14 @@ public class JdbcAccountsPayableRepository implements AccountsPayableRepository 
     public List<AccountsPayable> findBySourceDocNo(String sourceDocNo) {
         return jdbc.query(SELECT_ALL + "WHERE tenant_id = 0 AND source_doc_no = ?",
                 ROW_MAPPER, sourceDocNo);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<AccountsPayable> findById(long id) {
+        List<AccountsPayable> rows = jdbc.query(SELECT_ALL + "WHERE tenant_id = 0 AND id = ?",
+                ROW_MAPPER, id);
+        return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
     }
 
     @Override

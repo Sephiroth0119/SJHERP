@@ -20,8 +20,8 @@ import java.util.Set;
  *   <li>WAREHOUSE：仓库域全部（创建 + 维护 + 库存调整 + 库存盘点 + 库存调拨）
  *       + 采购收货（purchase:receipt）+ 销售发货（sales:delivery）；</li>
  *   <li>ACCOUNTANT：采购发票/应付（purchase:invoice）+ 销售发票/应收（sales:invoice）
- *       + 总账财务（finance:account/period/voucher，M4-T01）；不含账期重开（finance:period_reopen
- *       高敏，仅 ADMIN/BOSS）；付款/收款核销等其余 finance:* 留后续任务补充。</li>
+ *       + 总账财务（finance:account/period/voucher，M4-T01）+ 核销与账龄（finance:settlement，M4-T03）；
+ *       不含账期重开（finance:period_reopen 高敏，仅 ADMIN/BOSS）；其余 finance:* 留后续任务补充。</li>
  * </ul>
  *
  * <p>多角色用户取并集；未知权限点 code 一律判拒（宁拒勿放，避免拼写错误变成放行）。
@@ -62,6 +62,7 @@ public final class RolePermissions {
                 Permission.FINANCE_PERIOD,
                 Permission.FINANCE_PERIOD_REOPEN,
                 Permission.FINANCE_VOUCHER,
+                Permission.FINANCE_SETTLEMENT,
                 Permission.DATA_IMPORT,
                 Permission.GAP_TRIAGE)));
 
@@ -90,14 +91,15 @@ public final class RolePermissions {
                 Permission.PURCHASE_RECEIPT,
                 Permission.SALES_DELIVERY)));
 
-        // ACCOUNTANT：采购发票/应付 + 销售发票/应收 + 总账财务（科目/账期/凭证）；
-        // 不含 finance:period_reopen（账期重开高敏，仅 ADMIN/BOSS）。付款/收款核销等 finance:* 留后续任务补充
+        // ACCOUNTANT：采购发票/应付 + 销售发票/应收 + 总账财务（科目/账期/凭证）+ 核销与账龄（M4-T03）；
+        // 不含 finance:period_reopen（账期重开高敏，仅 ADMIN/BOSS）。其余 finance:* 留后续任务补充
         grants.put(Role.ACCOUNTANT, Collections.unmodifiableSet(EnumSet.of(
                 Permission.PURCHASE_INVOICE,
                 Permission.SALES_INVOICE,
                 Permission.FINANCE_ACCOUNT,
                 Permission.FINANCE_PERIOD,
-                Permission.FINANCE_VOUCHER)));
+                Permission.FINANCE_VOUCHER,
+                Permission.FINANCE_SETTLEMENT)));
 
         return Collections.unmodifiableMap(grants);
     }

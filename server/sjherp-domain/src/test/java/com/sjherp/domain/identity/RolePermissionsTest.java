@@ -47,6 +47,7 @@ class RolePermissionsTest {
                 Permission.FINANCE_PERIOD,
                 Permission.FINANCE_PERIOD_REOPEN,
                 Permission.FINANCE_VOUCHER,
+                Permission.FINANCE_SETTLEMENT,
                 Permission.DATA_IMPORT,
                 Permission.GAP_TRIAGE), boss);
         assertFalse(boss.contains(Permission.DEMO_POST_DOCUMENT));
@@ -82,9 +83,10 @@ class RolePermissionsTest {
     }
 
     @Test
-    void ACCOUNTANT_采购销售发票加总账科目账期凭证_不含账期重开() {
+    void ACCOUNTANT_采购销售发票加总账科目账期凭证加核销账龄_不含账期重开() {
         assertEquals(EnumSet.of(Permission.PURCHASE_INVOICE, Permission.SALES_INVOICE,
-                        Permission.FINANCE_ACCOUNT, Permission.FINANCE_PERIOD, Permission.FINANCE_VOUCHER),
+                        Permission.FINANCE_ACCOUNT, Permission.FINANCE_PERIOD, Permission.FINANCE_VOUCHER,
+                        Permission.FINANCE_SETTLEMENT),
                 RolePermissions.permissionsOf(Role.ACCOUNTANT));
         // 账期重开是高敏操作，ACCOUNTANT 不持有（仅 ADMIN/BOSS）
         assertFalse(RolePermissions.permissionsOf(Role.ACCOUNTANT)
@@ -216,6 +218,13 @@ class RolePermissionsTest {
         assertTrue(RolePermissions.isGrantedCode(Set.of(Role.ADMIN), "finance:period_reopen"));
         assertFalse(RolePermissions.isGrantedCode(Set.of(Role.ACCOUNTANT), "finance:period_reopen"));
         assertFalse(RolePermissions.isGrantedCode(Set.of(Role.PURCHASER), "finance:period_reopen"));
+        // 应收应付核销与账龄（M4-T03）：ADMIN/BOSS/ACCOUNTANT 持有，其余角色拒绝
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.ACCOUNTANT), "finance:settlement"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.BOSS), "finance:settlement"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.ADMIN), "finance:settlement"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.PURCHASER), "finance:settlement"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.SALES), "finance:settlement"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.WAREHOUSE), "finance:settlement"));
     }
 
     @Test
