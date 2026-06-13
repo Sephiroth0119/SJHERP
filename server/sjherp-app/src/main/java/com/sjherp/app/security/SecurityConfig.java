@@ -33,8 +33,11 @@ import jakarta.servlet.http.HttpServletResponse;
  *       ——M2-T06 权限矩阵见 docs/权限矩阵.md）统一 403 {"error": "无权限执行该操作"}；</li>
  *   <li>无会话（STATELESS）、关 CSRF（纯 token API，不用 Cookie）；</li>
  *   <li>CORS 沿用 {@code WebCorsConfig} 的 MVC 配置（cors() 默认回退 HandlerMappingIntrospector）；</li>
- *   <li>knife4j 文档路径（/doc.html、/webjars/**、/v3/api-docs/**、/favicon.ico）：
- *       仅在 dev/local profile 下放行，生产姿态保持 401。</li>
+ *   <li>API 文档路径（/doc.html、/swagger-ui/**、/swagger-ui.html、/webjars/**、
+ *       /v3/api-docs/**、/favicon.ico）：仅在 dev/local profile 下放行，生产姿态保持 401。
+ *       同时开放 knife4j 美化界面（/doc.html）与 springdoc 标准 swagger-ui（/swagger-ui/index.html）；
+ *       后者的 Authorize→Execute 能正确注入 Authorization: Bearer &lt;token&gt;，
+ *       是推荐的鉴权调试入口（knife4j 纯 UI 模式的全局 Authorize 不注入调试请求头）。</li>
  * </ul>
  */
 @Configuration
@@ -49,9 +52,10 @@ public class SecurityConfig {
     /** 已认证但角色不足的统一响应体 */
     private static final String FORBIDDEN_BODY = "{\"error\":\"无权限执行该操作\"}";
 
-    /** knife4j / springdoc 文档相关路径（仅 dev/local profile 放行） */
+    /** knife4j / springdoc 文档相关路径（含标准 swagger-ui，仅 dev/local profile 放行） */
     private static final String[] KNIFE4J_PATHS = {
-            "/doc.html", "/webjars/**", "/v3/api-docs/**", "/favicon.ico"
+            "/doc.html", "/swagger-ui/**", "/swagger-ui.html",
+            "/webjars/**", "/v3/api-docs/**", "/favicon.ico"
     };
 
     /** 判断当前是否处于开发/本地 profile（dev 或 local 之一激活即视为开发态） */

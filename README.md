@@ -128,9 +128,11 @@ mvn spring-boot:run -pl sjherp-app "-Dspring-boot.run.profiles=local"   # 不需
 启动后可用 `GET /api/health` 探活；会话 API 见 `server/sjherp-app/.../chat/ChatSessionController.java`
 （POST /api/chat/sessions、GET /api/chat/sessions/{id}、POST /api/chat/sessions/{id}/messages）。
 
-**API 调试文档（仅 local/dev profile）**：local profile 启动后访问 `http://localhost:8080/doc.html`；
-用 `POST /api/auth/login`（用户名 `admin`，密码 `Admin@2026`）获取 token，点击右上角 `Authorize` 按钮填入 token，
-之后所有接口请求将自动携带认证头。生产环境文档路径强制关闭（返回 401）。
+**API 调试文档（仅 local/dev profile）**：先用 `POST /api/auth/login`（用户名 `admin`，密码 `Admin@2026`）获取 token。
+- **需鉴权接口推荐 `http://localhost:8080/swagger-ui/index.html`**：点右上角 `Authorize` 填入 token → 各接口 `Try it out` → `Execute`，自动携带 `Authorization: Bearer <token>`。
+- `http://localhost:8080/doc.html`（knife4j）界面更友好，但其「调试」面板的全局 Authorize 不注入鉴权头（纯静态 UI 模式限制），需在「调试 → 请求头部」手动加一行 `Authorization` = token（带不带 `Bearer ` 前缀都行）。
+
+生产环境文档路径强制关闭（返回 401）。
 
 ### 前端
 
