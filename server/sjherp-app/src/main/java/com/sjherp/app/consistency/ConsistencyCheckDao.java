@@ -57,6 +57,19 @@ public class ConsistencyCheckDao {
                                    BigDecimal deliveredQty, BigDecimal invoicedQty) {
     }
 
+    /**
+     * 核销 rollup 勾稽行（M4-T04c，应收/应付各一条/笔）。
+     *
+     * <p>{@code settlementType} 为 {@code "RECEIVABLE"}/{@code "PAYABLE"}（来自查询常量，仅用于差异定位文案）；
+     * {@code targetId} 为子账主键、{@code sourceDocNo} 为来源单号（发票号，做 break.key）；
+     * {@code amount} 应收/应付总额、{@code settledAmount} 子账已核销额（rollup 维护值）、{@code status} 子账状态；
+     * {@code recordSettledSum} 为 settlement_record 按 type+target 聚合的 Σamount（核销真源；无核销记录时 LEFT JOIN 收敛为 0）。
+     */
+    public record SettlementRollupRow(String settlementType, long targetId, String sourceDocNo,
+                                      BigDecimal amount, BigDecimal settledAmount, String status,
+                                      BigDecimal recordSettledSum) {
+    }
+
     private static final RowMapper<InventoryLedgerRow> LEDGER_MAPPER = (rs, n) -> new InventoryLedgerRow(
             rs.getLong("warehouse_id"), rs.getLong("product_id"),
             nz(rs.getBigDecimal("txn_qty_sum")), nz(rs.getBigDecimal("txn_cost_sum")),
@@ -87,6 +100,12 @@ public class ConsistencyCheckDao {
             rs.getString("order_no"), rs.getLong("product_id"),
             nz(rs.getBigDecimal("ordered_qty")), nz(rs.getBigDecimal("delivered_qty")),
             nz(rs.getBigDecimal("invoiced_qty")));
+
+    // amount/settled_amount NOT NULL，不收敛；record_settled_sum 经 COALESCE 已为 0（无核销记录时）
+    private static final RowMapper<SettlementRollupRow> SETTLEMENT_ROLLUP_MAPPER = (rs, n) -> new SettlementRollupRow(
+            rs.getString("settlement_type"), rs.getLong("target_id"), rs.getString("source_doc_no"),
+            rs.getBigDecimal("amount"), rs.getBigDecimal("settled_amount"), rs.getString("status"),
+            nz(rs.getBigDecimal("record_settled_sum")));
 
     private final JdbcTemplate jdbc;
 
@@ -238,6 +257,42 @@ public class ConsistencyCheckDao {
                 + "WHERE so.tenant_id = 0 "
                 + "GROUP BY so.doc_no, sol.product_id, so.id "
                 + "ORDER BY so.id, sol.product_id", SALES_3W_MAPPER);
+    }
+
+    // ---------------------------------------------------------------
+    // 规则8/9/10（M4-T04c）：核销 rollup / 无超额 / 状态-余额 一致
+    // 子账（accounts_receivable / accounts_payable）逐行 LEFT JOIN settlement_record（按 type+target 聚合 Σamount）。
+    // LEFT JOIN：即便子账无任何核销记录（OPEN）也保留该行，record_settled_sum 经 COALESCE 收敛为 0，
+    // 使「子账 settled_amount 非 0 但无核销记录」这类孤儿不一致也能被规则8 暴露（不静默丢行）。
+    // 既有规则4/5（amount==发票额，amount 不可变）不动；本组只比对 settled_amount/status 与核销记录真源。
+    // ---------------------------------------------------------------
+
+    /** 应收核销 rollup 行（每笔应收一行）：子账 amount/settled_amount/status 与核销记录 Σ（type=RECEIVABLE）。 */
+    @Transactional(readOnly = true)
+    public List<SettlementRollupRow> receivableRollups() {
+        return jdbc.query("SELECT 'RECEIVABLE' AS settlement_type, ar.id AS target_id, "
+                + "ar.source_doc_no AS source_doc_no, ar.amount AS amount, "
+                + "ar.settled_amount AS settled_amount, ar.status AS status, "
+                + "(SELECT COALESCE(SUM(sr.amount), 0) FROM settlement_record sr "
+                + " WHERE sr.tenant_id = 0 AND sr.settlement_type = 'RECEIVABLE' "
+                + "   AND sr.target_id = ar.id) AS record_settled_sum "
+                + "FROM accounts_receivable ar "
+                + "WHERE ar.tenant_id = 0 "
+                + "ORDER BY ar.id", SETTLEMENT_ROLLUP_MAPPER);
+    }
+
+    /** 应付核销 rollup 行（每笔应付一行）：子账 amount/settled_amount/status 与核销记录 Σ（type=PAYABLE）。 */
+    @Transactional(readOnly = true)
+    public List<SettlementRollupRow> payableRollups() {
+        return jdbc.query("SELECT 'PAYABLE' AS settlement_type, ap.id AS target_id, "
+                + "ap.source_doc_no AS source_doc_no, ap.amount AS amount, "
+                + "ap.settled_amount AS settled_amount, ap.status AS status, "
+                + "(SELECT COALESCE(SUM(sr.amount), 0) FROM settlement_record sr "
+                + " WHERE sr.tenant_id = 0 AND sr.settlement_type = 'PAYABLE' "
+                + "   AND sr.target_id = ap.id) AS record_settled_sum "
+                + "FROM accounts_payable ap "
+                + "WHERE ap.tenant_id = 0 "
+                + "ORDER BY ap.id", SETTLEMENT_ROLLUP_MAPPER);
     }
 
     /** SUM/列可能为 NULL（无对应行），统一收敛为 0。 */

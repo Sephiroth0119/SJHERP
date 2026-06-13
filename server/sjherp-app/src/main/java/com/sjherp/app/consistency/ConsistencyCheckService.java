@@ -17,11 +17,13 @@ import com.sjherp.app.consistency.ConsistencyCheckDao.PayableMatchRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.PurchaseThreeWayRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.ReceivableMatchRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.SalesThreeWayRow;
+import com.sjherp.app.consistency.ConsistencyCheckDao.SettlementRollupRow;
 
 /**
  * 数据一致性校验服务（M3-T13 检查 Agent 核心引擎，<b>只读</b>）。
  *
- * <p>跑七条勾稽规则（docs 业务文档「数据一致性校验」§2），逐条把对不上的差异收集为
+ * <p>跑全部勾稽规则（七条进销存/财务勾稽 + M4-T04c 三条核销 rollup 勾稽，docs 业务文档
+ * 「数据一致性校验」§2），逐条把对不上的差异收集为
  * {@link ConsistencyBreak} 汇总成 {@link ConsistencyReport}。读路径全部经
  * {@link ConsistencyCheckDao} 只读聚合 SQL（CLAUDE.md 铁律「报表/校验只读除外」），
  * <b>本类零写路径</b>——纠错仍走正常业务单据（红字冲销），绝不静默改账。
@@ -59,7 +61,7 @@ public class ConsistencyCheckService {
     }
 
     /**
-     * 跑全部七条勾稽校验，产出结构化报告。只读，不改账。
+     * 跑全部勾稽校验（库存/财务七条 + 核销 rollup 三条），产出结构化报告。只读，不改账。
      */
     @Transactional(readOnly = true)
     public ConsistencyReport check() {
@@ -92,6 +94,13 @@ public class ConsistencyCheckService {
         // 规则7：销售三单数量勾稽
         for (SalesThreeWayRow row : dao.salesThreeWay()) {
             checkSalesThreeWay(row).ifPresent(breaks::add);
+        }
+        // 规则8/9/10（M4-T04c）：核销 rollup / 无超额 / 状态-余额 一致（应收 + 应付）
+        for (SettlementRollupRow row : dao.receivableRollups()) {
+            breaks.addAll(checkSettlementRollup(row));
+        }
+        for (SettlementRollupRow row : dao.payableRollups()) {
+            breaks.addAll(checkSettlementRollup(row));
         }
 
         return new ConsistencyReport(clock.instant(), breaks);
@@ -223,6 +232,65 @@ public class ConsistencyCheckService {
                     "销售已开票量超过已发量：" + key));
         }
         return java.util.Optional.empty();
+    }
+
+    /**
+     * 规则8/9/10（M4-T04c）：对一笔应收/应付的核销三连校验（任一不符各产一条 break）。
+     *
+     * <ul>
+     *   <li><b>规则8 rollup 一致</b>（{@link ConsistencyCheckType#SETTLEMENT_ROLLUP}，ERROR）：
+     *       子账 {@code settled_amount} 必须等于核销记录 Σamount（核销真源）。子账 rollup 与真源对不上 = 账实不一致；</li>
+     *   <li><b>规则9 无超额</b>（{@link ConsistencyCheckType#SETTLEMENT_OVER}，ERROR）：
+     *       {@code settled_amount > amount} 即越权超额持久化（领域层本已硬拒，此为直插库兜底）；</li>
+     *   <li><b>规则10 状态-余额一致</b>（{@link ConsistencyCheckType#SETTLEMENT_STATUS}，ERROR）：
+     *       余额 = amount − settled。OPEN⟺settled=0；SETTLED⟺余额=0（且 amount&gt;0）；PARTIAL⟺0&lt;settled&lt;amount。
+     *       三态互斥全覆盖，落不进任一态（含状态串值非法）即状态机被旁路。</li>
+     * </ul>
+     *
+     * <p>三条彼此独立，可同时命中（如超额且状态错），各报各的，便于定位。
+     * 全程 {@link BigDecimal#compareTo} 比较（规避 750 与 750.00 标度差异）。
+     */
+    static List<ConsistencyBreak> checkSettlementRollup(SettlementRollupRow row) {
+        List<ConsistencyBreak> result = new ArrayList<>(3);
+        String key = row.sourceDocNo() + "#" + row.settlementType() + "#" + row.targetId();
+        BigDecimal amount = nz(row.amount());
+        BigDecimal settled = nz(row.settledAmount());
+        BigDecimal recordSum = nz(row.recordSettledSum());
+
+        // 规则8：子账 settled_amount == Σ 核销记录金额（核销真源）
+        if (settled.compareTo(recordSum) != 0) {
+            result.add(ConsistencyBreak.of(ConsistencyCheckType.SETTLEMENT_ROLLUP, key,
+                    recordSum, settled, ConsistencySeverity.ERROR,
+                    "核销 rollup 不一致：子账已核销额 ≠ Σ核销记录金额（" + key + "）"));
+        }
+        // 规则9：settled_amount <= amount（无超额持久化）
+        if (settled.compareTo(amount) > 0) {
+            result.add(ConsistencyBreak.of(ConsistencyCheckType.SETTLEMENT_OVER, key,
+                    amount, settled, ConsistencySeverity.ERROR,
+                    "核销额超过应收/应付总额（越权超额持久化）：" + key));
+        }
+        // 规则10：状态 ⟺ 余额（OPEN/PARTIAL/SETTLED 三态互斥全覆盖）
+        BigDecimal open = amount.subtract(settled);
+        String status = row.status();
+        boolean statusOk;
+        if ("OPEN".equals(status)) {
+            statusOk = settled.signum() == 0;
+        } else if ("SETTLED".equals(status)) {
+            // 已核销：余额为 0 且确有金额（amount=0 的空单不应标 SETTLED）
+            statusOk = open.signum() == 0 && amount.signum() > 0;
+        } else if ("PARTIAL".equals(status)) {
+            statusOk = settled.signum() > 0 && open.signum() > 0;
+        } else {
+            statusOk = false; // 状态串值非法（非三态之一）
+        }
+        if (!statusOk) {
+            result.add(ConsistencyBreak.of(ConsistencyCheckType.SETTLEMENT_STATUS, key,
+                    open, settled, ConsistencySeverity.ERROR,
+                    "核销状态与余额不一致：status=" + status + "，总额=" + amount.toPlainString()
+                            + "，已核销=" + settled.toPlainString() + "，余额=" + open.toPlainString()
+                            + "（" + key + "）"));
+        }
+        return result;
     }
 
     private static String inventoryKey(long warehouseId, long productId) {

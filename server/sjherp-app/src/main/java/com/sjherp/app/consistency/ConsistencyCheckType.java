@@ -30,7 +30,25 @@ public enum ConsistencyCheckType {
     PURCHASE_THREE_WAY("PURCHASE_THREE_WAY", "采购三单数量勾稽"),
 
     /** 规则7：销售三单数量勾稽（已开票量 ≤ 已发量 ≤ 订单量） */
-    SALES_THREE_WAY("SALES_THREE_WAY", "销售三单数量勾稽");
+    SALES_THREE_WAY("SALES_THREE_WAY", "销售三单数量勾稽"),
+
+    /**
+     * 规则8（M4-T04c）：核销 rollup 一致——每笔应收/应付 settled_amount = Σ 对应核销记录金额。
+     * 子账 settled_amount 是核销记录（settlement_record）的维护型 rollup，二者必须分毫不差（原则 4 账实一致）。
+     */
+    SETTLEMENT_ROLLUP("SETTLEMENT_ROLLUP", "核销 rollup 一致"),
+
+    /**
+     * 规则9（M4-T04c）：无超额持久化——每笔应收/应付 settled_amount ≤ amount。
+     * 领域层 settle() 已硬拒超额（OverSettlementException），本规则为越权直插库的兜底防线（理论恒成立）。
+     */
+    SETTLEMENT_OVER("SETTLEMENT_OVER", "核销无超额"),
+
+    /**
+     * 规则10（M4-T04c）：状态-余额一致——SETTLED⟺余额0、PARTIAL⟺0&lt;已核销&lt;amount、OPEN⟺已核销0。
+     * 子账 status 与（amount−settled_amount）派生余额必须互洽，否则状态机被旁路写入。
+     */
+    SETTLEMENT_STATUS("SETTLEMENT_STATUS", "核销状态-余额一致");
 
     private final String code;
     private final String displayName;
