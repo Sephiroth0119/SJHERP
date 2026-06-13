@@ -247,9 +247,10 @@ class OpeningStockImportIntegrationTest {
                                     com.sjherp.domain.partner.SupplierService supplierService,
                                     WarehouseService warehouseService,
                                     UnitService unitService,
-                                    InventoryAdjustmentService inventoryAdjustmentService) {
+                                    InventoryAdjustmentService inventoryAdjustmentService,
+                                    com.sjherp.app.config.TransactionalInventoryService inventoryService) {
             return new ImportService(productService, customerService, supplierService,
-                    warehouseService, unitService, inventoryAdjustmentService);
+                    warehouseService, unitService, inventoryAdjustmentService, inventoryService);
         }
 
         // 以下 Bean 是 ImportService 需要但 TestConfig 没有直接用到的（通过 CatalogInfraConfig 提供 productService/unitService）

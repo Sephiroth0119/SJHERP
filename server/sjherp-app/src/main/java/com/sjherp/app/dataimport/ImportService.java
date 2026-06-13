@@ -4,14 +4,17 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.sjherp.app.config.TransactionalInventoryService;
 import com.sjherp.app.dataimport.ExcelWorkbookReader.FileImportException;
 import com.sjherp.app.dataimport.ImportDtos.ImportResult;
 import com.sjherp.app.dataimport.ImportDtos.RowFailure;
@@ -55,13 +58,15 @@ public class ImportService {
     private final WarehouseService warehouseService;
     private final UnitService unitService;
     private final InventoryAdjustmentService inventoryAdjustmentService;
+    private final TransactionalInventoryService inventoryService;
 
     public ImportService(ProductService productService,
                          CustomerService customerService,
                          SupplierService supplierService,
                          WarehouseService warehouseService,
                          UnitService unitService,
-                         InventoryAdjustmentService inventoryAdjustmentService) {
+                         InventoryAdjustmentService inventoryAdjustmentService,
+                         TransactionalInventoryService inventoryService) {
         this.productService = Objects.requireNonNull(productService, "productService 不能为空");
         this.customerService = Objects.requireNonNull(customerService, "customerService 不能为空");
         this.supplierService = Objects.requireNonNull(supplierService, "supplierService 不能为空");
@@ -69,6 +74,7 @@ public class ImportService {
         this.unitService = Objects.requireNonNull(unitService, "unitService 不能为空");
         this.inventoryAdjustmentService = Objects.requireNonNull(inventoryAdjustmentService,
                 "inventoryAdjustmentService 不能为空");
+        this.inventoryService = Objects.requireNonNull(inventoryService, "inventoryService 不能为空");
     }
 
     // ----------------------------------------------------------------
@@ -252,6 +258,8 @@ public class ImportService {
 
         List<Map<String, String>> rows = sheet.rows();
         List<RowFailure> failures = new ArrayList<>();
+        // 期初基线一致性（防双倍建账）：同一(仓库,商品)在本次文件内只能一行
+        Set<String> seenKeys = new HashSet<>();
 
         for (Map<String, String> row : rows) {
             int rowNum = ExcelWorkbookReader.rowNum(row);
@@ -275,6 +283,23 @@ public class ImportService {
 
                 Warehouse warehouse = ImportSupport.resolveWarehouse(warehouseService, warehouseText);
                 Product product = ImportSupport.resolveProduct(productService, productText);
+
+                // 防双倍建账（CLAUDE.md 原则 1，建账基线一致性）：
+                // 1) 同一(仓库,商品)在本次文件内重复——期初每个仓库+商品只能一行；
+                // 2) 该(仓库,商品)已有库存（如上一批已导入或已有业务流水）——不可再次期初，
+                //    重传同一文件会因此被整体拒绝（而非把期初余额再叠加一次）。
+                String key = warehouse.getId() + ":" + product.getId();
+                if (!seenKeys.add(key)) {
+                    throw new IllegalArgumentException("仓库[" + warehouse.getCode() + "]+商品["
+                            + product.getCode() + "] 在本次导入中重复——期初每个仓库+商品只能一行");
+                }
+                if (inventoryService.balanceOf(warehouse.getId(), product.getId())
+                        .quantity().signum() != 0) {
+                    throw new IllegalArgumentException("仓库[" + warehouse.getCode() + "]+商品["
+                            + product.getCode() + "] 已有库存，不可重复期初导入"
+                            + "（如需调整请走盘点或成本调整）");
+                }
+
                 BigDecimal quantity = ImportSupport.decimal(quantityText, ImportColumns.OPENING_QUANTITY);
                 BigDecimal unitCost = ImportSupport.decimal(unitCostText, ImportColumns.OPENING_UNIT_COST);
 

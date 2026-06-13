@@ -22,7 +22,9 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.sjherp.app.config.TransactionalInventoryService;
 import com.sjherp.app.inventory.InventoryAdjustmentService;
+import com.sjherp.domain.inventory.InventoryBalanceView;
 import com.sjherp.domain.catalog.Product;
 import com.sjherp.domain.catalog.ProductCommand;
 import com.sjherp.domain.catalog.ProductQuery;
@@ -61,6 +63,7 @@ class ImportServiceTest {
     private WarehouseService warehouseService;
     private UnitService unitService;
     private InventoryAdjustmentService adjustmentService;
+    private TransactionalInventoryService inventoryService;
     private ImportService importService;
 
     @BeforeEach
@@ -71,9 +74,14 @@ class ImportServiceTest {
         warehouseService = mock(WarehouseService.class);
         unitService = mock(UnitService.class);
         adjustmentService = mock(InventoryAdjustmentService.class);
+        inventoryService = mock(TransactionalInventoryService.class);
+        // 默认：无既有库存（零视图）——期初导入的「防重复建账」守卫放行；
+        // 个别用例（已有余额）覆写为非零视图。
+        when(inventoryService.balanceOf(anyLong(), anyLong()))
+                .thenReturn(new InventoryBalanceView(0L, 0L, BigDecimal.ZERO, BigDecimal.ZERO));
 
         importService = new ImportService(productService, customerService, supplierService,
-                warehouseService, unitService, adjustmentService);
+                warehouseService, unitService, adjustmentService, inventoryService);
     }
 
     // ====================================================================
@@ -321,6 +329,53 @@ class ImportServiceTest {
         verify(adjustmentService).opening(anyLong(), anyLong(), any(), any(), eq(OPERATOR));
     }
 
+    @Test
+    void 期初库存同仓库商品重复行_行级失败_防双倍建账() throws IOException {
+        // 同一(仓库,商品)两行——期初每个仓库+商品只能一行，第2行应被去重拒绝
+        byte[] xlsx = buildOpeningStockXlsxTwoRows(
+                "WH-001", "SKU-001", "100", "10.00",
+                "WH-001", "SKU-001", "50", "20.00");
+        MultipartFile file = mockFile(xlsx);
+
+        Warehouse wh = warehouse(1L, "WH-001", "测试仓");
+        Product prod = product(2L, "SKU-001", "测试商品");
+        when(warehouseService.search(any())).thenReturn(new PageResult<>(List.of(wh), 1, 1, 10));
+        when(productService.search(any())).thenReturn(new PageResult<>(List.of(prod), 1, 1, 10));
+
+        assertThatThrownBy(() -> importService.importOpeningStock(file, OPERATOR))
+                .isInstanceOf(ImportRejectedException.class)
+                .satisfies(ex -> {
+                    var result = ((ImportRejectedException) ex).toResult();
+                    assertThat(result.failures()).hasSize(1);
+                    assertThat(result.failures().get(0).row()).isEqualTo(3); // 第2数据行=Excel 第3行
+                    assertThat(result.failures().get(0).reason()).contains("重复");
+                });
+    }
+
+    @Test
+    void 期初库存已有余额_行级失败_不重复建账() throws IOException {
+        byte[] xlsx = buildOpeningStockXlsx("WH-001", "SKU-001", "100", "10.00");
+        MultipartFile file = mockFile(xlsx);
+
+        Warehouse wh = warehouse(1L, "WH-001", "测试仓");
+        Product prod = product(2L, "SKU-001", "测试商品");
+        when(warehouseService.search(any())).thenReturn(new PageResult<>(List.of(wh), 1, 1, 10));
+        when(productService.search(any())).thenReturn(new PageResult<>(List.of(prod), 1, 1, 10));
+        // 该(仓库,商品)已有库存（非零视图）→ 期初守卫拒绝、不可重复建账
+        when(inventoryService.balanceOf(1L, 2L))
+                .thenReturn(new InventoryBalanceView(1L, 2L, new BigDecimal("5"), new BigDecimal("50.00")));
+
+        assertThatThrownBy(() -> importService.importOpeningStock(file, OPERATOR))
+                .isInstanceOf(ImportRejectedException.class)
+                .satisfies(ex -> {
+                    var result = ((ImportRejectedException) ex).toResult();
+                    assertThat(result.failures()).hasSize(1);
+                    assertThat(result.failures().get(0).reason()).contains("已有库存");
+                });
+
+        verifyNoInteractions(adjustmentService);
+    }
+
     // ====================================================================
     // 工具方法
     // ====================================================================
@@ -374,6 +429,34 @@ class ImportServiceTest {
             dataRow.createCell(2).setCellValue(quantity);
             dataRow.createCell(3).setCellValue(unitCost);
 
+            var out = new java.io.ByteArrayOutputStream();
+            wb.write(out);
+            return out.toByteArray();
+        } catch (Exception e) {
+            throw new RuntimeException("构造测试 xlsx 失败", e);
+        }
+    }
+
+    /** 构造含两行数据的期初库存 xlsx（用于重复行/防双倍建账场景） */
+    private static byte[] buildOpeningStockXlsxTwoRows(String wh1, String prod1, String qty1, String cost1,
+                                                       String wh2, String prod2, String qty2, String cost2) {
+        try (var wb = new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+            var sheet = wb.createSheet("导入数据");
+            var headerRow = sheet.createRow(0);
+            headerRow.createCell(0).setCellValue(ImportColumns.OPENING_WAREHOUSE);
+            headerRow.createCell(1).setCellValue(ImportColumns.OPENING_PRODUCT);
+            headerRow.createCell(2).setCellValue(ImportColumns.OPENING_QUANTITY);
+            headerRow.createCell(3).setCellValue(ImportColumns.OPENING_UNIT_COST);
+            var r1 = sheet.createRow(1);
+            r1.createCell(0).setCellValue(wh1);
+            r1.createCell(1).setCellValue(prod1);
+            r1.createCell(2).setCellValue(qty1);
+            r1.createCell(3).setCellValue(cost1);
+            var r2 = sheet.createRow(2);
+            r2.createCell(0).setCellValue(wh2);
+            r2.createCell(1).setCellValue(prod2);
+            r2.createCell(2).setCellValue(qty2);
+            r2.createCell(3).setCellValue(cost2);
             var out = new java.io.ByteArrayOutputStream();
             wb.write(out);
             return out.toByteArray();
