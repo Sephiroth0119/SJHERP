@@ -128,6 +128,32 @@ public enum Permission {
      */
     DATA_IMPORT("data:import", "数据导入"),
 
+    // ------------------------------------------------- 财务总账（M4-T01）
+
+    /**
+     * 会计科目维护：科目建档/启停（REST POST /api/gl/accounts、/accounts/{code}/disable|enable）。
+     * 科目表/末级科目查询照例不设权限点（登录即可）。
+     */
+    FINANCE_ACCOUNT("finance:account", "会计科目维护"),
+
+    /**
+     * 会计期间管理：账期开启/关闭（REST POST /api/gl/periods、/periods/{period}/close）。
+     * 账期列表/详情查询登录即可。重开账期单列高敏权限 {@link #FINANCE_PERIOD_REOPEN}。
+     */
+    FINANCE_PERIOD("finance:period", "会计期间管理"),
+
+    /**
+     * 会计期间重开（高敏，CLAUDE.md 原则 2：期间不可随意重开）：REST POST /api/gl/periods/{period}/reopen。
+     * 仅授 ADMIN/BOSS（不授 ACCOUNTANT），与日常开关账分离把控。
+     */
+    FINANCE_PERIOD_REOPEN("finance:period_reopen", "会计期间重开"),
+
+    /**
+     * 凭证管理：凭证建单/过账/查询（REST /api/gl/vouchers**、/trial-balance、/account-balance，M4-T01）。
+     * 凭证整体属受控动作，查询接口同样要求本权限点；红字冲销实现留 M4-T07。
+     */
+    FINANCE_VOUCHER("finance:voucher", "凭证管理"),
+
     // ------------------------------------------------- 流程缺口
 
     /** 缺口状态流转（GapController POST /api/gaps/{id}/status，开发侧操作） */
@@ -138,8 +164,8 @@ public enum Permission {
     /** 演示用高风险工具 demo_post_document（dev/local 验证 HITL 链路；生产不注册该工具） */
     DEMO_POST_DOCUMENT("demo:post_document", "演示高风险操作");
 
-    // 财务权限点（finance:*，如过账/结账/付款核销）留 M4 财务模块落地时补充——
-    // 届时 ACCOUNTANT 角色在 RolePermissions 一并扩充（M3 起已含 purchase:invoice / sales:invoice）。
+    // 总账财务权限点 finance:account/period/period_reopen/voucher 已于 M4-T01 落地（见上）；
+    // 后续付款/收款核销（M4-T03）、关账结转（M4-T05）等财务权限点在对应任务落地时再补充。
 
     /** 稳定字符串标识（与 Tool.requiredPermission / @PreAuthorize 表达式一致，不可改） */
     private final String code;

@@ -43,6 +43,10 @@ class RolePermissionsTest {
                 Permission.SALES_ORDER,
                 Permission.SALES_DELIVERY,
                 Permission.SALES_INVOICE,
+                Permission.FINANCE_ACCOUNT,
+                Permission.FINANCE_PERIOD,
+                Permission.FINANCE_PERIOD_REOPEN,
+                Permission.FINANCE_VOUCHER,
                 Permission.DATA_IMPORT,
                 Permission.GAP_TRIAGE), boss);
         assertFalse(boss.contains(Permission.DEMO_POST_DOCUMENT));
@@ -78,9 +82,13 @@ class RolePermissionsTest {
     }
 
     @Test
-    void ACCOUNTANT_采购发票与销售发票_其余财务权限留M4() {
-        assertEquals(EnumSet.of(Permission.PURCHASE_INVOICE, Permission.SALES_INVOICE),
+    void ACCOUNTANT_采购销售发票加总账科目账期凭证_不含账期重开() {
+        assertEquals(EnumSet.of(Permission.PURCHASE_INVOICE, Permission.SALES_INVOICE,
+                        Permission.FINANCE_ACCOUNT, Permission.FINANCE_PERIOD, Permission.FINANCE_VOUCHER),
                 RolePermissions.permissionsOf(Role.ACCOUNTANT));
+        // 账期重开是高敏操作，ACCOUNTANT 不持有（仅 ADMIN/BOSS）
+        assertFalse(RolePermissions.permissionsOf(Role.ACCOUNTANT)
+                .contains(Permission.FINANCE_PERIOD_REOPEN));
     }
 
     @Test
@@ -183,6 +191,31 @@ class RolePermissionsTest {
         // PURCHASER 不含任何 sales:*；SALES 不含任何 purchase:*（两线互不串权）
         assertFalse(RolePermissions.isGrantedCode(Set.of(Role.PURCHASER), "sales:order"));
         assertFalse(RolePermissions.isGrantedCode(Set.of(Role.SALES), "purchase:order"));
+
+        // 会计科目（M4-T01）：ADMIN/BOSS/ACCOUNTANT 持有，其余角色拒绝
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.ACCOUNTANT), "finance:account"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.BOSS), "finance:account"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.ADMIN), "finance:account"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.PURCHASER), "finance:account"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.SALES), "finance:account"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.WAREHOUSE), "finance:account"));
+        // 会计期间（M4-T01）：ADMIN/BOSS/ACCOUNTANT 持有，其余角色拒绝
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.ACCOUNTANT), "finance:period"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.BOSS), "finance:period"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.ADMIN), "finance:period"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.PURCHASER), "finance:period"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.WAREHOUSE), "finance:period"));
+        // 凭证（M4-T01）：ADMIN/BOSS/ACCOUNTANT 持有，其余角色拒绝
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.ACCOUNTANT), "finance:voucher"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.BOSS), "finance:voucher"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.ADMIN), "finance:voucher"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.PURCHASER), "finance:voucher"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.SALES), "finance:voucher"));
+        // 账期重开（M4-T01，高敏）：仅 ADMIN/BOSS 持有，ACCOUNTANT 明确拒绝
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.BOSS), "finance:period_reopen"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.ADMIN), "finance:period_reopen"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.ACCOUNTANT), "finance:period_reopen"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.PURCHASER), "finance:period_reopen"));
     }
 
     @Test
