@@ -52,6 +52,10 @@ public class VoucherService {
     /**
      * 创建凭证（草稿）：校验账期存在、凭证日期落在账期内、逐行科目末级且启用，构造时强制借贷平衡。
      *
+     * <p>手工凭证入口（来源单据两列留空）。自动凭证（T02）走
+     * {@link #createFromSource}，本方法重构为委托其传 {@code sourceType=null, sourceDocNo=null}
+     * 复用——<b>public 签名不变，T01 调用方/测试不受影响</b>。
+     *
      * @param docNo       单据号（VCH-yyyyMM-序号，app 层用 DocumentNumberGenerator 生成）
      * @param period      所属账期键 yyyyMM
      * @param voucherDate 凭证日期（须落在 period 内）
@@ -62,6 +66,29 @@ public class VoucherService {
     @Audited(action = "voucher.create", targetType = "voucher")
     public Voucher create(String docNo, String period, LocalDate voucherDate, String summary,
                           List<VoucherLineInput> lines, String operator) {
+        return createFromSource(docNo, period, voucherDate, summary, null, null, lines, operator);
+    }
+
+    /**
+     * 创建凭证（草稿）并回填来源单据（T02 自动凭证唯一入口；手工凭证 {@link #create} 委托本方法传两个 null）。
+     *
+     * <p>校验、行编排、借贷平衡与 {@link #create} 完全一致；额外把 {@code sourceType} / {@code sourceDocNo}
+     * 透传给 {@link Voucher#create} 回填来源两列，建立"凭证 ↔ 业务单据"可追溯锚点（拆解 §3，
+     * 配合 V20 {@code uk_voucher_source} 物理唯一兜底自动凭证幂等）。
+     *
+     * @param docNo       单据号（VCH-yyyyMM-序号）
+     * @param period      所属账期键 yyyyMM
+     * @param voucherDate 凭证日期（须落在 period 内）
+     * @param summary     凭证摘要（可空）
+     * @param sourceType  来源单据类型（手工凭证传 null）
+     * @param sourceDocNo 来源单据号（手工凭证传 null）
+     * @param lines       行输入（≥2 行，经 Voucher.create 强制借贷平衡）
+     * @param operator    操作人
+     */
+    @Audited(action = "voucher.create", targetType = "voucher")
+    public Voucher createFromSource(String docNo, String period, LocalDate voucherDate, String summary,
+                                    VoucherSourceType sourceType, String sourceDocNo,
+                                    List<VoucherLineInput> lines, String operator) {
         requireOperator(operator);
         Objects.requireNonNull(docNo, "单据号不能为空");
         Objects.requireNonNull(period, "账期不能为空");
@@ -95,9 +122,11 @@ public class VoucherService {
                     input.credit(), input.summary()));
         }
 
+        // 来源单据类型落库为枚举名（source_doc_type 列字典），无来源则 null
+        String sourceTypeName = sourceType == null ? null : sourceType.name();
         // 构造时强制借贷平衡（验收①：不平抛 VoucherNotBalancedException，到不了 save）
         Voucher voucher = Voucher.create(docNo, normalizedPeriod, voucherDate, null, summary,
-                null, null, operator, domainLines);
+                sourceTypeName, sourceDocNo, operator, domainLines);
         voucher.registerEventPublisher(eventPublisher);
         repository.save(voucher);
         return voucher;
@@ -143,6 +172,14 @@ public class VoucherService {
     /** 分页查询 */
     public PageResult<Voucher> search(VoucherQuery query) {
         return repository.search(Objects.requireNonNull(query, "query 不能为空"));
+    }
+
+    /**
+     * 按来源单据号查（T02 自动凭证幂等查重用）：同来源单据已生成凭证时非空。
+     * 手工凭证来源两列为 null，不会被命中。
+     */
+    public List<Voucher> findBySourceDocNo(String sourceDocNo) {
+        return repository.findBySourceDocNo(Objects.requireNonNull(sourceDocNo, "来源单据号不能为空"));
     }
 
     // ---------------------------------------------------------------

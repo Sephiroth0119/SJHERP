@@ -4,7 +4,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import com.sjherp.app.gl.AutoVoucherService;
 import com.sjherp.domain.common.event.DomainEventPublisher;
+import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
 import com.sjherp.domain.gl.AccountRepository;
 import com.sjherp.domain.gl.AccountService;
 import com.sjherp.domain.gl.AccountingPeriodRepository;
@@ -76,5 +78,19 @@ public class GlInfraConfig {
                                          DomainEventPublisher domainEventPublisher) {
         return new VoucherService(voucherRepository, accountService, accountingPeriodService,
                 domainEventPublisher);
+    }
+
+    // ---------------- 业务→凭证自动化（M4-T02） ----------------
+
+    /**
+     * 自动凭证应用服务（M4-T02）：业务单据过账后联动生成记账凭证。
+     * 由四个采购/销售 {@code *AppService.post} 同事务直调；DocumentNumberGenerator 由
+     * CatalogInfraConfig 注册（VCH- 凭证号按凭证日期所属年月段计序）。
+     */
+    @Bean
+    public AutoVoucherService autoVoucherService(VoucherService voucherService,
+                                                 AccountingPeriodService accountingPeriodService,
+                                                 DocumentNumberGenerator documentNumberGenerator) {
+        return new AutoVoucherService(voucherService, accountingPeriodService, documentNumberGenerator);
     }
 }

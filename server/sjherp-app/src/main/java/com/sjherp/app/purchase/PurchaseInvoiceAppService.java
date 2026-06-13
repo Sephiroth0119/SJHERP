@@ -8,6 +8,7 @@ import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.sjherp.app.gl.AutoVoucherService;
 import com.sjherp.app.purchase.PurchaseDtos.PurchaseInvoiceLineRequest;
 import com.sjherp.domain.common.PageResult;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
@@ -50,13 +51,15 @@ public class PurchaseInvoiceAppService {
     private final SupplierService supplierService;
     private final AccountsPayableRepository accountsPayableRepository;
     private final DocumentNumberGenerator numberGenerator;
+    private final AutoVoucherService autoVoucherService;
 
     public PurchaseInvoiceAppService(PurchaseInvoiceService purchaseInvoiceService,
                                      PurchaseReceiptService purchaseReceiptService,
                                      PurchaseOrderService purchaseOrderService,
                                      SupplierService supplierService,
                                      AccountsPayableRepository accountsPayableRepository,
-                                     DocumentNumberGenerator numberGenerator) {
+                                     DocumentNumberGenerator numberGenerator,
+                                     AutoVoucherService autoVoucherService) {
         this.purchaseInvoiceService = Objects.requireNonNull(purchaseInvoiceService,
                 "purchaseInvoiceService 不能为空");
         this.purchaseReceiptService = Objects.requireNonNull(purchaseReceiptService,
@@ -67,6 +70,8 @@ public class PurchaseInvoiceAppService {
         this.accountsPayableRepository = Objects.requireNonNull(accountsPayableRepository,
                 "accountsPayableRepository 不能为空");
         this.numberGenerator = Objects.requireNonNull(numberGenerator, "numberGenerator 不能为空");
+        this.autoVoucherService = Objects.requireNonNull(autoVoucherService,
+                "autoVoucherService 不能为空");
     }
 
     /**
@@ -108,13 +113,19 @@ public class PurchaseInvoiceAppService {
         return purchaseInvoiceService.approve(docNo, operator);
     }
 
-    /** 过账采购发票（APPROVED → EXECUTING → COMPLETED，生成应付账款） */
+    /**
+     * 过账采购发票（APPROVED → EXECUTING → COMPLETED，生成应付账款）；
+     * 同事务内自动生成记账凭证（借 220201 暂估应付款 / 贷 220202 应付账款，T02）。
+     */
     @Transactional
     public PurchaseInvoice post(String docNo, String operator) {
         PurchaseInvoice invoice = purchaseInvoiceService.get(docNo);
         // 到期日按供应商当前结算方式推算（取自供应商档案，与建单时一致）
         Supplier supplier = supplierService.get(invoice.getSupplierId());
-        return purchaseInvoiceService.post(docNo, supplier.getSettlementMethod(), operator);
+        PurchaseInvoice posted = purchaseInvoiceService.post(docNo, supplier.getSettlementMethod(),
+                operator);
+        autoVoucherService.generateForPurchaseInvoice(posted, operator);   // T02 自动凭证
+        return posted;
     }
 
     /** 按单据号查（不存在抛 PurchaseInvoiceNotFoundException → 404） */

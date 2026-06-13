@@ -8,6 +8,7 @@ import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.sjherp.app.gl.AutoVoucherService;
 import com.sjherp.app.sales.SalesDtos.SalesInvoiceLineRequest;
 import com.sjherp.domain.common.PageResult;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
@@ -46,15 +47,18 @@ public class SalesInvoiceAppService {
     private final SalesDeliveryService salesDeliveryService;
     private final SalesOrderService salesOrderService;
     private final DocumentNumberGenerator numberGenerator;
+    private final AutoVoucherService autoVoucherService;
 
     public SalesInvoiceAppService(SalesInvoiceService salesInvoiceService,
                                   SalesDeliveryService salesDeliveryService,
                                   SalesOrderService salesOrderService,
-                                  DocumentNumberGenerator numberGenerator) {
+                                  DocumentNumberGenerator numberGenerator,
+                                  AutoVoucherService autoVoucherService) {
         this.salesInvoiceService = Objects.requireNonNull(salesInvoiceService, "salesInvoiceService 不能为空");
         this.salesDeliveryService = Objects.requireNonNull(salesDeliveryService, "salesDeliveryService 不能为空");
         this.salesOrderService = Objects.requireNonNull(salesOrderService, "salesOrderService 不能为空");
         this.numberGenerator = Objects.requireNonNull(numberGenerator, "numberGenerator 不能为空");
+        this.autoVoucherService = Objects.requireNonNull(autoVoucherService, "autoVoucherService 不能为空");
     }
 
     /**
@@ -100,10 +104,15 @@ public class SalesInvoiceAppService {
         return salesInvoiceService.approve(docNo, operator);
     }
 
-    /** 过账发票（APPROVED → EXECUTING → COMPLETED，生成应收 OPEN） */
+    /**
+     * 过账发票（APPROVED → EXECUTING → COMPLETED，生成应收 OPEN）；
+     * 同事务内自动生成记账凭证（借 1122 应收账款 / 贷 6001 主营业务收入，T02）。
+     */
     @Transactional
     public SalesInvoice post(String docNo, String operator) {
-        return salesInvoiceService.post(docNo, operator);
+        SalesInvoice invoice = salesInvoiceService.post(docNo, operator);
+        autoVoucherService.generateForSalesInvoice(invoice, operator);   // T02 自动凭证
+        return invoice;
     }
 
     /** 作废发票（仅 DRAFT 可作废） */

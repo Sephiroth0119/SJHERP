@@ -8,6 +8,7 @@ import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.sjherp.app.gl.AutoVoucherService;
 import com.sjherp.app.purchase.PurchaseDtos.PurchaseReceiptLineRequest;
 import com.sjherp.domain.common.ArchiveStatus;
 import com.sjherp.domain.common.PageResult;
@@ -42,14 +43,18 @@ public class PurchaseReceiptAppService {
     private final PurchaseReceiptService purchaseReceiptService;
     private final WarehouseService warehouseService;
     private final DocumentNumberGenerator numberGenerator;
+    private final AutoVoucherService autoVoucherService;
 
     public PurchaseReceiptAppService(PurchaseReceiptService purchaseReceiptService,
                                      WarehouseService warehouseService,
-                                     DocumentNumberGenerator numberGenerator) {
+                                     DocumentNumberGenerator numberGenerator,
+                                     AutoVoucherService autoVoucherService) {
         this.purchaseReceiptService = Objects.requireNonNull(purchaseReceiptService,
                 "purchaseReceiptService 不能为空");
         this.warehouseService = Objects.requireNonNull(warehouseService, "warehouseService 不能为空");
         this.numberGenerator = Objects.requireNonNull(numberGenerator, "numberGenerator 不能为空");
+        this.autoVoucherService = Objects.requireNonNull(autoVoucherService,
+                "autoVoucherService 不能为空");
     }
 
     /**
@@ -89,10 +94,15 @@ public class PurchaseReceiptAppService {
         return purchaseReceiptService.approve(docNo, operator);
     }
 
-    /** 过账采购入库单（APPROVED → EXECUTING → COMPLETED，产生 PURCHASE_IN 入库流水 + 回写到货量） */
+    /**
+     * 过账采购入库单（APPROVED → EXECUTING → COMPLETED，产生 PURCHASE_IN 入库流水 + 回写到货量）；
+     * 同事务内自动生成记账凭证（借 1405 库存商品 / 贷 220201 暂估应付款，T02）。
+     */
     @Transactional
     public PurchaseReceipt post(String docNo, String operator) {
-        return purchaseReceiptService.post(docNo, operator);
+        PurchaseReceipt receipt = purchaseReceiptService.post(docNo, operator);
+        autoVoucherService.generateForPurchaseReceipt(receipt, operator);   // T02 自动凭证
+        return receipt;
     }
 
     /** 按单据号查（不存在抛 PurchaseReceiptNotFoundException → 404） */

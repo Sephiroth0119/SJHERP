@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.sjherp.app.config.TransactionalInventoryService;
+import com.sjherp.app.gl.AutoVoucherService;
 import com.sjherp.app.sales.SalesDtos.SalesDeliveryLineRequest;
 import com.sjherp.domain.common.ArchiveStatus;
 import com.sjherp.domain.common.PageResult;
@@ -42,13 +43,16 @@ public class SalesDeliveryAppService {
     private final SalesDeliveryService salesDeliveryService;
     private final WarehouseService warehouseService;
     private final DocumentNumberGenerator numberGenerator;
+    private final AutoVoucherService autoVoucherService;
 
     public SalesDeliveryAppService(SalesDeliveryService salesDeliveryService,
                                    WarehouseService warehouseService,
-                                   DocumentNumberGenerator numberGenerator) {
+                                   DocumentNumberGenerator numberGenerator,
+                                   AutoVoucherService autoVoucherService) {
         this.salesDeliveryService = Objects.requireNonNull(salesDeliveryService, "salesDeliveryService 不能为空");
         this.warehouseService = Objects.requireNonNull(warehouseService, "warehouseService 不能为空");
         this.numberGenerator = Objects.requireNonNull(numberGenerator, "numberGenerator 不能为空");
+        this.autoVoucherService = Objects.requireNonNull(autoVoucherService, "autoVoucherService 不能为空");
     }
 
     /**
@@ -89,10 +93,15 @@ public class SalesDeliveryAppService {
         return salesDeliveryService.approve(docNo, operator);
     }
 
-    /** 过账出库单（APPROVED → EXECUTING → COMPLETED，产生 SALES_OUT 流水 + COGS 回填 + 回写订单发货量） */
+    /**
+     * 过账出库单（APPROVED → EXECUTING → COMPLETED，产生 SALES_OUT 流水 + COGS 回填 + 回写订单发货量）；
+     * 同事务内自动生成记账凭证（借 6401 主营业务成本 / 贷 1405 库存商品，金额=Σ COGS，T02；COGS=0 跳过）。
+     */
     @Transactional
     public SalesDelivery post(String docNo, String operator) {
-        return salesDeliveryService.post(docNo, operator);
+        SalesDelivery delivery = salesDeliveryService.post(docNo, operator);
+        autoVoucherService.generateForSalesDelivery(delivery, operator);   // T02 自动凭证（COGS 已回填）
+        return delivery;
     }
 
     /** 作废出库单（仅 DRAFT 可作废） */

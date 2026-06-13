@@ -1,6 +1,7 @@
 package com.sjherp.domain.gl;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -169,6 +170,55 @@ class VoucherServiceTest {
     @Test
     void 过账_不存在凭证抛NotFound() {
         assertThrows(VoucherNotFoundException.class, () -> service.post("VCH-NONE", OPERATOR));
+    }
+
+    // ----------------------------------------------------- createFromSource（T02 自动凭证可追溯）
+
+    @Test
+    void 建单来源_回填来源两列_可追溯锚点() {
+        // T02：自动凭证经 createFromSource 回填 source_doc_type / source_doc_no（拆解 §3）
+        Voucher voucher = service.createFromSource(DOC_NO, PERIOD, DATE, "采购入库 PR-202606-0001",
+                VoucherSourceType.PURCHASE_RECEIPT, "PR-202606-0001",
+                List.of(lineInput("1001", "100.00", null), lineInput("6001", null, "100.00")), OPERATOR);
+
+        // 来源两列落库为枚举名 + 业务单号（与 findBySourceDocNo 幂等键一致）
+        assertEquals("PURCHASE_RECEIPT", voucher.getSourceDocType());
+        assertEquals("PR-202606-0001", voucher.getSourceDocNo());
+        assertEquals(DocumentStatus.DRAFT, voucher.getStatus());
+        // 可按来源单号查回（幂等查重路径）
+        assertEquals(1, service.findBySourceDocNo("PR-202606-0001").size());
+    }
+
+    @Test
+    void 建单来源_平衡校验沿用_借贷不平被拒() {
+        // createFromSource 与 create 共用 Voucher.create 平衡校验（验收①）
+        assertThrows(VoucherNotBalancedException.class,
+                () -> service.createFromSource(DOC_NO, PERIOD, DATE, null,
+                        VoucherSourceType.SALES_INVOICE, "SINV-202606-0001",
+                        List.of(lineInput("1001", "100.00", null), lineInput("6001", null, "99.00")),
+                        OPERATOR));
+        assertTrue(voucherRepo.findByDocNo(DOC_NO).isEmpty());
+    }
+
+    @Test
+    void 建单来源_账期日期科目校验沿用() {
+        // 凭证日期不在账期内同样被拒（与 create 一致）
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> service.createFromSource(DOC_NO, PERIOD, LocalDate.of(2026, 7, 1), null,
+                        VoucherSourceType.PURCHASE_INVOICE, "PINV-202606-0001",
+                        List.of(lineInput("1001", "1.00", null), lineInput("6001", null, "1.00")),
+                        OPERATOR));
+        assertTrue(ex.getMessage().contains("不在账期"), ex.getMessage());
+    }
+
+    @Test
+    void 手工建单create_委托createFromSource_来源两列为空() {
+        // create 重构为 createFromSource(...,null,null,...)：手工凭证来源两列必须为 null（不被幂等查重命中）
+        Voucher voucher = service.create(DOC_NO, PERIOD, DATE, "手工凭证",
+                List.of(lineInput("1001", "100.00", null), lineInput("6001", null, "100.00")), OPERATOR);
+
+        assertNull(voucher.getSourceDocType());
+        assertNull(voucher.getSourceDocNo());
     }
 
     // ----------------------------------------------------- 冲销（留 T07）
