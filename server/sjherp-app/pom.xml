@@ -23,6 +23,12 @@
     <properties>
         <!-- JWT（M2-T05 认证）：jjwt 不在 Spring Boot BOM 内，版本在此统一管理 -->
         <jjwt.version>0.12.6</jjwt.version>
+        <!-- springdoc-openapi 版本：knife4j-openapi3-starter 4.5.0 捆绑的 springdoc 2.3.0
+             与 Spring Boot 3.4.x（Spring 6.2.x）的 ControllerAdviceBean API 不兼容；
+             knife4j 4.4+ 的 groupConfigs() 从 List 改为 Set 也导致二进制不兼容。
+             解决方案：只引入 knife4j-openapi3-ui（纯前端，无 Spring 依赖）+
+             springdoc 2.7.0（兼容 Spring 6.2.x），绕过 knife4j starter 的 autoconfigure。 -->
+        <springdoc.version>2.7.0</springdoc.version>
     </properties>
 
     <dependencies>
@@ -93,6 +99,24 @@
             <groupId>org.testcontainers</groupId>
             <artifactId>mysql</artifactId>
             <scope>test</scope>
+        </dependency>
+        <!-- API 可视化文档（仅 dev/local profile 启用，生产 springdoc.api-docs.enabled=false）：
+             - springdoc-openapi-starter-webmvc-ui 2.7.0：提供 /v3/api-docs 元数据接口，
+               适配 Spring Boot 3.4.x（Spring 6.2.x）；
+             - knife4j-openapi3-ui 4.5.0：仅引入 knife4j 前端静态资源（/doc.html、/webjars/**），
+               不引入 knife4j 的 Spring autoconfigure（后者依赖已废弃的 springdoc 2.3.x API，
+               与 springdoc 2.4+ 的 SpringDocConfigProperties.getGroupConfigs() 返回类型不兼容）。
+             综合效果：/doc.html 使用 knife4j 美化界面，/v3/api-docs 由 springdoc 2.7.0 生成，
+             JWT Authorize 按钮通过 OpenApiConfig 的 securityScheme 全局生效。 -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>${springdoc.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.xiaoymin</groupId>
+            <artifactId>knife4j-openapi3-ui</artifactId>
+            <version>4.5.0</version>
         </dependency>
     </dependencies>
 

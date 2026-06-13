@@ -1,8 +1,10 @@
 package com.sjherp.app.security;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.List;
 
+import org.springframework.core.env.Environment;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -22,6 +24,9 @@ import jakarta.servlet.http.HttpServletResponse;
  *
  * <p>token 缺失/非法/用户已停用时不在本过滤器报错，直接放行——后续授权
  * 规则会拦下并由 {@link SecurityConfig} 的入口点统一回 401 {"error": "未登录或登录已过期"}。
+ *
+ * <p>knife4j 文档路径（/doc.html、/webjars/**、/v3/api-docs/**、/favicon.ico）：
+ * 与 {@link SecurityConfig} 同口径，仅在 dev/local profile 下跳过 token 解析。
  */
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
@@ -29,10 +34,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final UserRepository userRepository;
+    /** 用于判断当前激活的 profile，决定是否跳过 knife4j 路径的 token 解析 */
+    private final Environment environment;
 
-    public JwtAuthenticationFilter(JwtService jwtService, UserRepository userRepository) {
+    public JwtAuthenticationFilter(JwtService jwtService,
+                                   UserRepository userRepository,
+                                   Environment environment) {
         this.jwtService = jwtService;
         this.userRepository = userRepository;
+        this.environment = environment;
     }
 
     @Override
@@ -63,7 +73,28 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         // 登录与健康检查无需解析 token（即便带了也忽略，避免无谓的库查询）；
         // 与 SecurityConfig 白名单同口径限定 method（登录仅 POST），其余 method 仍走 token 解析
         String path = request.getServletPath();
-        return ("/api/auth/login".equals(path) && "POST".equalsIgnoreCase(request.getMethod()))
-                || ("/api/health".equals(path) && "GET".equalsIgnoreCase(request.getMethod()));
+        if (("/api/auth/login".equals(path) && "POST".equalsIgnoreCase(request.getMethod()))
+                || ("/api/health".equals(path) && "GET".equalsIgnoreCase(request.getMethod()))) {
+            return true;
+        }
+        // knife4j / springdoc 文档路径：仅 dev/local profile 跳过 token 解析（与 SecurityConfig 同口径）
+        if (isDevProfile() && isKnife4jPath(path)) {
+            return true;
+        }
+        return false;
+    }
+
+    /** 判断当前是否处于开发/本地 profile */
+    private boolean isDevProfile() {
+        return Arrays.stream(environment.getActiveProfiles())
+                .anyMatch(p -> "dev".equals(p) || "local".equals(p));
+    }
+
+    /** 判断路径是否属于 knife4j / springdoc 文档路径 */
+    private static boolean isKnife4jPath(String path) {
+        return "/doc.html".equals(path)
+                || path.startsWith("/webjars/")
+                || path.startsWith("/v3/api-docs")
+                || "/favicon.ico".equals(path);
     }
 }

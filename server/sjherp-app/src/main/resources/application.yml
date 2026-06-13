@@ -87,3 +87,32 @@ sjherp:
     # 会话回放 API 不受影响；摘要生成失败时本次硬截断（只带最近 N 轮），不阻塞对话。
     history-token-budget: 8000   # 历史窗口 token 预算
     keep-recent-rounds: 6        # 压缩时保留的最近对话轮数
+
+# API 文档（knife4j + springdoc）：
+# 生产姿态默认关闭；仅 dev/local profile 开启（见下方 --- 文档块）。
+# 安全配置（SecurityConfig）在 dev/local profile 下放行 /doc.html、/v3/api-docs/**、
+# /webjars/**、/favicon.ico；生产姿态这些路径保持 401。
+springdoc:
+  api-docs:
+    enabled: false   # 生产默认关闭；dev/local profile 覆盖为 true
+knife4j:
+  enable: false      # 生产默认关闭；dev/local profile 覆盖为 true
+
+---
+# ================================================================
+# local / dev profile 配置块（仅在 spring.profiles.active=local 或 dev 时生效）
+# 用于本地开发与开发环境：开启 knife4j API 文档（/doc.html）与 springdoc 元数据接口。
+# 生产环境绝对不得激活 local/dev profile。
+# ================================================================
+spring:
+  config:
+    activate:
+      on-profile: "local,dev"
+
+springdoc:
+  api-docs:
+    enabled: true    # 仅 dev/local：开放 /v3/api-docs/**
+  swagger-ui:
+    enabled: true
+knife4j:
+  enable: true       # 仅 dev/local：开放 /doc.html

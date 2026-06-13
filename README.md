@@ -128,6 +128,10 @@ mvn spring-boot:run -pl sjherp-app "-Dspring-boot.run.profiles=local"   # 不需
 启动后可用 `GET /api/health` 探活；会话 API 见 `server/sjherp-app/.../chat/ChatSessionController.java`
 （POST /api/chat/sessions、GET /api/chat/sessions/{id}、POST /api/chat/sessions/{id}/messages）。
 
+**API 调试文档（仅 local/dev profile）**：local profile 启动后访问 `http://localhost:8080/doc.html`；
+用 `POST /api/auth/login`（用户名 `admin`，密码 `Admin@2026`）获取 token，点击右上角 `Authorize` 按钮填入 token，
+之后所有接口请求将自动携带认证头。生产环境文档路径强制关闭（返回 401）。
+
 ### 前端
 
 ```bash

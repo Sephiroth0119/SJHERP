@@ -80,6 +80,11 @@ SJHERP/
   - 不写裸 SQL 绕过领域服务做业务写操作（报表只读查询除外）。
   - 不在 Agent prompt 里硬编码业务规则——业务规则在领域层代码中，Agent 通过工具调用获得。
   - 不引入未在本文件登记的重量级框架/中间件，先讨论并记 ADR。
+- **Subagent 派工模型分级**（详见路线图 §13.6）：模式复制类任务用 sonnet、复杂逻辑与交叉校验用 opus、编排与决策由主模型把控；质量闸门（测试+CI+校验）不随模型降档。
+- **API 调试**：dev/local profile 下 knife4j 可视化文档开放于 `/doc.html`（生产强制关闭）；
+  登记依赖：`springdoc-openapi-starter-webmvc-ui:2.7.0`（/v3/api-docs 生成，兼容 Spring 6.2.x）
+  + `knife4j-openapi3-ui:4.5.0`（仅前端静态资源，不引入其 autoconfigure；
+  knife4j-openapi3-jakarta-spring-boot-starter 的 Spring autoconfigure 与 springdoc 2.4+ 二进制不兼容，故弃用）。
 
 ## 当前状态
 
