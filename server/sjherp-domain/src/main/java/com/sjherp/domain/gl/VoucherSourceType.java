@@ -22,7 +22,13 @@ public enum VoucherSourceType {
     SALES_DELIVERY,
 
     /** 销售发票过账：借 1122 应收账款，贷 6001 主营业务收入 */
-    SALES_INVOICE;
+    SALES_INVOICE,
+
+    /** 收款单过账：借 现金/银行（资金账户 glAccountCode），贷 1122 应收账款（M4-T04） */
+    COLLECTION_RECEIPT,
+
+    /** 付款单过账：借 220202 应付账款，贷 现金/银行（资金账户 glAccountCode）（M4-T04） */
+    PAYMENT_DISBURSEMENT;
 
     /** 中文标签（凭证摘要 / 审计 / 用户可见文案统一出口） */
     public String label() {
@@ -31,6 +37,8 @@ public enum VoucherSourceType {
             case PURCHASE_INVOICE -> "采购发票";
             case SALES_DELIVERY -> "销售出库";
             case SALES_INVOICE -> "销售发票";
+            case COLLECTION_RECEIPT -> "收款单";
+            case PAYMENT_DISBURSEMENT -> "付款单";
         };
     }
 }

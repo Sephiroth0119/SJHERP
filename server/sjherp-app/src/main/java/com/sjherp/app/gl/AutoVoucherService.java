@@ -8,6 +8,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Objects;
 
+import com.sjherp.domain.collection.CollectionReceipt;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
 import com.sjherp.domain.common.numbering.DocumentNumberRule;
 import com.sjherp.domain.gl.AccountingPeriodNotFoundException;
@@ -15,6 +16,7 @@ import com.sjherp.domain.gl.AccountingPeriodService;
 import com.sjherp.domain.gl.VoucherLineInput;
 import com.sjherp.domain.gl.VoucherService;
 import com.sjherp.domain.gl.VoucherSourceType;
+import com.sjherp.domain.payment.PaymentDisbursement;
 import com.sjherp.domain.purchase.PurchaseInvoice;
 import com.sjherp.domain.purchase.PurchaseReceipt;
 import com.sjherp.domain.sales.SalesDelivery;
@@ -67,6 +69,19 @@ public class AutoVoucherService {
     private static final String ACC_RECEIVABLE = "1122";
     /** 6001 主营业务收入（损益/贷） */
     private static final String ACC_REVENUE = "6001";
+
+    /**
+     * 1001 库存现金（资产/借，M4-T04 默认/文档常量）。
+     *
+     * <p>收/付款单现金侧实际借/贷科目由 {@code paymentAccount.glAccountCode} 动态传入
+     * （{@link #generateForCollectionReceipt}/{@link #generateForPaymentDisbursement} 的入参），
+     * 本常量与 {@link #ACC_BANK} 仅作默认值/文档说明，<b>不写死</b>分录科目。
+     */
+    @SuppressWarnings("unused")
+    private static final String ACC_CASH = "1001";
+    /** 1002 银行存款（资产/借，M4-T04 默认/文档常量，实际科目动态传入；见 {@link #ACC_CASH} 说明） */
+    @SuppressWarnings("unused")
+    private static final String ACC_BANK = "1002";
 
     /** 凭证编号规则：VCH-202606-0001（与 {@link VoucherAppService#VOUCHER_RULE} 一致） */
     private static final DocumentNumberRule VOUCHER_RULE = DocumentNumberRule.of("VCH");
@@ -159,6 +174,57 @@ public class AutoVoucherService {
                 creditLine(ACC_REVENUE, amount, summary));
         generate(VoucherSourceType.SALES_INVOICE, invoice.getDocNo(), amount,
                 invoice.getInvoiceDate(), summary, lines, operator);
+    }
+
+    /**
+     * 收款单过账 → 凭证：借 glAccountCode（资金账户现金/银行科目）/ 贷 1122 应收账款，
+     * 金额=收款总额，voucherDate=收款日期（M4-T04）。
+     *
+     * <p>现金侧借方科目<b>动态传入</b>（资金账户 {@code glAccountCode}，由 app 层取自
+     * {@code PaymentAccount.getGlAccountCode()}），不写死 1001/1002（设计真源 §2.4）。
+     * 由 {@code CollectionReceiptAppService.post} 在收款单过账 + 应收核销之后、同一 @Transactional
+     * 内直调（核销 + 现金侧凭证 + 单据状态原子，任一失败整单回滚）。
+     *
+     * @param receipt       已过账（COMPLETED）的收款单
+     * @param glAccountCode 资金账户映射的 GL 货币科目（借方，现金/银行）
+     * @param operator      操作人（沿用业务过账操作人）
+     */
+    public void generateForCollectionReceipt(CollectionReceipt receipt, String glAccountCode,
+                                             String operator) {
+        Objects.requireNonNull(receipt, "收款单不能为空");
+        Objects.requireNonNull(glAccountCode, "资金账户 GL 科目不能为空");
+        BigDecimal amount = receipt.totalAmount();
+        String summary = VoucherSourceType.COLLECTION_RECEIPT.label() + " " + receipt.getDocNo();
+        List<VoucherLineInput> lines = List.of(
+                debitLine(glAccountCode, amount, summary),
+                creditLine(ACC_RECEIVABLE, amount, summary));
+        generate(VoucherSourceType.COLLECTION_RECEIPT, receipt.getDocNo(), amount,
+                receipt.getReceiptDate(), summary, lines, operator);
+    }
+
+    /**
+     * 付款单过账 → 凭证：借 220202 应付账款 / 贷 glAccountCode（资金账户现金/银行科目），
+     * 金额=付款总额，voucherDate=付款日期（M4-T04）。
+     *
+     * <p>现金侧贷方科目<b>动态传入</b>（资金账户 {@code glAccountCode}），不写死 1001/1002
+     * （设计真源 §2.4）。由 {@code PaymentDisbursementAppService.post} 在付款单过账 + 应付核销之后、
+     * 同一 @Transactional 内直调（核销 + 现金侧凭证 + 单据状态原子，任一失败整单回滚）。
+     *
+     * @param disbursement  已过账（COMPLETED）的付款单
+     * @param glAccountCode 资金账户映射的 GL 货币科目（贷方，现金/银行）
+     * @param operator      操作人
+     */
+    public void generateForPaymentDisbursement(PaymentDisbursement disbursement, String glAccountCode,
+                                               String operator) {
+        Objects.requireNonNull(disbursement, "付款单不能为空");
+        Objects.requireNonNull(glAccountCode, "资金账户 GL 科目不能为空");
+        BigDecimal amount = disbursement.totalAmount();
+        String summary = VoucherSourceType.PAYMENT_DISBURSEMENT.label() + " " + disbursement.getDocNo();
+        List<VoucherLineInput> lines = List.of(
+                debitLine(ACC_PAYABLE_FORMAL, amount, summary),
+                creditLine(glAccountCode, amount, summary));
+        generate(VoucherSourceType.PAYMENT_DISBURSEMENT, disbursement.getDocNo(), amount,
+                disbursement.getPaymentDate(), summary, lines, operator);
     }
 
     // ---------------------------------------------------------------
