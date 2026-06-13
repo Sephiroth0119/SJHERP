@@ -158,6 +158,17 @@ public abstract class BusinessDocument {
     }
 
     /**
+     * 持久层重建专用：直接置入已落库的状态，<b>不校验流转、不发布事件、不改审计字段</b>。
+     *
+     * <p>仅供子类的 {@code restore(...)} 工厂调用（从数据库恢复单据时，状态本就是
+     * 历史合法流转的结果，无需重放）。绝不可用于业务流转——业务流转一律走
+     * {@link #changeStatus}（受流转表与钩子约束）。
+     */
+    protected final void restoreStatus(DocumentStatus persistedStatus) {
+        this.status = Objects.requireNonNull(persistedStatus, "persistedStatus 不能为空");
+    }
+
+    /**
      * 流转前钩子：子类在此追加业务校验（如审核前明细不能为空、冲销前
      * 检查账期未关）。抛异常即否决本次流转。只可收紧规则、不可放宽流转表。
      */

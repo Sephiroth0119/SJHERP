@@ -57,6 +57,22 @@ public enum Permission {
      */
     INVENTORY_ADJUST("inventory:adjust", "库存调整"),
 
+    /**
+     * 库存盘点：盘点单建单/录入实盘/审核/过账/查询的受控动作权限点
+     * （Agent 工具 create_stock_count / query_stock_count；REST /api/inventory/stock-counts**，M3-T03）。
+     * 注意：盘点单查询接口也要求本权限点（StocktakeController 类级 @PreAuthorize），
+     * 区别于「查询登录即可」的通则——因为盘点是受控动作。
+     */
+    INVENTORY_COUNT("inventory:count", "库存盘点"),
+
+    /**
+     * 库存调拨：调拨单建单/审核/过账的写入口
+     * （Agent 工具 create_transfer / REST /api/inventory/transfers**，M3-T04）。
+     * 注意：调拨单查询接口也要求本权限点（TransferController 类级 @PreAuthorize），
+     * 区别于「查询登录即可」的通则——因为调拨是受控动作。
+     */
+    INVENTORY_TRANSFER("inventory:transfer", "库存调拨"),
+
     // ------------------------------------------------- 流程缺口
 
     /** 缺口状态流转（GapController POST /api/gaps/{id}/status，开发侧操作） */

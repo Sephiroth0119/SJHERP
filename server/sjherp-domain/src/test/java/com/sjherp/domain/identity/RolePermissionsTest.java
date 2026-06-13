@@ -35,6 +35,8 @@ class RolePermissionsTest {
                 Permission.PARTNER_WRITE,
                 Permission.WAREHOUSE_WRITE,
                 Permission.INVENTORY_ADJUST,
+                Permission.INVENTORY_COUNT,
+                Permission.INVENTORY_TRANSFER,
                 Permission.GAP_TRIAGE), boss);
         assertFalse(boss.contains(Permission.DEMO_POST_DOCUMENT));
     }
@@ -52,9 +54,10 @@ class RolePermissionsTest {
     }
 
     @Test
-    void WAREHOUSE_仓库域全部加库存调整_无其他域() {
+    void WAREHOUSE_仓库域全部加库存调整盘点调拨_无其他域() {
         assertEquals(EnumSet.of(Permission.WAREHOUSE_CREATE_WAREHOUSE, Permission.WAREHOUSE_WRITE,
-                        Permission.INVENTORY_ADJUST),
+                        Permission.INVENTORY_ADJUST, Permission.INVENTORY_COUNT,
+                        Permission.INVENTORY_TRANSFER),
                 RolePermissions.permissionsOf(Role.WAREHOUSE));
     }
 
@@ -103,6 +106,18 @@ class RolePermissionsTest {
         assertTrue(RolePermissions.isGrantedCode(Set.of(Role.BOSS), "inventory:adjust"));
         assertFalse(RolePermissions.isGrantedCode(Set.of(Role.SALES), "inventory:adjust"));
         assertFalse(RolePermissions.isGrantedCode(Set.of(Role.ACCOUNTANT), "inventory:adjust"));
+        // 库存盘点（M3-T03）：ADMIN/BOSS/WAREHOUSE 持有，其余角色拒绝
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.WAREHOUSE), "inventory:count"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.BOSS), "inventory:count"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.ADMIN), "inventory:count"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.SALES), "inventory:count"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.ACCOUNTANT), "inventory:count"));
+        // 库存调拨（M3-T04）：ADMIN/BOSS/WAREHOUSE 持有，其余角色拒绝
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.WAREHOUSE), "inventory:transfer"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.BOSS), "inventory:transfer"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.ADMIN), "inventory:transfer"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.SALES), "inventory:transfer"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.ACCOUNTANT), "inventory:transfer"));
         assertFalse(RolePermissions.isGrantedCode(Set.of(Role.WAREHOUSE), "partner:create_customer"));
     }
 
