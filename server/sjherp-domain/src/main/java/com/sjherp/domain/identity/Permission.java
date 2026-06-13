@@ -162,6 +162,14 @@ public enum Permission {
      */
     FINANCE_SETTLEMENT("finance:settlement", "应收应付核销与账龄"),
 
+    /**
+     * 资金账户档案（M4-T04a）：现金/银行账户 master 的<b>写</b>操作——建档/更新/启停
+     * （Agent 工具 create_payment_account / REST POST·PUT /api/fund/accounts、/{id}/enable|disable）。
+     * 资金账户查询（search_payment_accounts、GET /api/fund/accounts）照例不设权限点（登录即可）。
+     * 授 ADMIN/BOSS/ACCOUNTANT（资金账户是会计基础档案）。
+     */
+    FINANCE_PAYMENT_ACCOUNT("finance:payment_account", "资金账户档案"),
+
     // ------------------------------------------------- 流程缺口
 
     /** 缺口状态流转（GapController POST /api/gaps/{id}/status，开发侧操作） */

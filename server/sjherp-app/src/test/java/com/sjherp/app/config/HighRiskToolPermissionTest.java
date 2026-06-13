@@ -24,6 +24,7 @@ import com.sjherp.app.stocktake.StocktakeService;
 import com.sjherp.app.transfer.TransferAppService;
 import com.sjherp.domain.catalog.ProductService;
 import com.sjherp.domain.catalog.UnitService;
+import com.sjherp.domain.fund.PaymentAccountService;
 import com.sjherp.domain.partner.CustomerService;
 import com.sjherp.domain.partner.SupplierService;
 import com.sjherp.domain.warehouse.WarehouseService;
@@ -65,7 +66,8 @@ class HighRiskToolPermissionTest {
                 mock(SalesDeliveryAppService.class),
                 mock(SalesInvoiceAppService.class),
                 mock(ReceivableAppService.class),
-                mock(ConsistencyCheckService.class));
+                mock(ConsistencyCheckService.class),
+                mock(PaymentAccountService.class));
         // dev-only：演示工具（EchoTool NORMAL + DemoHighRiskTool HIGH），一并纳入断言
         new ToolConfig.DemoToolConfig(registry);
         return registry;
@@ -90,11 +92,12 @@ class HighRiskToolPermissionTest {
 
     @Test
     void 注册清单覆盖既有工具规模_防注册清单漂移() {
-        // M3-T11/T13 基线：常驻 40 个（查询 17 NORMAL + 写 23 HIGH；含 M3-T11 全量 20 工具
-        // [采购收货/发票 10 + 销售出库/发票 10] + M3-T13 run_consistency_check）
-        // + 演示 2 个（echo + demo_post_document）= 42。
+        // M4-T04a 基线：常驻 42 个（查询 18 NORMAL + 资金账户建档 1 NORMAL + 写 23 HIGH；
+        // 含 M3-T11 全量 20 工具 [采购收货/发票 10 + 销售出库/发票 10] + M3-T13 run_consistency_check
+        // + M4-T04a create_payment_account / search_payment_accounts）
+        // + 演示 2 个（echo + demo_post_document）= 44。
         // 新增工具装配类后此处会先于权限断言提醒维护注册清单。
-        assertTrue(registryWithAllTools().all().size() >= 42,
-                "注册工具数少于 M3-T11/T13 基线（42 个）——若调整了工具装配，请同步维护本测试的注册清单");
+        assertTrue(registryWithAllTools().all().size() >= 44,
+                "注册工具数少于 M4-T04a 基线（44 个）——若调整了工具装配，请同步维护本测试的注册清单");
     }
 }

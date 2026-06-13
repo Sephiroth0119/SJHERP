@@ -20,7 +20,8 @@ import java.util.Set;
  *   <li>WAREHOUSE：仓库域全部（创建 + 维护 + 库存调整 + 库存盘点 + 库存调拨）
  *       + 采购收货（purchase:receipt）+ 销售发货（sales:delivery）；</li>
  *   <li>ACCOUNTANT：采购发票/应付（purchase:invoice）+ 销售发票/应收（sales:invoice）
- *       + 总账财务（finance:account/period/voucher，M4-T01）+ 核销与账龄（finance:settlement，M4-T03）；
+ *       + 总账财务（finance:account/period/voucher，M4-T01）+ 核销与账龄（finance:settlement，M4-T03）
+ *       + 资金账户档案（finance:payment_account，M4-T04a）；
  *       不含账期重开（finance:period_reopen 高敏，仅 ADMIN/BOSS）；其余 finance:* 留后续任务补充。</li>
  * </ul>
  *
@@ -63,6 +64,7 @@ public final class RolePermissions {
                 Permission.FINANCE_PERIOD_REOPEN,
                 Permission.FINANCE_VOUCHER,
                 Permission.FINANCE_SETTLEMENT,
+                Permission.FINANCE_PAYMENT_ACCOUNT,
                 Permission.DATA_IMPORT,
                 Permission.GAP_TRIAGE)));
 
@@ -99,7 +101,8 @@ public final class RolePermissions {
                 Permission.FINANCE_ACCOUNT,
                 Permission.FINANCE_PERIOD,
                 Permission.FINANCE_VOUCHER,
-                Permission.FINANCE_SETTLEMENT)));
+                Permission.FINANCE_SETTLEMENT,
+                Permission.FINANCE_PAYMENT_ACCOUNT)));
 
         return Collections.unmodifiableMap(grants);
     }
