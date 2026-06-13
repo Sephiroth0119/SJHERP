@@ -118,6 +118,16 @@ public enum Permission {
      */
     SALES_INVOICE("sales:invoice", "销售发票与应收"),
 
+    // ------------------------------------------------- 数据导入（M2-T09）
+
+    /**
+     * Excel 期初数据导入：基础档案（商品/客户/供应商）+ 期初库存建账。
+     * REST 端点 POST /api/import/**（非 Agent 工具，导入为建账期批量管理动作）。
+     * 模板下载 GET /api/import/templates/{type} 不设权限点（登录即可）。
+     * 授 ADMIN/BOSS（建账期一次性管理动作）；期初库存写入口唯一经 InventoryAdjustmentService.opening。
+     */
+    DATA_IMPORT("data:import", "数据导入"),
+
     // ------------------------------------------------- 流程缺口
 
     /** 缺口状态流转（GapController POST /api/gaps/{id}/status，开发侧操作） */

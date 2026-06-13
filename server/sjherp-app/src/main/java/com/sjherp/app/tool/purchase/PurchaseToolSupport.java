@@ -11,6 +11,9 @@ import com.sjherp.domain.catalog.ProductService;
 import com.sjherp.domain.partner.Supplier;
 import com.sjherp.domain.partner.SupplierQuery;
 import com.sjherp.domain.partner.SupplierService;
+import com.sjherp.domain.warehouse.Warehouse;
+import com.sjherp.domain.warehouse.WarehouseQuery;
+import com.sjherp.domain.warehouse.WarehouseService;
 
 /**
  * 采购类 Agent 工具公共助手（M3-T05）：供应商/商品按<b>名称或编码</b>解析为档案
@@ -46,6 +49,18 @@ final class PurchaseToolSupport {
                 .search(new SupplierQuery(keyword, null, 1, MAX_CANDIDATES)).items();
         return pick(matched, keyword, "供应商", Supplier::getCode, Supplier::getName,
                 () -> supplierService.search(new SupplierQuery(null, null, 1, MAX_CANDIDATES)).items());
+    }
+
+    /** 仓库按名称或编码解析（create_purchase_receipt 收货仓解析用） */
+    static Resolution<Warehouse> resolveWarehouse(WarehouseService warehouseService, String text) {
+        if (text == null || text.isBlank()) {
+            return new Resolution<>(null, "仓库名称或编码不能为空");
+        }
+        String keyword = text.strip();
+        List<Warehouse> matched = warehouseService
+                .search(new WarehouseQuery(keyword, null, 1, MAX_CANDIDATES)).items();
+        return pick(matched, keyword, "仓库", Warehouse::getCode, Warehouse::getName,
+                () -> warehouseService.search(new WarehouseQuery(null, null, 1, MAX_CANDIDATES)).items());
     }
 
     /** 商品按名称或编码解析 */

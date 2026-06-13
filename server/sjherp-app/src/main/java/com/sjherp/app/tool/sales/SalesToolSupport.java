@@ -11,6 +11,9 @@ import com.sjherp.domain.catalog.ProductService;
 import com.sjherp.domain.partner.Customer;
 import com.sjherp.domain.partner.CustomerQuery;
 import com.sjherp.domain.partner.CustomerService;
+import com.sjherp.domain.warehouse.Warehouse;
+import com.sjherp.domain.warehouse.WarehouseQuery;
+import com.sjherp.domain.warehouse.WarehouseService;
 
 /**
  * 销售类 Agent 工具公共助手（M3-T08）：客户/商品按<b>名称或编码</b>解析为档案
@@ -53,6 +56,18 @@ final class SalesToolSupport {
                 .search(new CustomerQuery(keyword, null, 1, MAX_CANDIDATES)).items();
         return pick(matched, keyword, "客户", Customer::getCode, Customer::getName,
                 () -> customerService.search(new CustomerQuery(null, null, 1, MAX_CANDIDATES)).items());
+    }
+
+    /** 仓库按名称或编码解析（create_sales_delivery 出库仓解析用） */
+    static Resolution<Warehouse> resolveWarehouse(WarehouseService warehouseService, String text) {
+        if (text == null || text.isBlank()) {
+            return Resolution.fail("仓库名称或编码不能为空");
+        }
+        String keyword = text.strip();
+        List<Warehouse> matched = warehouseService
+                .search(new WarehouseQuery(keyword, null, 1, MAX_CANDIDATES)).items();
+        return pick(matched, keyword, "仓库", Warehouse::getCode, Warehouse::getName,
+                () -> warehouseService.search(new WarehouseQuery(null, null, 1, MAX_CANDIDATES)).items());
     }
 
     /** 商品按名称或编码解析 */

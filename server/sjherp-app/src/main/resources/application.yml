@@ -38,6 +38,14 @@ sjherp:
     # 单价 6 位 HALF_UP / 金额 2 位 HALF_UP / 出空清零）；FIFO 留实现位，配置其他值启动期报错。
     costing-method: MOVING_AVERAGE
 
+  # 数据一致性校验（M3-T13 检查 Agent）。按需查走 REST/Agent 工具随时可跑；定时巡检参数如下。
+  consistency:
+    # 定时巡检开关（@ConditionalOnProperty）：默认关——本地/测试不跑（避免污染、并发抢库），
+    # 生产显式打开。打开后按 cron 自动跑校验并按严重度记日志告警（M3 仅日志，LLM 上报留 M6-T06）。
+    enabled: false
+    # 巡检 cron（默认每日凌晨 3 点）。仅 enabled=true 时生效。
+    cron: "0 0 3 * * *"
+
   # LLM 接入（M1-T07 多 provider 配置化，切换模型不改代码）。
   # - providers（map）：provider 名 → 连接配置（base-url / model / api-key / temperature /
   #   timeout-seconds）。所有 provider 走 OpenAI 兼容协议（OpenAiCompatibleLlmClient 一套实现），

@@ -29,6 +29,8 @@
              解决方案：只引入 knife4j-openapi3-ui（纯前端，无 Spring 依赖）+
              springdoc 2.7.0（兼容 Spring 6.2.x），绕过 knife4j starter 的 autoconfigure。 -->
         <springdoc.version>2.7.0</springdoc.version>
+        <!-- Apache POI（M2-T09 期初 Excel 导入）：不在 Spring Boot BOM 内，显式锁定 -->
+        <poi.version>5.2.5</poi.version>
     </properties>
 
     <dependencies>
@@ -80,6 +82,14 @@
             <artifactId>jjwt-jackson</artifactId>
             <version>${jjwt.version}</version>
             <scope>runtime</scope>
+        </dependency>
+        <!-- Apache POI（M2-T09 期初数据导入）：XSSFWorkbook 读写 .xlsx 模板；
+             不在 Spring Boot BOM 内，版本在此统一管理；仅 app 层导入端点使用。
+             传递引入 poi 核心 / xmlbeans / commons-compress。 -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>${poi.version}</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

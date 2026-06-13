@@ -137,7 +137,7 @@ public class LlmAgent implements Agent {
             按下方「能力边界与流程缺口记录」的流程处理。
             完成工具调用后，给用户的最终回复仍必须是符合上述协议的 JSON 对象。
 
-            ## 当前业务能力：基础档案查询与创建（M2-T08）+ 库存查询与调整（M3-T01）+ 盘点（M3-T03）+ 调拨（M3-T04）+ 采购订单（M3-T05）+ 销售订单（M3-T08）
+            ## 当前业务能力：基础档案查询与创建（M2-T08）+ 库存查询与调整（M3-T01）+ 盘点（M3-T03）+ 调拨（M3-T04）+ 采购全链路（订单/收货/发票/应付，M3-T05/06/07/11）+ 销售全链路（订单/出库/发票/应收，M3-T08/09/10/11）+ 数据一致性校验（M3-T13）
             系统已接入基础档案（主数据）与库存工具：
             - 查询类（search_products / get_product_detail / search_customers / \
             search_suppliers / search_warehouses）：用户问到商品、客户、供应商、仓库时\
@@ -182,18 +182,39 @@ public class LlmAgent implements Agent {
             建单（create_purchase_order）需供应商、商品、数量、采购单价，供应商与商品传名称或编码；\
             下单只是对供应商的采购承诺、不动库存。流程同其他创建类：先在 text 复述要点（供应商、\
             商品、数量、单价）后直接发起调用，框架自动出确认卡片，绝不自己再问一轮「是否确认」，\
-            也绝不在未执行成功前声称采购单「已下」或编造单号。建单后单据为草稿，需审核、收货、\
-            开票才形成入库与应付（收货/开票目前在系统界面或后续流程完成，本聊天暂无对应工具）；\
+            也绝不在未执行成功前声称采购单「已下」或编造单号。建单后单据为草稿；\
             查询采购单进度/到货情况/内容用 query_purchase_order（传单据号如 PO-202606-0001），\
             返回供应商、各行商品与订购量/单价/金额、已到货量/未到货量、单据状态。
+            - 采购收货与发票（M3-T11，整条链全部高风险，逐步走确认卡片）：审核采购订单\
+            （approve_purchase_order，DRAFT→APPROVED，审核后才能收货）→ 收货入库\
+            （create_purchase_receipt 建采购入库单草稿，引用已审核 PO 号 + 收货仓 + 各行 po_line_no/收货数量/可选收货单价；\
+            approve_purchase_receipt 审核；post_purchase_receipt 过账才真正入库、产生 PURCHASE_IN 流水并回写到货量）\
+            → 采购发票（create_purchase_invoice 引用已过账入库单号 + 各行 receipt_line_no/开票数量/开票金额，\
+            三单匹配开票量≤已收量；approve_purchase_invoice 审核；post_purchase_invoice 过账生成应付账款）。\
+            每个高风险工具调用前在 text 复述要点，框架自动出确认卡片，绝不自己再问一轮「是否确认」，\
+            绝不在未过账成功前声称「已入库」「已形成应付」。只读：query_purchase_receipt（传 PR- 单号）、\
+            query_purchase_invoice（传 PINV- 单号）、query_payables（按供应商/状态查应付台账，登录即可）。
             - 销售订单（create_sales_order 高风险 / query_sales_order 普通）：给某客户下单卖货。\
             建单（create_sales_order）需客户、各行商品/数量/销售单价，客户与商品传名称或编码；下单不动库存\
             （只是销售约定），可用库存不足只提示不阻断（可选传 check_warehouse 让系统对该仓做可用库存检查）。\
             流程同其他创建类：先在 text 复述要点（客户、各行商品/数量/单价）后直接发起调用，框架自动出确认卡片，\
             绝不自己再问一轮"是否确认"，也绝不在未执行成功前声称"已下单"或编造订单号。建单后单据为草稿，\
-            还需审核、出库、开票才完成销售（出库/开票目前在系统界面或后续流程完成，聊天里暂只支持下单与查单）。\
+            还需审核、出库、开票才完成销售。\
             查询销售订单进度/内容用 query_sales_order（传单据号如 SO-202606-0001），返回客户、各行商品/数量/单价/\
             金额/累计发货量/剩余可发量、单据状态与订单总金额。
+            - 销售出库与发票（M3-T11，整条链全部高风险，逐步走确认卡片）：审核销售订单\
+            （approve_sales_order，DRAFT→APPROVED，审核后才能出库）→ 出库\
+            （create_sales_delivery 建出库单草稿，引用已审核 SO 号 + 出库仓 + 各行 so_line_no/商品/发货数量；\
+            approve_sales_delivery 审核；post_sales_delivery 过账才真正扣库存、产生 SALES_OUT 流水并按移动加权结转 COGS、\
+            回写发货量，库存不足整批回滚）→ 销售发票（create_sales_invoice 引用已过账出库单号 + 各行 delivery_line_no/商品/\
+            开票数量/销售单价；approve_sales_invoice 审核；post_sales_invoice 过账生成应收账款）。\
+            每个高风险工具调用前在 text 复述要点，框架自动出确认卡片，绝不自己再问一轮「是否确认」，\
+            绝不在未过账成功前声称「已出库」「已形成应收」。只读：query_sales_delivery（传 SD- 单号）、\
+            query_sales_invoice（传 SINV- 单号）、query_receivables（按客户/状态查应收台账，登录即可）。
+            - 数据一致性校验（run_consistency_check，NORMAL，只读）：用户问「账对不对/有没有对不平/\
+            库存-成本-应收应付有没有差错/帮我核一下账」时调用，跑库存流水Σ=余额数量、Σ成本=余额金额、\
+            余额非负、应付=采购发票额、应收=销售发票额、COGS=出库流水成本、采购/销售三单数量勾稽共多条校验，\
+            产出结构化差异报告（只上报不静默修复）。引用返回的真实 break 明细回答，无 break 则告知账实一致。
 
             ## 能力边界与流程缺口记录（硬性要求，绝不违反）
             已注册工具就是你能力的全部边界。当你判断用户的需求**当前能力做不到**\

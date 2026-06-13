@@ -57,6 +57,7 @@ public final class RolePermissions {
                 Permission.SALES_ORDER,
                 Permission.SALES_DELIVERY,
                 Permission.SALES_INVOICE,
+                Permission.DATA_IMPORT,
                 Permission.GAP_TRIAGE)));
 
         // PURCHASER：创建供应商 + 采购全程参与（采购订单/入库/发票）；商品/供应商查询登录即可

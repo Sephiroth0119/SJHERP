@@ -29,6 +29,33 @@ import com.sjherp.app.tool.sales.QuerySalesOrderTool;
 import com.sjherp.app.tool.warehouse.CreateWarehouseTool;
 import com.sjherp.app.tool.warehouse.SearchWarehousesTool;
 import com.sjherp.app.transfer.TransferAppService;
+import com.sjherp.app.purchase.PurchaseReceiptAppService;
+import com.sjherp.app.purchase.PurchaseInvoiceAppService;
+import com.sjherp.app.sales.SalesDeliveryAppService;
+import com.sjherp.app.sales.SalesInvoiceAppService;
+import com.sjherp.app.receivable.ReceivableAppService;
+import com.sjherp.app.consistency.ConsistencyCheckService;
+import com.sjherp.app.tool.purchase.ApprovePurchaseOrderTool;
+import com.sjherp.app.tool.purchase.CreatePurchaseReceiptTool;
+import com.sjherp.app.tool.purchase.ApprovePurchaseReceiptTool;
+import com.sjherp.app.tool.purchase.PostPurchaseReceiptTool;
+import com.sjherp.app.tool.purchase.QueryPurchaseReceiptTool;
+import com.sjherp.app.tool.purchase.CreatePurchaseInvoiceTool;
+import com.sjherp.app.tool.purchase.ApprovePurchaseInvoiceTool;
+import com.sjherp.app.tool.purchase.PostPurchaseInvoiceTool;
+import com.sjherp.app.tool.purchase.QueryPurchaseInvoiceTool;
+import com.sjherp.app.tool.purchase.QueryPayablesTool;
+import com.sjherp.app.tool.sales.ApproveSalesOrderTool;
+import com.sjherp.app.tool.sales.CreateSalesDeliveryTool;
+import com.sjherp.app.tool.sales.ApproveSalesDeliveryTool;
+import com.sjherp.app.tool.sales.PostSalesDeliveryTool;
+import com.sjherp.app.tool.sales.QuerySalesDeliveryTool;
+import com.sjherp.app.tool.sales.CreateSalesInvoiceTool;
+import com.sjherp.app.tool.sales.ApproveSalesInvoiceTool;
+import com.sjherp.app.tool.sales.PostSalesInvoiceTool;
+import com.sjherp.app.tool.sales.QuerySalesInvoiceTool;
+import com.sjherp.app.tool.sales.QueryReceivablesTool;
+import com.sjherp.app.tool.consistency.RunConsistencyCheckTool;
 import com.sjherp.domain.catalog.ProductService;
 import com.sjherp.domain.catalog.UnitService;
 import com.sjherp.domain.partner.CustomerService;
@@ -37,17 +64,23 @@ import com.sjherp.domain.warehouse.WarehouseService;
 
 /**
  * 领域 Agent 工具装配（M2-T08 基础档案 + M3-T01c 库存 + M3-T03 盘点 + M3-T04 调拨
- * + M3-T05 采购订单 + M3-T08 销售订单），<b>常驻注册</b>（所有 profile 生效，区别于
- * dev-only 的演示工具 {@link ToolConfig.DemoToolConfig}）。
+ * + M3-T05/T06/T07 采购线 + M3-T08/T09/T10 销售线 + M3-T11 进销存工具全量
+ * + M3-T13 一致性校验），<b>常驻注册</b> 40 个（所有 profile 生效，区别于
+ * dev-only 的演示工具 {@link ToolConfig.DemoToolConfig}）。完整清单见 docs/领域工具清单.md。
  *
- * <p>查询类（NORMAL，不走确认）：search_products / search_customers /
- * search_suppliers / search_warehouses / get_product_detail /
- * query_inventory_balance / query_stock_count / query_transfer /
- * query_purchase_order / query_sales_order；
- * 写类（HIGH，框架强制确认卡片）：create_customer / create_supplier /
+ * <p>查询类（NORMAL，登录即可）17 个：search_products / get_product_detail /
+ * search_customers / search_suppliers / search_warehouses / query_inventory_balance /
+ * query_stock_count / query_transfer / query_purchase_order / query_sales_order /
+ * query_purchase_receipt / query_purchase_invoice / query_payables /
+ * query_sales_delivery / query_sales_invoice / query_receivables / run_consistency_check；
+ * 写类（HIGH，框架强制确认卡片）23 个：create_customer / create_supplier /
  * create_product / create_warehouse / adjust_inventory / create_stock_count /
- * create_transfer / create_purchase_order / create_sales_order。全部经各领域服务
- * 唯一写入口执行（CLAUDE.md 原则 1：工具即领域服务，绝不绕过）。
+ * create_transfer / create_purchase_order / create_sales_order + M3-T11 采购线
+ * （approve_purchase_order / create·approve·post_purchase_receipt /
+ * create·approve·post_purchase_invoice）+ M3-T11 销售线（approve_sales_order /
+ * create·approve·post_sales_delivery / create·approve·post_sales_invoice）。
+ * 全部经各领域/应用服务唯一写入口执行（CLAUDE.md 原则 1：工具即领域服务，绝不绕过）；
+ * 建单·审核(approve)·过账(post) 各为独立 HIGH 工具，忠于状态机与职责分离。
  *
  * <p>⚠️ 新增工具后必须同步：{@code HighRiskToolPermissionTest} 注册清单与数量基线、
  * docs/领域工具清单.md、LlmAgent 系统提示词「当前业务能力」段。
@@ -68,7 +101,13 @@ public class DomainToolConfig {
                      StocktakeService stocktakeService,
                      TransferAppService transferAppService,
                      PurchaseOrderAppService purchaseOrderAppService,
-                     SalesOrderAppService salesOrderAppService) {
+                     SalesOrderAppService salesOrderAppService,
+                     PurchaseReceiptAppService purchaseReceiptAppService,
+                     PurchaseInvoiceAppService purchaseInvoiceAppService,
+                     SalesDeliveryAppService salesDeliveryAppService,
+                     SalesInvoiceAppService salesInvoiceAppService,
+                     ReceivableAppService receivableAppService,
+                     ConsistencyCheckService consistencyCheckService) {
         // 查询类（NORMAL）
         registry.register(new SearchProductsTool(productService, unitService));
         registry.register(new GetProductDetailTool(productService, unitService));
@@ -81,6 +120,15 @@ public class DomainToolConfig {
         registry.register(new QueryTransferTool(transferAppService));
         registry.register(new QueryPurchaseOrderTool(purchaseOrderAppService));
         registry.register(new QuerySalesOrderTool(salesOrderAppService));
+        // 进销存只读查询（M3-T11，NORMAL，登录即可）
+        registry.register(new QueryPurchaseReceiptTool(purchaseReceiptAppService));
+        registry.register(new QueryPurchaseInvoiceTool(purchaseInvoiceAppService));
+        registry.register(new QueryPayablesTool(supplierService, purchaseInvoiceAppService));
+        registry.register(new QuerySalesDeliveryTool(salesDeliveryAppService));
+        registry.register(new QuerySalesInvoiceTool(salesInvoiceAppService));
+        registry.register(new QueryReceivablesTool(customerService, receivableAppService));
+        // 数据一致性交叉校验（M3-T13，NORMAL，只读勾稽报告）
+        registry.register(new RunConsistencyCheckTool(consistencyCheckService));
         // 写类（HIGH：影响主数据/产生库存流水/形成业务承诺，框架强制人工确认）
         registry.register(new CreateProductTool(productService, unitService));
         registry.register(new CreateCustomerTool(customerService));
@@ -94,7 +142,26 @@ public class DomainToolConfig {
                 purchaseOrderAppService));
         registry.register(new CreateSalesOrderTool(customerService, productService,
                 salesOrderAppService));
+        // 采购收货线（M3-T11，HIGH：审核/收货/过账影响库存与采购承诺）
+        registry.register(new ApprovePurchaseOrderTool(purchaseOrderAppService));
+        registry.register(new CreatePurchaseReceiptTool(warehouseService, purchaseReceiptAppService));
+        registry.register(new ApprovePurchaseReceiptTool(purchaseReceiptAppService));
+        registry.register(new PostPurchaseReceiptTool(purchaseReceiptAppService));
+        // 采购发票/应付线（M3-T11，HIGH：开票/审核/过账形成应付）
+        registry.register(new CreatePurchaseInvoiceTool(purchaseInvoiceAppService));
+        registry.register(new ApprovePurchaseInvoiceTool(purchaseInvoiceAppService));
+        registry.register(new PostPurchaseInvoiceTool(purchaseInvoiceAppService));
+        // 销售出库线（M3-T11，HIGH：审核/出库/过账扣库存结转 COGS）
+        registry.register(new ApproveSalesOrderTool(salesOrderAppService));
+        registry.register(new CreateSalesDeliveryTool(warehouseService, productService, salesDeliveryAppService));
+        registry.register(new ApproveSalesDeliveryTool(salesDeliveryAppService));
+        registry.register(new PostSalesDeliveryTool(salesDeliveryAppService));
+        // 销售发票/应收线（M3-T11，HIGH：开票/审核/过账形成应收）
+        registry.register(new CreateSalesInvoiceTool(productService, salesInvoiceAppService));
+        registry.register(new ApproveSalesInvoiceTool(salesInvoiceAppService));
+        registry.register(new PostSalesInvoiceTool(salesInvoiceAppService));
         log.info("已注册领域工具（M2-T08 档案 + M3-T01c 库存 + M3-T03 盘点 + M3-T04 调拨"
-                + " + M3-T05 采购订单 + M3-T08 销售订单，常驻）：查询 10 个（NORMAL）+ 写 9 个（HIGH）");
+                + " + M3-T05/T06/T07 采购线 + M3-T08/T09/T10 销售线 + M3-T11 全量注册"
+                + " + M3-T13 一致性校验，常驻）：查询 17 个（NORMAL）+ 写 23 个（HIGH）");
     }
 }

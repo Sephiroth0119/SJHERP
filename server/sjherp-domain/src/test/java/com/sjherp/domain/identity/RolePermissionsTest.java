@@ -43,6 +43,7 @@ class RolePermissionsTest {
                 Permission.SALES_ORDER,
                 Permission.SALES_DELIVERY,
                 Permission.SALES_INVOICE,
+                Permission.DATA_IMPORT,
                 Permission.GAP_TRIAGE), boss);
         assertFalse(boss.contains(Permission.DEMO_POST_DOCUMENT));
     }
