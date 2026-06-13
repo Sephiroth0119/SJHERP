@@ -12,6 +12,8 @@ import com.sjherp.agent.tool.Tool;
 import com.sjherp.agent.tool.ToolRegistry;
 import com.sjherp.agent.tool.ToolRiskLevel;
 import com.sjherp.app.inventory.InventoryAdjustmentService;
+import com.sjherp.app.purchase.PurchaseOrderAppService;
+import com.sjherp.app.sales.SalesOrderAppService;
 import com.sjherp.app.stocktake.StocktakeService;
 import com.sjherp.app.transfer.TransferAppService;
 import com.sjherp.domain.catalog.ProductService;
@@ -39,6 +41,7 @@ class HighRiskToolPermissionTest {
     private static ToolRegistry registryWithAllTools() {
         ToolRegistry registry = new ToolRegistry();
         // 常驻：基础档案工具（M2-T08）+ 库存工具（M3-T01c）+ 盘点（M3-T03）+ 调拨（M3-T04）
+        // + 采购订单（M3-T05）+ 销售订单（M3-T08）
         new DomainToolConfig(registry,
                 mock(ProductService.class),
                 mock(UnitService.class),
@@ -48,7 +51,9 @@ class HighRiskToolPermissionTest {
                 mock(TransactionalInventoryService.class),
                 mock(InventoryAdjustmentService.class),
                 mock(StocktakeService.class),
-                mock(TransferAppService.class));
+                mock(TransferAppService.class),
+                mock(PurchaseOrderAppService.class),
+                mock(SalesOrderAppService.class));
         // dev-only：演示工具（EchoTool NORMAL + DemoHighRiskTool HIGH），一并纳入断言
         new ToolConfig.DemoToolConfig(registry);
         return registry;
@@ -73,11 +78,12 @@ class HighRiskToolPermissionTest {
 
     @Test
     void 注册清单覆盖既有工具规模_防注册清单漂移() {
-        // M3-T04 基线：常驻 15 个（查询 8 NORMAL：含 query_inventory_balance /
-        // query_stock_count / query_transfer；写 7 HIGH：含 adjust_inventory /
-        // create_stock_count / create_transfer）+ 演示 2 个（echo + demo_post_document）= 17。
+        // M3-T08 基线：常驻 19 个（查询 10 NORMAL：含 query_inventory_balance /
+        // query_stock_count / query_transfer / query_purchase_order / query_sales_order；
+        // 写 9 HIGH：含 adjust_inventory / create_stock_count / create_transfer /
+        // create_purchase_order / create_sales_order）+ 演示 2 个（echo + demo_post_document）= 21。
         // 新增工具装配类后此处会先于权限断言提醒维护注册清单。
-        assertTrue(registryWithAllTools().all().size() >= 17,
-                "注册工具数少于 M3-T04 基线（17 个）——若调整了工具装配，请同步维护本测试的注册清单");
+        assertTrue(registryWithAllTools().all().size() >= 21,
+                "注册工具数少于 M3-T08 基线（21 个）——若调整了工具装配，请同步维护本测试的注册清单");
     }
 }

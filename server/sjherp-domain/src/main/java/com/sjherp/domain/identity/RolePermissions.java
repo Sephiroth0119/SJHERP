@@ -14,11 +14,13 @@ import java.util.Set;
  *   <li>ADMIN：全部权限点（含 dev/local 演示工具）；用户管理另由角色直接限定
  *       （UserAdminController @PreAuthorize("hasRole('ADMIN')")），不走权限点；</li>
  *   <li>BOSS：全部业务权限点（不含用户管理，不含演示工具）；</li>
- *   <li>PURCHASER：创建供应商（采购线档案）；商品/档案查询登录即可，无需权限点；</li>
- *   <li>SALES：创建客户（销售线档案）；</li>
- *   <li>WAREHOUSE：仓库域全部（创建 + 维护 + 库存调整 + 库存盘点 + 库存调拨）；</li>
- *   <li>ACCOUNTANT：读为主，本期无写权限点——财务权限点（finance:* 过账/结账/付款等）
- *       留 M4 财务模块落地时补充。</li>
+ *   <li>PURCHASER：创建供应商（采购线档案）+ 采购全程（采购订单/入库/发票）；
+ *       商品/档案查询登录即可，无需权限点；</li>
+ *   <li>SALES：创建客户（销售线档案）+ 销售全线（销售订单/出库/发票应收）；</li>
+ *   <li>WAREHOUSE：仓库域全部（创建 + 维护 + 库存调整 + 库存盘点 + 库存调拨）
+ *       + 采购收货（purchase:receipt）+ 销售发货（sales:delivery）；</li>
+ *   <li>ACCOUNTANT：采购发票/应付（purchase:invoice）+ 销售发票/应收（sales:invoice）；
+ *       其余财务权限点（finance:* 过账/结账/付款核销等）留 M4 财务模块落地时补充。</li>
  * </ul>
  *
  * <p>多角色用户取并集；未知权限点 code 一律判拒（宁拒勿放，避免拼写错误变成放行）。
@@ -49,27 +51,43 @@ public final class RolePermissions {
                 Permission.INVENTORY_ADJUST,
                 Permission.INVENTORY_COUNT,
                 Permission.INVENTORY_TRANSFER,
+                Permission.PURCHASE_ORDER,
+                Permission.PURCHASE_RECEIPT,
+                Permission.PURCHASE_INVOICE,
+                Permission.SALES_ORDER,
+                Permission.SALES_DELIVERY,
+                Permission.SALES_INVOICE,
                 Permission.GAP_TRIAGE)));
 
-        // PURCHASER：采购线只开供应商创建（商品/供应商查询登录即可）
+        // PURCHASER：创建供应商 + 采购全程参与（采购订单/入库/发票）；商品/供应商查询登录即可
         grants.put(Role.PURCHASER, Collections.unmodifiableSet(EnumSet.of(
-                Permission.PARTNER_CREATE_SUPPLIER)));
+                Permission.PARTNER_CREATE_SUPPLIER,
+                Permission.PURCHASE_ORDER,
+                Permission.PURCHASE_RECEIPT,
+                Permission.PURCHASE_INVOICE)));
 
-        // SALES：销售线只开客户创建
+        // SALES：创建客户 + 销售全线（销售订单/出库/发票应收）
         grants.put(Role.SALES, Collections.unmodifiableSet(EnumSet.of(
-                Permission.PARTNER_CREATE_CUSTOMER)));
+                Permission.PARTNER_CREATE_CUSTOMER,
+                Permission.SALES_ORDER,
+                Permission.SALES_DELIVERY,
+                Permission.SALES_INVOICE)));
 
-        // WAREHOUSE：仓库域全部（创建 + 维护 + 库存调整 + 库存盘点 + 库存调拨），
-        // 即 warehouse:* + inventory:adjust + inventory:count + inventory:transfer
+        // WAREHOUSE：仓库域全部（创建 + 维护 + 库存调整 + 库存盘点 + 库存调拨）
+        // + 采购收货（purchase:receipt）+ 销售发货（sales:delivery）——仓管负责实物出入库
         grants.put(Role.WAREHOUSE, Collections.unmodifiableSet(EnumSet.of(
                 Permission.WAREHOUSE_CREATE_WAREHOUSE,
                 Permission.WAREHOUSE_WRITE,
                 Permission.INVENTORY_ADJUST,
                 Permission.INVENTORY_COUNT,
-                Permission.INVENTORY_TRANSFER)));
+                Permission.INVENTORY_TRANSFER,
+                Permission.PURCHASE_RECEIPT,
+                Permission.SALES_DELIVERY)));
 
-        // ACCOUNTANT：读为主，本期无写权限点；finance:* 权限点留 M4 在此补充
-        grants.put(Role.ACCOUNTANT, Collections.unmodifiableSet(EnumSet.noneOf(Permission.class)));
+        // ACCOUNTANT：采购发票/应付 + 销售发票/应收；其余 finance:* 权限点留 M4 在此补充
+        grants.put(Role.ACCOUNTANT, Collections.unmodifiableSet(EnumSet.of(
+                Permission.PURCHASE_INVOICE,
+                Permission.SALES_INVOICE)));
 
         return Collections.unmodifiableMap(grants);
     }

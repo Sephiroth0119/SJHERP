@@ -73,6 +73,51 @@ public enum Permission {
      */
     INVENTORY_TRANSFER("inventory:transfer", "库存调拨"),
 
+    // ------------------------------------------------- 采购线（M3-T05/T06/T07）
+
+    /**
+     * 采购订单：下单/审核/关闭/查询的受控动作权限点
+     * （Agent 工具 create_purchase_order / query_purchase_order；REST /api/purchase/orders**，M3-T05）。
+     * 注意：采购订单查询接口也要求本权限点（PurchaseOrderController 类级 @PreAuthorize），
+     * 区别于「查询登录即可」通则——采购订单是受控动作。
+     */
+    PURCHASE_ORDER("purchase:order", "采购订单"),
+
+    /**
+     * 采购入库单：收货/审核/过账/查询的写入口
+     * （REST /api/purchase/receipts**，M3-T06；收货工具留 M3-T11）。查询接口同样要求本权限点。
+     */
+    PURCHASE_RECEIPT("purchase:receipt", "采购入库"),
+
+    /**
+     * 采购发票：登记/审核/过账/查询的写入口
+     * （REST /api/purchase/invoices**，M3-T07；发票工具留 M3-T11）。查询接口同样要求本权限点。
+     * 应付列表查询 GET /api/payables 不设权限点（登录即可，只读台账）。
+     */
+    PURCHASE_INVOICE("purchase:invoice", "采购发票"),
+
+    // ------------------------------------------------- 销售线（M3-T08/T09/T10）
+
+    /**
+     * 销售订单：建单/审核/作废/查询（Agent 工具 create_sales_order / query_sales_order；
+     * REST /api/sales/orders**，M3-T08）。注意：订单查询接口也要求本权限点（SalesOrderController
+     * 类级 @PreAuthorize），区别于「查询登录即可」的通则——销售订单整体属于受控动作。
+     */
+    SALES_ORDER("sales:order", "销售订单"),
+
+    /**
+     * 销售出库：建单/审核/过账/作废/查询（REST /api/sales/deliveries**，M3-T09）。
+     * 过账经库存唯一写入口产生 SALES_OUT 流水并结转 COGS。查询接口同样要求本权限点。
+     */
+    SALES_DELIVERY("sales:delivery", "销售出库"),
+
+    /**
+     * 销售发票与应收：发票建单/审核/过账/作废/查询、应收查询（REST /api/sales/invoices**、
+     * GET /api/receivables**，M3-T10）。过账按发票金额生成应收账款（OPEN，核销 M4-T03）。
+     * 应收是开票的财务产出，与发票同权（受控查询）。
+     */
+    SALES_INVOICE("sales:invoice", "销售发票与应收"),
+
     // ------------------------------------------------- 流程缺口
 
     /** 缺口状态流转（GapController POST /api/gaps/{id}/status，开发侧操作） */
@@ -83,8 +128,8 @@ public enum Permission {
     /** 演示用高风险工具 demo_post_document（dev/local 验证 HITL 链路；生产不注册该工具） */
     DEMO_POST_DOCUMENT("demo:post_document", "演示高风险操作");
 
-    // 财务权限点（finance:*，如过账/结账/付款）留 M4 财务模块落地时补充——
-    // 届时 ACCOUNTANT 角色在 RolePermissions 的空集合一并填充。
+    // 财务权限点（finance:*，如过账/结账/付款核销）留 M4 财务模块落地时补充——
+    // 届时 ACCOUNTANT 角色在 RolePermissions 一并扩充（M3 起已含 purchase:invoice / sales:invoice）。
 
     /** 稳定字符串标识（与 Tool.requiredPermission / @PreAuthorize 表达式一致，不可改） */
     private final String code;

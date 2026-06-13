@@ -37,33 +37,49 @@ class RolePermissionsTest {
                 Permission.INVENTORY_ADJUST,
                 Permission.INVENTORY_COUNT,
                 Permission.INVENTORY_TRANSFER,
+                Permission.PURCHASE_ORDER,
+                Permission.PURCHASE_RECEIPT,
+                Permission.PURCHASE_INVOICE,
+                Permission.SALES_ORDER,
+                Permission.SALES_DELIVERY,
+                Permission.SALES_INVOICE,
                 Permission.GAP_TRIAGE), boss);
         assertFalse(boss.contains(Permission.DEMO_POST_DOCUMENT));
     }
 
     @Test
-    void PURCHASER_仅创建供应商() {
-        assertEquals(EnumSet.of(Permission.PARTNER_CREATE_SUPPLIER),
+    void PURCHASER_创建供应商加采购全程() {
+        assertEquals(EnumSet.of(
+                        Permission.PARTNER_CREATE_SUPPLIER,
+                        Permission.PURCHASE_ORDER,
+                        Permission.PURCHASE_RECEIPT,
+                        Permission.PURCHASE_INVOICE),
                 RolePermissions.permissionsOf(Role.PURCHASER));
     }
 
     @Test
-    void SALES_仅创建客户() {
-        assertEquals(EnumSet.of(Permission.PARTNER_CREATE_CUSTOMER),
+    void SALES_创建客户加销售全线() {
+        assertEquals(EnumSet.of(
+                        Permission.PARTNER_CREATE_CUSTOMER,
+                        Permission.SALES_ORDER,
+                        Permission.SALES_DELIVERY,
+                        Permission.SALES_INVOICE),
                 RolePermissions.permissionsOf(Role.SALES));
     }
 
     @Test
-    void WAREHOUSE_仓库域全部加库存调整盘点调拨_无其他域() {
+    void WAREHOUSE_仓库域全部加库存调整盘点调拨加采购收货销售发货() {
         assertEquals(EnumSet.of(Permission.WAREHOUSE_CREATE_WAREHOUSE, Permission.WAREHOUSE_WRITE,
                         Permission.INVENTORY_ADJUST, Permission.INVENTORY_COUNT,
-                        Permission.INVENTORY_TRANSFER),
+                        Permission.INVENTORY_TRANSFER,
+                        Permission.PURCHASE_RECEIPT, Permission.SALES_DELIVERY),
                 RolePermissions.permissionsOf(Role.WAREHOUSE));
     }
 
     @Test
-    void ACCOUNTANT_本期无写权限点_财务权限留M4() {
-        assertTrue(RolePermissions.permissionsOf(Role.ACCOUNTANT).isEmpty());
+    void ACCOUNTANT_采购发票与销售发票_其余财务权限留M4() {
+        assertEquals(EnumSet.of(Permission.PURCHASE_INVOICE, Permission.SALES_INVOICE),
+                RolePermissions.permissionsOf(Role.ACCOUNTANT));
     }
 
     @Test
@@ -119,6 +135,53 @@ class RolePermissionsTest {
         assertFalse(RolePermissions.isGrantedCode(Set.of(Role.SALES), "inventory:transfer"));
         assertFalse(RolePermissions.isGrantedCode(Set.of(Role.ACCOUNTANT), "inventory:transfer"));
         assertFalse(RolePermissions.isGrantedCode(Set.of(Role.WAREHOUSE), "partner:create_customer"));
+
+        // 采购订单（M3-T05）：ADMIN/BOSS/PURCHASER 持有，其余角色拒绝
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.PURCHASER), "purchase:order"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.BOSS), "purchase:order"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.ADMIN), "purchase:order"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.WAREHOUSE), "purchase:order"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.ACCOUNTANT), "purchase:order"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.SALES), "purchase:order"));
+        // 采购入库（M3-T06）：ADMIN/BOSS/PURCHASER/WAREHOUSE 持有，其余角色拒绝
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.PURCHASER), "purchase:receipt"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.WAREHOUSE), "purchase:receipt"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.BOSS), "purchase:receipt"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.ADMIN), "purchase:receipt"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.ACCOUNTANT), "purchase:receipt"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.SALES), "purchase:receipt"));
+        // 采购发票（M3-T07）：ADMIN/BOSS/PURCHASER/ACCOUNTANT 持有，其余角色拒绝
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.PURCHASER), "purchase:invoice"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.ACCOUNTANT), "purchase:invoice"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.BOSS), "purchase:invoice"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.ADMIN), "purchase:invoice"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.WAREHOUSE), "purchase:invoice"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.SALES), "purchase:invoice"));
+
+        // 销售订单（M3-T08）：ADMIN/BOSS/SALES 持有，其余角色拒绝
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.SALES), "sales:order"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.BOSS), "sales:order"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.ADMIN), "sales:order"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.WAREHOUSE), "sales:order"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.ACCOUNTANT), "sales:order"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.PURCHASER), "sales:order"));
+        // 销售出库（M3-T09）：ADMIN/BOSS/SALES/WAREHOUSE 持有，其余角色拒绝
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.SALES), "sales:delivery"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.WAREHOUSE), "sales:delivery"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.BOSS), "sales:delivery"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.ADMIN), "sales:delivery"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.ACCOUNTANT), "sales:delivery"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.PURCHASER), "sales:delivery"));
+        // 销售发票与应收（M3-T10）：ADMIN/BOSS/SALES/ACCOUNTANT 持有，其余角色拒绝
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.SALES), "sales:invoice"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.ACCOUNTANT), "sales:invoice"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.BOSS), "sales:invoice"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.ADMIN), "sales:invoice"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.WAREHOUSE), "sales:invoice"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.PURCHASER), "sales:invoice"));
+        // PURCHASER 不含任何 sales:*；SALES 不含任何 purchase:*（两线互不串权）
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.PURCHASER), "sales:order"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.SALES), "purchase:order"));
     }
 
     @Test
