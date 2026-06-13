@@ -30,6 +30,9 @@ import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 import com.sjherp.domain.common.DocumentStatus;
+import com.sjherp.domain.common.numbering.DefaultDocumentNumberGenerator;
+import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
+import com.sjherp.domain.common.numbering.SequenceProvider;
 import com.sjherp.domain.gl.AccountBalance;
 import com.sjherp.domain.gl.AccountingPeriodService;
 import com.sjherp.domain.gl.PeriodClosedException;
@@ -37,6 +40,7 @@ import com.sjherp.domain.gl.Voucher;
 import com.sjherp.domain.gl.VoucherLineInput;
 import com.sjherp.domain.gl.VoucherNotBalancedException;
 import com.sjherp.domain.gl.VoucherService;
+import com.sjherp.infra.persistence.JdbcSequenceProvider;
 
 /**
  * 总账过账整链集成测试（M4-T01 验收①/②核心，Testcontainers 真实 MySQL）：用生产同套装配
@@ -121,6 +125,18 @@ class GeneralLedgerPostingIntegrationTest {
         @Bean
         PlatformTransactionManager transactionManager(DataSource dataSource) {
             return new DataSourceTransactionManager(dataSource);
+        }
+
+        // GlInfraConfig 的 AutoVoucherService（M4-T02）依赖编号生成器；此处显式 new 一份
+        // （生产由 catalog 装配，此隔离上下文不引入整套档案 Bean 闭包）。
+        @Bean
+        SequenceProvider sequenceProvider(JdbcTemplate jdbcTemplate) {
+            return new JdbcSequenceProvider(jdbcTemplate);
+        }
+
+        @Bean
+        DocumentNumberGenerator documentNumberGenerator(SequenceProvider sequenceProvider) {
+            return new DefaultDocumentNumberGenerator(sequenceProvider);
         }
     }
 
