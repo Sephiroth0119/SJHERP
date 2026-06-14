@@ -111,6 +111,20 @@ public class TransferAppService {
         return transferService.post(docNo, operator);
     }
 
+    /**
+     * 冲销调拨单（红字调拨单，M4-T07c，最高风险路径，不可逆）：对已过账（COMPLETED）的调拨单
+     * 按原两腿成本<b>对称反向库存</b>（调出仓回补、调入仓出库），原单 COMPLETED → REVERSED。
+     * <b>调拨不出 GL 凭证</b>（企业内部库存转移），故只反向库存、不红冲凭证（设计真源 §75）。
+     *
+     * <p>外层 {@code @Transactional}：领域 {@link TransferService#reverse} 内库存两腿反向经
+     * {@link TransactionalInventoryService}（REQUIRED 加入本事务）原子提交——任一腿失败整事务回滚
+     * （库存与单据状态一致）。幂等：原单已 REVERSED / 非 COMPLETED → 领域层拒（→ 409）。
+     */
+    @Transactional
+    public TransferDocument reverse(String docNo, String operator) {
+        return transferService.reverse(docNo, operator);
+    }
+
     /** 按单据号查（不存在抛 TransferNotFoundException → 404） */
     @Transactional(readOnly = true)
     public TransferDocument get(String docNo) {

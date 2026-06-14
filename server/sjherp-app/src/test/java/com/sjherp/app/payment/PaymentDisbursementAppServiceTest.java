@@ -22,6 +22,7 @@ import org.mockito.InOrder;
 import org.mockito.Mockito;
 
 import com.sjherp.app.gl.AutoVoucherService;
+import com.sjherp.app.gl.VoucherAppService;
 import com.sjherp.app.payment.PaymentDtos.PaymentDisbursementLineRequest;
 import com.sjherp.domain.common.OverSettlementException;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
@@ -37,7 +38,14 @@ import com.sjherp.domain.payment.PaymentDisbursement;
 import com.sjherp.domain.payment.PaymentDisbursementLine;
 import com.sjherp.domain.payment.PaymentDisbursementLineInput;
 import com.sjherp.domain.payment.PaymentDisbursementService;
+import com.sjherp.domain.gl.Voucher;
+import com.sjherp.domain.gl.VoucherService;
+import com.sjherp.domain.gl.VoucherSourceType;
+import com.sjherp.domain.payment.PaymentDisbursementNotFoundException;
+import com.sjherp.domain.settlement.SettlementRecord;
+import com.sjherp.domain.settlement.SettlementRecordRepository;
 import com.sjherp.domain.settlement.SettlementService;
+import com.sjherp.domain.settlement.SettlementType;
 
 /**
  * 付款单应用服务编排单测（M4-T04b，对称收款单）：用 Mockito 替身验证 {@code post} 的<b>同事务原子编排</b>——
@@ -63,7 +71,10 @@ class PaymentDisbursementAppServiceTest {
     private PaymentAccountService paymentAccountService;
     private AccountsPayableRepository payableRepository;
     private SettlementService settlementService;
+    private SettlementRecordRepository settlementRecordRepository;
     private AutoVoucherService autoVoucherService;
+    private VoucherService voucherService;
+    private VoucherAppService voucherAppService;
     private DocumentNumberGenerator numberGenerator;
     private PaymentDisbursementAppService appService;
 
@@ -73,10 +84,14 @@ class PaymentDisbursementAppServiceTest {
         paymentAccountService = Mockito.mock(PaymentAccountService.class);
         payableRepository = Mockito.mock(AccountsPayableRepository.class);
         settlementService = Mockito.mock(SettlementService.class);
+        settlementRecordRepository = Mockito.mock(SettlementRecordRepository.class);
         autoVoucherService = Mockito.mock(AutoVoucherService.class);
+        voucherService = Mockito.mock(VoucherService.class);
+        voucherAppService = Mockito.mock(VoucherAppService.class);
         numberGenerator = Mockito.mock(DocumentNumberGenerator.class);
         appService = new PaymentDisbursementAppService(paymentDisbursementService, paymentAccountService,
-                payableRepository, settlementService, autoVoucherService, numberGenerator);
+                payableRepository, settlementService, settlementRecordRepository, autoVoucherService,
+                voucherService, voucherAppService, numberGenerator);
     }
 
     // ===================================================== 建单
@@ -279,6 +294,114 @@ class PaymentDisbursementAppServiceTest {
                 .settlePayable(anyLong(), any(), any(), anyString(), anyString());
         Mockito.verify(autoVoucherService, Mockito.never())
                 .generateForPaymentDisbursement(any(), anyString(), anyString());
+    }
+
+    // ===================================================== 冲销编排（M4-T07c）
+
+    @Test
+    void 冲销_反查正向核销记录逐条unsettle应付_红冲现金侧凭证_原单转REVERSED_次序正确() {
+        PaymentDisbursement disbursement = postedDisbursement(SUPPLIER,
+                line(1, PAYABLE_1, "300.00"), line(2, PAYABLE_2, "150.00"));
+        Mockito.when(paymentDisbursementService.get("PAYV-1")).thenReturn(disbursement);
+        Mockito.when(settlementRecordRepository.findByPaymentDocNo("PAYV-1")).thenReturn(List.of(
+                SettlementRecord.record(SettlementType.PAYABLE, PAYABLE_1, "PINV-A",
+                        new BigDecimal("300.00"), PAY_DATE, "PAYV-1", OPERATOR),
+                SettlementRecord.record(SettlementType.PAYABLE, PAYABLE_2, "PINV-B",
+                        new BigDecimal("150.00"), PAY_DATE, "PAYV-1", OPERATOR)));
+        Voucher cashVoucher = Mockito.mock(Voucher.class);
+        Mockito.when(cashVoucher.getSourceDocType()).thenReturn(VoucherSourceType.PAYMENT_DISBURSEMENT.name());
+        Mockito.when(cashVoucher.getDocNo()).thenReturn("VCH-2");
+        Mockito.when(voucherService.findBySourceDocNo("PAYV-1")).thenReturn(List.of(cashVoucher));
+        Voucher redVoucher = Mockito.mock(Voucher.class);
+        Mockito.when(redVoucher.getDocNo()).thenReturn("VCH-RED-2");
+        Mockito.when(voucherAppService.reverse("VCH-2", OPERATOR)).thenReturn(redVoucher);
+        PaymentDisbursement reversed = Mockito.mock(PaymentDisbursement.class);
+        Mockito.when(paymentDisbursementService.reverse("PAYV-1", "VCH-RED-2", OPERATOR))
+                .thenReturn(reversed);
+
+        PaymentDisbursement result = appService.reverse("PAYV-1", OPERATOR);
+        assertSame(reversed, result);
+
+        Mockito.verify(settlementService).unsettlePayable(eq(PAYABLE_1), argEq("300.00"),
+                eq(PAY_DATE), eq("PAYV-1"), eq(OPERATOR));
+        Mockito.verify(settlementService).unsettlePayable(eq(PAYABLE_2), argEq("150.00"),
+                eq(PAY_DATE), eq("PAYV-1"), eq(OPERATOR));
+        Mockito.verify(voucherAppService).reverse("VCH-2", OPERATOR);
+        Mockito.verify(paymentDisbursementService).reverse("PAYV-1", "VCH-RED-2", OPERATOR);
+
+        InOrder inOrder = Mockito.inOrder(settlementService, voucherAppService, paymentDisbursementService);
+        inOrder.verify(settlementService).unsettlePayable(eq(PAYABLE_1), any(), any(), any(), any());
+        inOrder.verify(settlementService).unsettlePayable(eq(PAYABLE_2), any(), any(), any(), any());
+        inOrder.verify(voucherAppService).reverse("VCH-2", OPERATOR);
+        inOrder.verify(paymentDisbursementService).reverse("PAYV-1", "VCH-RED-2", OPERATOR);
+    }
+
+    @Test
+    void 冲销_只对正向核销记录unsettle_负额反向记录跳过() {
+        PaymentDisbursement disbursement = postedDisbursement(SUPPLIER, line(1, PAYABLE_1, "300.00"));
+        Mockito.when(paymentDisbursementService.get("PAYV-1")).thenReturn(disbursement);
+        Mockito.when(settlementRecordRepository.findByPaymentDocNo("PAYV-1")).thenReturn(List.of(
+                SettlementRecord.record(SettlementType.PAYABLE, PAYABLE_1, "PINV-A",
+                        new BigDecimal("300.00"), PAY_DATE, "PAYV-1", OPERATOR),
+                SettlementRecord.recordReversal(SettlementType.PAYABLE, PAYABLE_1, "PINV-A",
+                        new BigDecimal("-300.00"), PAY_DATE, "PAYV-1", OPERATOR)));
+        // 现金侧凭证命中（已过账付款单必有，reverseAutoVoucher 无凭证现抛账证不符异常）
+        Voucher cashVoucher = Mockito.mock(Voucher.class);
+        Mockito.when(cashVoucher.getSourceDocType()).thenReturn(VoucherSourceType.PAYMENT_DISBURSEMENT.name());
+        Mockito.when(cashVoucher.getDocNo()).thenReturn("VCH-2");
+        Mockito.when(voucherService.findBySourceDocNo("PAYV-1")).thenReturn(List.of(cashVoucher));
+        Voucher redVoucher = Mockito.mock(Voucher.class);
+        Mockito.when(redVoucher.getDocNo()).thenReturn("VCH-RED-2");
+        Mockito.when(voucherAppService.reverse("VCH-2", OPERATOR)).thenReturn(redVoucher);
+        Mockito.when(paymentDisbursementService.reverse(eq("PAYV-1"), anyString(), eq(OPERATOR)))
+                .thenReturn(Mockito.mock(PaymentDisbursement.class));
+
+        appService.reverse("PAYV-1", OPERATOR);
+
+        Mockito.verify(settlementService, Mockito.times(1))
+                .unsettlePayable(eq(PAYABLE_1), argEq("300.00"), eq(PAY_DATE), eq("PAYV-1"), eq(OPERATOR));
+        Mockito.verifyNoMoreInteractions(settlementService);
+    }
+
+    @Test
+    void 冲销_无现金侧凭证_抛账证不符异常_不转REVERSED() {
+        // 已过账付款单必有现金侧凭证；缺失即账证不符 → 抛 IllegalStateException 整事务回滚，
+        // 绝不静默把单标 REVERSED 而无红字凭证（评审 P3，账证一致红线）
+        PaymentDisbursement disbursement = postedDisbursement(SUPPLIER, line(1, PAYABLE_1, "300.00"));
+        Mockito.when(paymentDisbursementService.get("PAYV-1")).thenReturn(disbursement);
+        Mockito.when(settlementRecordRepository.findByPaymentDocNo("PAYV-1")).thenReturn(List.of());
+        Mockito.when(voucherService.findBySourceDocNo("PAYV-1")).thenReturn(List.of());
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> appService.reverse("PAYV-1", OPERATOR));
+        assertTrue(ex.getMessage().contains("账证不符") || ex.getMessage().contains("无对应现金侧"),
+                ex.getMessage());
+        Mockito.verify(paymentDisbursementService, Mockito.never())
+                .reverse(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void 冲销_原单已REVERSED_前置守门拒_未触反向核销() {
+        // 前置状态守门（评审 P2）：已 REVERSED 直接拒，不触达反向核销/凭证红冲/领域 reverse
+        PaymentDisbursement disbursement = postedDisbursement(SUPPLIER, line(1, PAYABLE_1, "300.00"));
+        disbursement.reverse(OPERATOR, "VCH-RED-X"); // 置为 REVERSED
+        Mockito.when(paymentDisbursementService.get("PAYV-1")).thenReturn(disbursement);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> appService.reverse("PAYV-1", OPERATOR));
+        assertTrue(ex.getMessage().contains("已冲销"), ex.getMessage());
+        Mockito.verifyNoInteractions(settlementService);
+        Mockito.verify(paymentDisbursementService, Mockito.never())
+                .reverse(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void 冲销_原单不存在_抛NotFound() {
+        Mockito.when(paymentDisbursementService.get("PAYV-X"))
+                .thenThrow(new PaymentDisbursementNotFoundException("PAYV-X"));
+        assertThrows(PaymentDisbursementNotFoundException.class,
+                () -> appService.reverse("PAYV-X", OPERATOR));
+        Mockito.verifyNoInteractions(settlementService);
     }
 
     // ===================================================== 查询透传

@@ -227,6 +227,162 @@ class SettlementServiceTest {
 
     // ---------------- 审计 ----------------
 
+    // ---------------- 反向核销（M4-T07c unsettle，落负额记录） ----------------
+
+    @Test
+    void 反向核销应收_装载_unsettle_save_落负额记录_字段正确() {
+        AccountsReceivable ar = AccountsReceivable.restore(30L, 7L, new BigDecimal("1000.00"),
+                new BigDecimal("1000.00"), "SINV-9", DUE, ReceivableStatus.SETTLED, "creator");
+        receivableRepo.seed(ar);
+
+        SettlementRecord rec = service.unsettleReceivable(30L, new BigDecimal("400.00"),
+                DATE, "RCPT-1", OPERATOR);
+
+        // 子账已核销额回退、状态回 PARTIAL，并 save（UPDATE）
+        assertEquals(ReceivableStatus.PARTIAL, ar.getStatus());
+        assertEqualsDecimal("600.00", ar.getSettledAmount());
+        assertSame(ar, receivableRepo.lastSaved, "应保存被反向的同一聚合");
+
+        // 落了一条负额反向核销记录（amount = -400.00）
+        SettlementRecord saved = settlementRepo.lastSaved;
+        assertSame(rec, saved, "返回的就是落库那条");
+        assertEquals(SettlementType.RECEIVABLE, saved.getType());
+        assertEquals(30L, saved.getTargetId());
+        assertEquals("SINV-9", saved.getTargetSourceDocNo());
+        assertEqualsDecimal("-400.00", saved.getAmount());
+        assertTrue(saved.getAmount().signum() < 0, "反向记录金额必须为负");
+        assertEquals(DATE, saved.getSettlementDate());
+        assertEquals("RCPT-1", saved.getPaymentDocNo(), "反查锚点=被冲销收款单号");
+        assertEquals(OPERATOR, saved.getCreatedBy());
+        assertNotNull(saved.getId(), "落库后应回填 id");
+
+        // 顺序：先 save 子账，再落反向记录
+        assertTrue(receivableRepo.saveSeq < settlementRepo.saveSeq,
+                "应先保存子账再落反向核销记录");
+    }
+
+    @Test
+    void 反向核销应收_全额回退_状态回OPEN() {
+        AccountsReceivable ar = AccountsReceivable.restore(31L, 7L, new BigDecimal("500.00"),
+                new BigDecimal("500.00"), "SINV-10", DUE, ReceivableStatus.SETTLED, "creator");
+        receivableRepo.seed(ar);
+
+        service.unsettleReceivable(31L, new BigDecimal("500.00"), DATE, "RCPT-2", OPERATOR);
+
+        assertEquals(ReceivableStatus.OPEN, ar.getStatus());
+        assertEqualsDecimal("0", ar.getSettledAmount());
+        assertEqualsDecimal("-500.00", settlementRepo.lastSaved.getAmount());
+    }
+
+    @Test
+    void 反向核销应收_下溢_抛异常_不落记录() {
+        AccountsReceivable ar = AccountsReceivable.restore(32L, 7L, new BigDecimal("1000.00"),
+                new BigDecimal("300.00"), "SINV-11", DUE, ReceivableStatus.PARTIAL, "creator");
+        receivableRepo.seed(ar);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service.unsettleReceivable(32L, new BigDecimal("300.01"), DATE, "RCPT-3", OPERATOR));
+        assertEquals(0, settlementRepo.store.size(), "下溢被子账拒绝，不应落反向记录");
+        assertEquals(ReceivableStatus.PARTIAL, ar.getStatus());
+        assertEqualsDecimal("300.00", ar.getSettledAmount());
+    }
+
+    @Test
+    void 反向核销应收_不存在_抛ReceivableNotFound_不落记录() {
+        assertThrows(ReceivableNotFoundException.class,
+                () -> service.unsettleReceivable(999L, new BigDecimal("1.00"), DATE, "RCPT-X", OPERATOR));
+        assertEquals(0, settlementRepo.store.size());
+    }
+
+    @Test
+    void 反向核销应付_装载_unsettle_save_落负额记录_字段正确() {
+        AccountsPayable ap = AccountsPayable.restore(40L, 3L, new BigDecimal("800.00"),
+                "PINV-9", DUE, PayableStatus.SETTLED, new BigDecimal("800.00"), "creator", Instant.now());
+        payableRepo.seed(ap);
+
+        SettlementRecord rec = service.unsettlePayable(40L, new BigDecimal("800.00"),
+                DATE, "PAYV-9", OPERATOR);
+
+        assertEquals(PayableStatus.OPEN, ap.getStatus());
+        assertEqualsDecimal("0", ap.getSettledAmount());
+        assertSame(ap, payableRepo.lastSaved);
+
+        SettlementRecord saved = settlementRepo.lastSaved;
+        assertSame(rec, saved);
+        assertEquals(SettlementType.PAYABLE, saved.getType());
+        assertEquals(40L, saved.getTargetId());
+        assertEquals("PINV-9", saved.getTargetSourceDocNo());
+        assertEqualsDecimal("-800.00", saved.getAmount());
+        assertEquals("PAYV-9", saved.getPaymentDocNo());
+        assertTrue(payableRepo.saveSeq < settlementRepo.saveSeq, "应先保存子账再落反向核销记录");
+    }
+
+    @Test
+    void 反向核销应付_部分回退_状态PARTIAL() {
+        AccountsPayable ap = AccountsPayable.restore(41L, 3L, new BigDecimal("800.00"),
+                "PINV-10", DUE, PayableStatus.SETTLED, new BigDecimal("800.00"), "creator", Instant.now());
+        payableRepo.seed(ap);
+
+        service.unsettlePayable(41L, new BigDecimal("300.00"), DATE, "PAYV-10", OPERATOR);
+
+        assertEquals(PayableStatus.PARTIAL, ap.getStatus());
+        assertEqualsDecimal("500.00", ap.getSettledAmount());
+        assertEqualsDecimal("-300.00", settlementRepo.lastSaved.getAmount());
+    }
+
+    @Test
+    void 反向核销应付_不存在_抛PayableNotFound_不落记录() {
+        assertThrows(PayableNotFoundException.class,
+                () -> service.unsettlePayable(999L, new BigDecimal("1.00"), DATE, "PAYV-X", OPERATOR));
+        assertEquals(0, settlementRepo.store.size());
+    }
+
+    @Test
+    void 反向核销_operator与业务日空校验() {
+        assertThrows(IllegalArgumentException.class,
+                () -> service.unsettleReceivable(1L, new BigDecimal("1"), DATE, "RCPT-1", " "));
+        assertThrows(NullPointerException.class,
+                () -> service.unsettlePayable(1L, new BigDecimal("1"), null, "PAYV-1", OPERATOR));
+        assertEquals(0, receivableRepo.findByIdCalls, "校验失败不应装载子账");
+    }
+
+    @Test
+    void Σ核销记录含负额恒等于settled_不变式() {
+        // settle 1000 后 unsettle 400：核销记录 Σ = 1000 + (-400) = 600 == 子账 settled
+        AccountsReceivable ar = AccountsReceivable.restore(50L, 7L, new BigDecimal("1000.00"),
+                new BigDecimal("0.00"), "SINV-50", DUE, ReceivableStatus.OPEN, "creator");
+        receivableRepo.seed(ar);
+
+        service.settleReceivable(50L, new BigDecimal("1000.00"), DATE, "RCPT-50", OPERATOR);
+        service.unsettleReceivable(50L, new BigDecimal("400.00"), DATE, "RCPT-50", OPERATOR);
+
+        java.math.BigDecimal sum = settlementRepo.store.stream()
+                .filter(r -> r.getType() == SettlementType.RECEIVABLE && r.getTargetId() == 50L)
+                .map(SettlementRecord::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertEquals(0, sum.compareTo(ar.getSettledAmount()),
+                "Σ核销记录（含负额）应恒等于子账 settledAmount；实际 Σ=" + sum.toPlainString()
+                        + " settled=" + ar.getSettledAmount().toPlainString());
+        assertEqualsDecimal("600.00", ar.getSettledAmount());
+        assertEquals(ReceivableStatus.PARTIAL, ar.getStatus());
+    }
+
+    @Test
+    void 反向写方法标注Audited_targetType为settlement() throws NoSuchMethodException {
+        Method unsettleAr = SettlementService.class.getMethod("unsettleReceivable", long.class,
+                BigDecimal.class, LocalDate.class, String.class, String.class);
+        Method unsettleAp = SettlementService.class.getMethod("unsettlePayable", long.class,
+                BigDecimal.class, LocalDate.class, String.class, String.class);
+        Audited a1 = unsettleAr.getAnnotation(Audited.class);
+        Audited a2 = unsettleAp.getAnnotation(Audited.class);
+        assertNotNull(a1, "unsettleReceivable 应标 @Audited");
+        assertNotNull(a2, "unsettlePayable 应标 @Audited");
+        assertEquals("settlement", a1.targetType());
+        assertEquals("settlement", a2.targetType());
+        assertEquals("settlement.unsettle.receivable", a1.action());
+        assertEquals("settlement.unsettle.payable", a2.action());
+    }
+
     @Test
     void 写方法标注Audited_targetType为settlement() throws NoSuchMethodException {
         Method settleAr = SettlementService.class.getMethod("settleReceivable", long.class,

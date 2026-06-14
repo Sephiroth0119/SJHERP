@@ -103,6 +103,43 @@ public class CollectionReceiptService {
         return receipt;
     }
 
+    /**
+     * 冲销已完成收款单（红字单，M4-T07c，COMPLETED → REVERSED，仅推进单据状态机）。
+     *
+     * <p>同一外层事务内（由 {@code CollectionReceiptAppService.reverse} 提供）：
+     * <ol>
+     *   <li>校验原单 COMPLETED（非则 {@link IllegalStateException}）、未被冲销（幂等：已 REVERSED 拒）；</li>
+     *   <li>原单 {@link CollectionReceipt#reverse}（COMPLETED → REVERSED + 红字关联 {@code reversalDocNo}）。</li>
+     * </ol>
+     *
+     * <p>反向核销应收（按 paymentDocNo 反查核销记录逐条 unsettle）与红冲现金侧凭证由 app 层
+     * {@code CollectionReceiptAppService.reverse} 在同一外层事务内编排——本领域服务<b>只负责收款单自身
+     * 状态机推进与持久化</b>（口径同 {@link #post} 职责边界，照 {@code PurchaseReceiptService.reverse}）。
+     * 物理删除不存在（CLAUDE.md 原则 2）。
+     *
+     * @param docNo         被冲销的收款单号（须 COMPLETED）
+     * @param reversalDocNo 红字关联单据号（红字现金侧凭证号，由 app 层红冲凭证后回传；无凭证时合成引用）
+     * @param operator      操作人
+     * @return 已转 REVERSED 的原收款单
+     */
+    @Audited(action = "collection_receipt.reverse", targetType = "collection_receipt")
+    public CollectionReceipt reverse(String docNo, String reversalDocNo, String operator) {
+        requireOperator(operator);
+        Objects.requireNonNull(reversalDocNo, "红字关联单据号不能为空");
+        CollectionReceipt receipt = get(docNo);
+        if (receipt.getStatus() == com.sjherp.domain.common.DocumentStatus.REVERSED) {
+            throw new IllegalStateException("收款单[" + docNo + "] 已冲销，不可重复冲销");
+        }
+        if (receipt.getStatus() != com.sjherp.domain.common.DocumentStatus.COMPLETED) {
+            throw new IllegalStateException("收款单[" + docNo + "] 当前状态 " + receipt.getStatus()
+                    + " 不可冲销（仅已过账的收款单可冲销）");
+        }
+        receipt.registerEventPublisher(eventPublisher);
+        receipt.reverse(operator, reversalDocNo);
+        repository.save(receipt);
+        return receipt;
+    }
+
     /** 按单据号查（不存在抛 {@link CollectionReceiptNotFoundException} → API 404） */
     public CollectionReceipt get(String docNo) {
         return repository.findByDocNo(docNo)

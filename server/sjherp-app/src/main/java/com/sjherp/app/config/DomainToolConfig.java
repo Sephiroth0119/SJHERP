@@ -18,6 +18,8 @@ import com.sjherp.app.tool.inventory.CreateTransferTool;
 import com.sjherp.app.tool.inventory.QueryInventoryBalanceTool;
 import com.sjherp.app.tool.inventory.QueryStockCountTool;
 import com.sjherp.app.tool.inventory.QueryTransferTool;
+import com.sjherp.app.tool.inventory.ReverseStockCountTool;
+import com.sjherp.app.tool.inventory.ReverseTransferTool;
 import com.sjherp.app.tool.partner.CreateCustomerTool;
 import com.sjherp.app.tool.partner.CreateSupplierTool;
 import com.sjherp.app.tool.partner.SearchCustomersTool;
@@ -68,10 +70,12 @@ import com.sjherp.app.tool.fund.SearchPaymentAccountsTool;
 import com.sjherp.app.tool.collection.CreateCollectionReceiptTool;
 import com.sjherp.app.tool.collection.ApproveCollectionReceiptTool;
 import com.sjherp.app.tool.collection.PostCollectionReceiptTool;
+import com.sjherp.app.tool.collection.ReverseCollectionReceiptTool;
 import com.sjherp.app.tool.collection.QueryCollectionReceiptsTool;
 import com.sjherp.app.tool.payment.CreatePaymentDisbursementTool;
 import com.sjherp.app.tool.payment.ApprovePaymentDisbursementTool;
 import com.sjherp.app.tool.payment.PostPaymentDisbursementTool;
+import com.sjherp.app.tool.payment.ReversePaymentDisbursementTool;
 import com.sjherp.app.tool.payment.QueryPaymentDisbursementsTool;
 import com.sjherp.domain.catalog.ProductService;
 import com.sjherp.domain.catalog.UnitService;
@@ -89,8 +93,9 @@ import com.sjherp.domain.warehouse.WarehouseService;
  * + M3-T05/T06/T07 采购线 + M3-T08/T09/T10 销售线 + M3-T11 进销存工具全量
  * + M3-T13 一致性校验 + M4-T04a 资金账户档案 + M4-T04c 收付款单 Agent 工具
  * + M4-T05 月末结转关账 Agent 工具 + M4-T07a 凭证冲销 Agent 工具
- * + M4-T07b 采购/销售单据冲销 Agent 工具），
- * <b>常驻注册</b> 59 个（所有 profile 生效，区别于
+ * + M4-T07b 采购/销售单据冲销 Agent 工具
+ * + M4-T07c 收付款单/调拨单/盘点单冲销 Agent 工具），
+ * <b>常驻注册</b> 63 个（所有 profile 生效，区别于
  * dev-only 的演示工具 {@link ToolConfig.DemoToolConfig}）。完整清单见 docs/领域工具清单.md。
  *
  * <p>查询类（NORMAL，登录即可）21 个：search_products / get_product_detail /
@@ -102,7 +107,7 @@ import com.sjherp.domain.warehouse.WarehouseService;
  * precheck_period_close（M4-T05，关账可行性预检，只读）；
  * 建档类（NORMAL）1 个：create_payment_account（M4-T04a，
  * glAccountCode 须为末级启用 GL 科目）；
- * 写类（HIGH，框架强制确认卡片）35 个：create_customer / create_supplier /
+ * 写类（HIGH，框架强制确认卡片）41 个：create_customer / create_supplier /
  * create_product / create_warehouse / adjust_inventory / create_stock_count /
  * create_transfer / create_purchase_order / create_sales_order + M3-T11 采购线
  * （approve_purchase_order / create·approve·post_purchase_receipt /
@@ -123,6 +128,10 @@ import com.sjherp.domain.warehouse.WarehouseService;
  * 回退子账量、冲回应付、红冲自动凭证、原单转已冲销，独立 HIGH（不可逆，HITL 确认）。
  * 销售单据冲销（reverse_sales_delivery / reverse_sales_invoice）红冲已过账出库/发票——库存按原 COGS 反向入库、
  * 回退发货/开票量、冲回应收（须无核销）、红冲自动凭证、原单转已冲销，独立 HIGH（不可逆，HITL 确认）。
+ * 收付款单冲销（reverse_collection_receipt / reverse_payment_disbursement）红冲已过账收/付款单——反向核销应收/应付、
+ * 红冲现金侧凭证、原单转已冲销（解锁对应发票红冲），独立 HIGH（不可逆，HITL 确认）。
+ * 调拨/盘点单冲销（reverse_transfer / reverse_stock_count）红冲已过账调拨/盘点单——按原成本对称反向库存
+ * （调拨不出凭证、盘点不出凭证），原单转已冲销，独立 HIGH（不可逆，HITL 确认）。
  *
  * <p>⚠️ 新增工具后必须同步：{@code HighRiskToolPermissionTest} 注册清单与数量基线、
  * docs/领域工具清单.md、LlmAgent 系统提示词「当前业务能力」段。
@@ -234,10 +243,17 @@ public class DomainToolConfig {
         // 采购单据冲销（M4-T07b，HIGH：红字单——反向库存/回退子账量/冲回应付/红冲凭证，不可逆，HITL 确认）
         registry.register(new ReversePurchaseReceiptTool(purchaseReceiptAppService));
         registry.register(new ReversePurchaseInvoiceTool(purchaseInvoiceAppService));
+        // 收付款单冲销（M4-T07c，HIGH：红字单——反向核销应收/应付 + 红冲现金侧凭证，原单转已冲销，不可逆，HITL 确认）
+        registry.register(new ReverseCollectionReceiptTool(collectionReceiptAppService));
+        registry.register(new ReversePaymentDisbursementTool(paymentDisbursementAppService));
+        // 调拨/盘点单冲销（M4-T07c，HIGH：红字单——按原成本对称反向库存，不出 GL 凭证，原单转已冲销，不可逆，HITL 确认）
+        registry.register(new ReverseTransferTool(transferAppService));
+        registry.register(new ReverseStockCountTool(stocktakeService));
         log.info("已注册领域工具（M2-T08 档案 + M3-T01c 库存 + M3-T03 盘点 + M3-T04 调拨"
                 + " + M3-T05/T06/T07 采购线 + M3-T08/T09/T10 销售线 + M3-T11 全量注册"
                 + " + M3-T13 一致性校验 + M4-T04a 资金账户 + M4-T04c 收付款单"
-                + " + M4-T05 月末结转关账 + M4-T07a 凭证冲销 + M4-T07b 采购/销售单据冲销，常驻）："
-                + "查询 21 个（NORMAL）+ 资金账户建档 1 个（NORMAL）+ 写 35 个（HIGH）");
+                + " + M4-T05 月末结转关账 + M4-T07a 凭证冲销 + M4-T07b 采购/销售单据冲销"
+                + " + M4-T07c 收付款单/调拨单/盘点单冲销，常驻）："
+                + "查询 21 个（NORMAL）+ 资金账户建档 1 个（NORMAL）+ 写 41 个（HIGH）");
     }
 }

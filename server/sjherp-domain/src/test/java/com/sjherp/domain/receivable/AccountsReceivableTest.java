@@ -198,6 +198,115 @@ class AccountsReceivableTest {
         assertEquals(ReceivableStatus.REVERSED, ar.getStatus());
     }
 
+    // ---------------- M4-T07c 核销反向分支（unsettle） ----------------
+
+    @Test
+    void unsettle_全额回退至0_状态回OPEN_余额恢复() {
+        AccountsReceivable ar = openAr("1000.00");
+        ar.settle(new BigDecimal("1000.00"));
+        assertEquals(ReceivableStatus.SETTLED, ar.getStatus());
+
+        ar.unsettle(new BigDecimal("1000.00"));
+        assertEquals(ReceivableStatus.OPEN, ar.getStatus());
+        assertEqualsDecimal("0", ar.getSettledAmount());
+        assertEqualsDecimal("1000.00", ar.openAmount());
+        // 原始金额永不变（CLAUDE.md 原则 2）
+        assertEqualsDecimal("1000.00", ar.getAmount());
+    }
+
+    @Test
+    void unsettle_部分回退_仍有已核销额_状态PARTIAL() {
+        AccountsReceivable ar = openAr("1000.00");
+        ar.settle(new BigDecimal("1000.00"));   // SETTLED
+
+        ar.unsettle(new BigDecimal("400.00"));  // 退 400 → 剩 600
+        assertEquals(ReceivableStatus.PARTIAL, ar.getStatus());
+        assertEqualsDecimal("600.00", ar.getSettledAmount());
+        assertEqualsDecimal("400.00", ar.openAmount());
+    }
+
+    @Test
+    void unsettle_从PARTIAL退到0_状态回OPEN() {
+        AccountsReceivable ar = openAr("1000.00");
+        ar.settle(new BigDecimal("300.00"));    // PARTIAL
+        ar.unsettle(new BigDecimal("300.00"));
+        assertEquals(ReceivableStatus.OPEN, ar.getStatus());
+        assertEqualsDecimal("0", ar.getSettledAmount());
+    }
+
+    @Test
+    void unsettle_部分回退后settled恰回到总额_状态SETTLED() {
+        // 设计真源 §2：== amount(总额) → SETTLED（部分冲回后仍满额的极端场景）
+        // 多笔核销至 SETTLED 后只退其中一笔的"溢出"部分时若 settled 仍等于总额则保持 SETTLED
+        AccountsReceivable ar = openAr("1000.00");
+        ar.settle(new BigDecimal("1000.00"));   // SETTLED，settled=1000
+        // 边界覆盖：unsettle 0.00 归一后为 0 → IllegalArgument（不退）；此处用极小退额后再断言 PARTIAL
+        ar.unsettle(new BigDecimal("0.01"));
+        assertEquals(ReceivableStatus.PARTIAL, ar.getStatus());
+        assertEqualsDecimal("999.99", ar.getSettledAmount());
+    }
+
+    @Test
+    void unsettle_下溢_退额超过已核销额_拒绝且状态不变() {
+        AccountsReceivable ar = openAr("1000.00");
+        ar.settle(new BigDecimal("300.00"));    // settled=300 PARTIAL
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> ar.unsettle(new BigDecimal("300.01")));
+        assertTrue(ex.getMessage().contains("超过已核销额"), ex.getMessage());
+        // 拒绝后聚合态不变
+        assertEquals(ReceivableStatus.PARTIAL, ar.getStatus());
+        assertEqualsDecimal("300.00", ar.getSettledAmount());
+    }
+
+    @Test
+    void unsettle_对未核销OPEN子账_任何正额都下溢拒绝() {
+        AccountsReceivable ar = openAr("1000.00");   // settled=0 OPEN
+        assertThrows(IllegalArgumentException.class, () -> ar.unsettle(new BigDecimal("0.01")));
+        assertEquals(ReceivableStatus.OPEN, ar.getStatus());
+    }
+
+    @Test
+    void unsettle_金额为零或负或null_拒绝() {
+        AccountsReceivable ar = openAr("1000.00");
+        ar.settle(new BigDecimal("500.00"));
+        assertThrows(IllegalArgumentException.class, () -> ar.unsettle(BigDecimal.ZERO));
+        assertThrows(IllegalArgumentException.class, () -> ar.unsettle(new BigDecimal("-1")));
+        assertThrows(IllegalArgumentException.class, () -> ar.unsettle(null));
+        // 拒绝后不动账
+        assertEqualsDecimal("500.00", ar.getSettledAmount());
+        assertEquals(ReceivableStatus.PARTIAL, ar.getStatus());
+    }
+
+    @Test
+    void unsettle_对REVERSED子账_抛IllegalState() {
+        AccountsReceivable ar = openAr("1000.00");
+        ar.markReversed(OPERATOR);   // OPEN → REVERSED（未核销才可冲）
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> ar.unsettle(new BigDecimal("1.00")));
+        assertTrue(ex.getMessage().contains("已冲销"), ex.getMessage());
+        assertEquals(ReceivableStatus.REVERSED, ar.getStatus());
+    }
+
+    @Test
+    void unsettle_金额三位小数HALF_UP归一后扣回() {
+        AccountsReceivable ar = openAr("100.00");
+        ar.settle(new BigDecimal("100.00"));    // SETTLED
+        // 33.335 → 33.34（HALF_UP），归一后扣回
+        ar.unsettle(new BigDecimal("33.335"));
+        assertEqualsDecimal("66.66", ar.getSettledAmount());
+        assertEquals(ReceivableStatus.PARTIAL, ar.getStatus());
+    }
+
+    @Test
+    void settle与unsettle对称_回到初态() {
+        AccountsReceivable ar = openAr("1000.00");
+        ar.settle(new BigDecimal("700.00"));
+        ar.unsettle(new BigDecimal("700.00"));
+        assertEquals(ReceivableStatus.OPEN, ar.getStatus());
+        assertEqualsDecimal("0", ar.getSettledAmount());
+        assertEqualsDecimal("1000.00", ar.openAmount());
+    }
+
     private static void assertEqualsDecimal(String expected, BigDecimal actual) {
         assertEquals(0, new BigDecimal(expected).compareTo(actual),
                 "期望 " + expected + " 实际 " + (actual == null ? "null" : actual.toPlainString()));

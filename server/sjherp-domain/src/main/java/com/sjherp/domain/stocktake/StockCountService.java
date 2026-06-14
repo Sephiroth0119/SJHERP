@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
+import com.sjherp.domain.common.DocumentStatus;
 import com.sjherp.domain.common.PageResult;
 import com.sjherp.domain.common.audit.Audited;
 import com.sjherp.domain.common.event.DomainEventPublisher;
@@ -136,18 +137,62 @@ public class StockCountService {
         return document;
     }
 
+    /** 红字盘点反向流水的合成关联引用（盘点无 GL 凭证、不复制业务单头，故用合成号关联） */
+    static final String REVERSAL_REF_PREFIX = "REVERSAL:";
+
     /**
-     * 冲销已完成盘点单（红字盘点单）。
+     * 冲销已完成盘点单（红字盘点单，M4-T07c）：按已固化的原成本<b>对称反向各非零差异行</b>，
+     * 原单 COMPLETED → REVERSED。<b>盘点不出 GL 凭证</b>（库存账实调整，盈亏经存货成本体现，
+     * 不在本单产生凭证），故本冲销只反向库存、不红冲凭证（设计真源 §77）。物理删除不存在
+     * （CLAUDE.md 原则 2）。
      *
-     * <p>TODO（M4-T07 统一做）：生成反向盘点单驱动反向流水（盘盈→反向出库、盘亏→反向入库），
-     * 原单 COMPLETED → REVERSED 并红字关联。当前未实现——盘点流水的纠错暂走库存成本调整/
-     * 重新盘点，盘点单本身不提供物理删除（CLAUDE.md 原则 2：只可冲销不可删除）。
+     * <p>同一外层事务内（由 {@code StocktakeService.reverse} 提供 @Transactional）执行：
+     * <ol>
+     *   <li>校验原单 COMPLETED（非则 {@link IllegalStateException}）、未被冲销（幂等：已 REVERSED 拒）；</li>
+     *   <li>对每个非零差异行按原盘盈/盘亏成本对称反向，组成<b>一批</b>同事务原子过账
+     *       （{@link InventoryPostingPort#execute}）：
+     *     <ul>
+     *       <li>原<b>盘盈</b>（COUNT_GAIN 入库）→ 反向 {@code COUNT_LOSS} 出库，{@code overriddenUnitCost}
+     *           = 原 COUNT_GAIN 流水固化单价（按原盘盈单价精确出库，避重算移动加权失真），
+     *           幂等键 {@code REVERSAL:SC号:行号}；</li>
+     *       <li>原<b>盘亏</b>（COUNT_LOSS 出库）→ 反向 {@code COUNT_GAIN} 入库，单价 = 原 COUNT_LOSS
+     *           流水固化成本（{@link InventoryPostingPort#originalUnitCost} 读回），按原盘亏成本回补，
+     *           幂等键 {@code REVERSAL:SC号:行号}；</li>
+     *       <li>原差异 == 0 的行无原流水，跳过（与过账口径对称）。</li>
+     *     </ul>
+     *     反向后该商品在该仓的数量与金额双双回到盘点前；</li>
+     *   <li>原单 {@link BusinessDocument#reverse}（COMPLETED → REVERSED + 红字关联合成引用）。</li>
+     * </ol>
+     *
+     * <p>反向幂等键加 {@code REVERSAL:} 前缀，避与原 {@code STOCK_COUNT:} 流水幂等键撞；原成本经
+     * {@link InventoryPostingPort#originalUnitCost} 按原行幂等键读回（流水缺失/无单价 → 防御性
+     * {@link IllegalStateException} → 整事务回滚）。
+     *
+     * @param docNo    被冲销的盘点单号（须 COMPLETED）
+     * @param operator 操作人
+     * @return 已转 REVERSED 的原盘点单
      */
     @Audited(action = "stock_count.reverse", targetType = "stock_count")
     public StockCountDocument reverse(String docNo, String operator) {
         requireOperator(operator);
-        throw new UnsupportedOperationException(
-                "盘点单冲销（红字盘点单）尚未实现，统一在 M4-T07 落地");
+        StockCountDocument document = get(docNo);
+        if (document.getStatus() == DocumentStatus.REVERSED) {
+            throw new IllegalStateException("盘点单[" + docNo + "] 已冲销，不可重复冲销");
+        }
+        if (document.getStatus() != DocumentStatus.COMPLETED) {
+            throw new IllegalStateException("盘点单[" + docNo + "] 当前状态 " + document.getStatus()
+                    + " 不可冲销（仅已过账的盘点单可冲销）");
+        }
+        document.registerEventPublisher(eventPublisher);
+        // 按原盘盈/盘亏成本对称反向（一批同事务原子过账；全无差异行时无流水）
+        List<StockMovementCommand> batch = buildReversalMovements(document);
+        if (!batch.isEmpty()) {
+            inventory.execute(batch, operator);
+        }
+        // 原单 COMPLETED → REVERSED + 红字关联（盘点无凭证/无红字单头，用合成引用）
+        document.reverse(operator, REVERSAL_REF_PREFIX + docNo);
+        repository.save(document);
+        return document;
     }
 
     /** 按单据号查（不存在抛 {@link StockCountNotFoundException} → API 404） */
@@ -222,9 +267,58 @@ public class StockCountService {
                 SRC_DOC_TYPE, document.getDocNo(), line.getLineNo(), key);
     }
 
+    /**
+     * 按各行差异组装反向库存指令（M4-T07c 红冲），对称还原原盘点（差异为 0 的行无原流水、跳过）：
+     * <ul>
+     *   <li>原<b>盘盈</b>（diff &gt; 0，曾 COUNT_GAIN 入库）→ {@code COUNT_LOSS} 出库 |diff| 数量，
+     *       {@code overriddenUnitCost} = 原 COUNT_GAIN 流水固化单价（{@link InventoryPostingPort#originalUnitCost}
+     *       按原行幂等键读回），按原盘盈单价精确出库（避重算移动加权失真，设计真源 §1.6/§77）；</li>
+     *   <li>原<b>盘亏</b>（diff &lt; 0，曾 COUNT_LOSS 出库）→ {@code COUNT_GAIN} 入库 |diff| 数量，
+     *       单价 = 原 COUNT_LOSS 流水固化成本（同上读回），按原盘亏成本回补库存。</li>
+     * </ul>
+     * 反向后该商品该仓数量/金额双双回到盘点前；反向幂等键加 {@code REVERSAL:} 前缀避撞原流水。
+     */
+    private List<StockMovementCommand> buildReversalMovements(StockCountDocument document) {
+        List<StockMovementCommand> batch = new ArrayList<>();
+        for (StockCountLine line : document.getLines()) {
+            BigDecimal diff = line.diffQty();
+            if (diff == null) {
+                // 防御性：已过账盘点单各行理应已录入实盘（过账已校验），此处不应出现
+                throw new IllegalStateException("盘点单[" + document.getDocNo() + "] 行号 "
+                        + line.getLineNo() + " 缺实盘数据，无法冲销");
+            }
+            int sign = diff.signum();
+            if (sign == 0) {
+                continue;
+            }
+            // 原盘点流水幂等键（红冲按原成本反向：读回该行原流水固化单价）
+            String originalKey = idempotencyKey(document.getDocNo(), line.getLineNo());
+            String reversalKey = reversalIdempotencyKey(document.getDocNo(), line.getLineNo());
+            BigDecimal originalUnitCost = inventory.originalUnitCost(originalKey);
+            if (sign > 0) {
+                // 原盘盈 COUNT_GAIN → 反向 COUNT_LOSS 出库，按原盘盈单价精确反向
+                batch.add(new OutboundCommand(document.getWarehouseId(), line.getProductId(),
+                        InventoryTxnType.COUNT_LOSS, diff,
+                        SRC_DOC_TYPE, document.getDocNo(), line.getLineNo(), reversalKey,
+                        originalUnitCost));
+            } else {
+                // 原盘亏 COUNT_LOSS → 反向 COUNT_GAIN 入库，按原盘亏成本回补
+                batch.add(new InboundCommand(document.getWarehouseId(), line.getProductId(),
+                        InventoryTxnType.COUNT_GAIN, diff.negate(), originalUnitCost, null,
+                        SRC_DOC_TYPE, document.getDocNo(), line.getLineNo(), reversalKey));
+            }
+        }
+        return batch;
+    }
+
     /** 幂等键约定 STOCK_COUNT:docNo:行号（拆解 §1.3） */
     private static String idempotencyKey(String docNo, int lineNo) {
         return SRC_DOC_TYPE + ":" + docNo + ":" + lineNo;
+    }
+
+    /** 红冲反向流水幂等键 REVERSAL:docNo:行号（M4-T07c，避与原 STOCK_COUNT 流水幂等键撞） */
+    private static String reversalIdempotencyKey(String docNo, int lineNo) {
+        return REVERSAL_REF_PREFIX + docNo + ":" + lineNo;
     }
 
     private static void requireOperator(String operator) {

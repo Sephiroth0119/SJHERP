@@ -233,6 +233,98 @@ class AccountsPayableTest {
         assertEquals(PayableStatus.REVERSED, ap.getStatus());
     }
 
+    // ---------------- M4-T07c 核销反向分支（unsettle，镜像应收） ----------------
+
+    @Test
+    void unsettle_全额回退至0_状态回OPEN_余额恢复() {
+        AccountsPayable ap = openAp("1000.00");
+        ap.settle(new BigDecimal("1000.00"));
+        assertEquals(PayableStatus.SETTLED, ap.getStatus());
+
+        ap.unsettle(new BigDecimal("1000.00"));
+        assertEquals(PayableStatus.OPEN, ap.getStatus());
+        assertEqualsDecimal("0", ap.getSettledAmount());
+        assertEqualsDecimal("1000.00", ap.outstandingAmount());
+        assertEqualsDecimal("1000.00", ap.getAmount());
+    }
+
+    @Test
+    void unsettle_部分回退_仍有已核销额_状态PARTIAL() {
+        AccountsPayable ap = openAp("1000.00");
+        ap.settle(new BigDecimal("1000.00"));   // SETTLED
+        ap.unsettle(new BigDecimal("400.00"));
+        assertEquals(PayableStatus.PARTIAL, ap.getStatus());
+        assertEqualsDecimal("600.00", ap.getSettledAmount());
+        assertEqualsDecimal("400.00", ap.outstandingAmount());
+    }
+
+    @Test
+    void unsettle_从PARTIAL退到0_状态回OPEN() {
+        AccountsPayable ap = openAp("1000.00");
+        ap.settle(new BigDecimal("300.00"));
+        ap.unsettle(new BigDecimal("300.00"));
+        assertEquals(PayableStatus.OPEN, ap.getStatus());
+        assertEqualsDecimal("0", ap.getSettledAmount());
+    }
+
+    @Test
+    void unsettle_下溢_退额超过已核销额_拒绝且状态不变() {
+        AccountsPayable ap = openAp("1000.00");
+        ap.settle(new BigDecimal("300.00"));
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> ap.unsettle(new BigDecimal("300.01")));
+        assertTrue(ex.getMessage().contains("超过已核销额"), ex.getMessage());
+        assertEquals(PayableStatus.PARTIAL, ap.getStatus());
+        assertEqualsDecimal("300.00", ap.getSettledAmount());
+    }
+
+    @Test
+    void unsettle_对未核销OPEN子账_任何正额都下溢拒绝() {
+        AccountsPayable ap = openAp("1000.00");
+        assertThrows(IllegalArgumentException.class, () -> ap.unsettle(new BigDecimal("0.01")));
+        assertEquals(PayableStatus.OPEN, ap.getStatus());
+    }
+
+    @Test
+    void unsettle_金额为零或负或null_拒绝() {
+        AccountsPayable ap = openAp("1000.00");
+        ap.settle(new BigDecimal("500.00"));
+        assertThrows(IllegalArgumentException.class, () -> ap.unsettle(BigDecimal.ZERO));
+        assertThrows(IllegalArgumentException.class, () -> ap.unsettle(new BigDecimal("-1")));
+        assertThrows(IllegalArgumentException.class, () -> ap.unsettle(null));
+        assertEqualsDecimal("500.00", ap.getSettledAmount());
+        assertEquals(PayableStatus.PARTIAL, ap.getStatus());
+    }
+
+    @Test
+    void unsettle_对REVERSED子账_抛IllegalState() {
+        AccountsPayable ap = openAp("1000.00");
+        ap.markReversed(OPERATOR);
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> ap.unsettle(new BigDecimal("1.00")));
+        assertTrue(ex.getMessage().contains("已冲销"), ex.getMessage());
+        assertEquals(PayableStatus.REVERSED, ap.getStatus());
+    }
+
+    @Test
+    void unsettle_金额三位小数HALF_UP归一后扣回() {
+        AccountsPayable ap = openAp("100.00");
+        ap.settle(new BigDecimal("100.00"));
+        ap.unsettle(new BigDecimal("33.335")); // → 33.34
+        assertEqualsDecimal("66.66", ap.getSettledAmount());
+        assertEquals(PayableStatus.PARTIAL, ap.getStatus());
+    }
+
+    @Test
+    void settle与unsettle对称_回到初态() {
+        AccountsPayable ap = openAp("1000.00");
+        ap.settle(new BigDecimal("700.00"));
+        ap.unsettle(new BigDecimal("700.00"));
+        assertEquals(PayableStatus.OPEN, ap.getStatus());
+        assertEqualsDecimal("0", ap.getSettledAmount());
+        assertEqualsDecimal("1000.00", ap.outstandingAmount());
+    }
+
     private static void assertEqualsDecimal(String expected, BigDecimal actual) {
         assertEquals(0, new BigDecimal(expected).compareTo(actual),
                 "期望 " + expected + " 实际 " + (actual == null ? "null" : actual.toPlainString()));

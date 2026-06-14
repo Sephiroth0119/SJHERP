@@ -103,6 +103,42 @@ public class PaymentDisbursementService {
         return disbursement;
     }
 
+    /**
+     * 冲销已完成付款单（红字单，M4-T07c，COMPLETED → REVERSED，仅推进单据状态机）。
+     *
+     * <p>与 {@code CollectionReceiptService.reverse} 对称。同一外层事务内（由
+     * {@code PaymentDisbursementAppService.reverse} 提供）：
+     * <ol>
+     *   <li>校验原单 COMPLETED（非则 {@link IllegalStateException}）、未被冲销（幂等：已 REVERSED 拒）；</li>
+     *   <li>原单 {@link PaymentDisbursement#reverse}（COMPLETED → REVERSED + 红字关联 {@code reversalDocNo}）。</li>
+     * </ol>
+     *
+     * <p>反向核销应付（按 paymentDocNo 反查核销记录逐条 unsettle）与红冲现金侧凭证由 app 层
+     * {@code PaymentDisbursementAppService.reverse} 在同一外层事务内编排。物理删除不存在（CLAUDE.md 原则 2）。
+     *
+     * @param docNo         被冲销的付款单号（须 COMPLETED）
+     * @param reversalDocNo 红字关联单据号（红字现金侧凭证号，由 app 层红冲凭证后回传；无凭证时合成引用）
+     * @param operator      操作人
+     * @return 已转 REVERSED 的原付款单
+     */
+    @Audited(action = "payment_disbursement.reverse", targetType = "payment_disbursement")
+    public PaymentDisbursement reverse(String docNo, String reversalDocNo, String operator) {
+        requireOperator(operator);
+        Objects.requireNonNull(reversalDocNo, "红字关联单据号不能为空");
+        PaymentDisbursement disbursement = get(docNo);
+        if (disbursement.getStatus() == com.sjherp.domain.common.DocumentStatus.REVERSED) {
+            throw new IllegalStateException("付款单[" + docNo + "] 已冲销，不可重复冲销");
+        }
+        if (disbursement.getStatus() != com.sjherp.domain.common.DocumentStatus.COMPLETED) {
+            throw new IllegalStateException("付款单[" + docNo + "] 当前状态 " + disbursement.getStatus()
+                    + " 不可冲销（仅已过账的付款单可冲销）");
+        }
+        disbursement.registerEventPublisher(eventPublisher);
+        disbursement.reverse(operator, reversalDocNo);
+        repository.save(disbursement);
+        return disbursement;
+    }
+
     /** 按单据号查（不存在抛 {@link PaymentDisbursementNotFoundException} → API 404） */
     public PaymentDisbursement get(String docNo) {
         return repository.findByDocNo(docNo)

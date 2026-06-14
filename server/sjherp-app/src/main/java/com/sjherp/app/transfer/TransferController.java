@@ -71,6 +71,16 @@ public class TransferController {
         return TransferResponse.from(transferAppService.post(docNo, CurrentUser.operator()));
     }
 
+    /**
+     * 冲销（红字调拨单，M4-T07c，COMPLETED → REVERSED）：按原两腿成本对称反向库存
+     * （调出仓回补、调入仓出库），不出 GL 凭证；不可逆。原单非 COMPLETED/已冲销 → 409，
+     * 单据不存在 → 404。
+     */
+    @PostMapping("/{docNo}/reverse")
+    public TransferResponse reverse(@PathVariable String docNo) {
+        return TransferResponse.from(transferAppService.reverse(docNo, CurrentUser.operator()));
+    }
+
     /** 单据详情（不存在 404） */
     @GetMapping("/{docNo}")
     public TransferResponse get(@PathVariable String docNo) {

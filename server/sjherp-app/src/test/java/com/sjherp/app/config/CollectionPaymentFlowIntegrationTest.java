@@ -33,6 +33,7 @@ import org.testcontainers.utility.DockerImageName;
 import com.sjherp.app.collection.CollectionDtos.CollectionReceiptLineRequest;
 import com.sjherp.app.collection.CollectionReceiptAppService;
 import com.sjherp.app.gl.AutoVoucherService;
+import com.sjherp.app.gl.VoucherAppService;
 import com.sjherp.app.payment.PaymentDisbursementAppService;
 import com.sjherp.app.payment.PaymentDtos.PaymentDisbursementLineRequest;
 import com.sjherp.domain.common.IllegalStateTransitionException;
@@ -197,6 +198,14 @@ class CollectionPaymentFlowIntegrationTest {
             return new DefaultDocumentNumberGenerator(sequenceProvider);
         }
 
+        // VoucherAppService 生产是 @Service 组件，本上下文无组件扫描，显式装配（M4-T07c 收付款单红冲复用其
+        // 凭证红冲基元 reverse）。
+        @Bean
+        VoucherAppService voucherAppService(VoucherService voucherService,
+                DocumentNumberGenerator documentNumberGenerator) {
+            return new VoucherAppService(voucherService, documentNumberGenerator);
+        }
+
         // 两个 AppService 生产是 @Service 组件，本上下文无组件扫描，显式装配（按类型注入既有协作 Bean）。
         @Bean
         CollectionReceiptAppService collectionReceiptAppService(
@@ -204,10 +213,14 @@ class CollectionPaymentFlowIntegrationTest {
                 PaymentAccountService paymentAccountService,
                 com.sjherp.domain.receivable.ReceivableService receivableService,
                 com.sjherp.domain.settlement.SettlementService settlementService,
+                com.sjherp.domain.settlement.SettlementRecordRepository settlementRecordRepository,
                 AutoVoucherService autoVoucherService,
+                VoucherService voucherService,
+                VoucherAppService voucherAppService,
                 DocumentNumberGenerator documentNumberGenerator) {
             return new CollectionReceiptAppService(collectionReceiptService, paymentAccountService,
-                    receivableService, settlementService, autoVoucherService, documentNumberGenerator);
+                    receivableService, settlementService, settlementRecordRepository, autoVoucherService,
+                    voucherService, voucherAppService, documentNumberGenerator);
         }
 
         @Bean
@@ -216,10 +229,14 @@ class CollectionPaymentFlowIntegrationTest {
                 PaymentAccountService paymentAccountService,
                 com.sjherp.domain.payable.AccountsPayableRepository payableRepository,
                 com.sjherp.domain.settlement.SettlementService settlementService,
+                com.sjherp.domain.settlement.SettlementRecordRepository settlementRecordRepository,
                 AutoVoucherService autoVoucherService,
+                VoucherService voucherService,
+                VoucherAppService voucherAppService,
                 DocumentNumberGenerator documentNumberGenerator) {
             return new PaymentDisbursementAppService(paymentDisbursementService, paymentAccountService,
-                    payableRepository, settlementService, autoVoucherService, documentNumberGenerator);
+                    payableRepository, settlementService, settlementRecordRepository, autoVoucherService,
+                    voucherService, voucherAppService, documentNumberGenerator);
         }
     }
 

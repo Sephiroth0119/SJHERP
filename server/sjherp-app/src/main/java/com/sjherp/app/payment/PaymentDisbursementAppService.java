@@ -9,13 +9,18 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.sjherp.app.gl.AutoVoucherService;
+import com.sjherp.app.gl.VoucherAppService;
 import com.sjherp.app.payment.PaymentDtos.PaymentDisbursementLineRequest;
 import com.sjherp.domain.common.ArchiveStatus;
+import com.sjherp.domain.common.DocumentStatus;
 import com.sjherp.domain.common.PageResult;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
 import com.sjherp.domain.common.numbering.DocumentNumberRule;
 import com.sjherp.domain.fund.PaymentAccount;
 import com.sjherp.domain.fund.PaymentAccountService;
+import com.sjherp.domain.gl.Voucher;
+import com.sjherp.domain.gl.VoucherService;
+import com.sjherp.domain.gl.VoucherSourceType;
 import com.sjherp.domain.payable.AccountsPayable;
 import com.sjherp.domain.payable.AccountsPayableRepository;
 import com.sjherp.domain.payable.PayableNotFoundException;
@@ -24,6 +29,8 @@ import com.sjherp.domain.payment.PaymentDisbursementLine;
 import com.sjherp.domain.payment.PaymentDisbursementLineInput;
 import com.sjherp.domain.payment.PaymentDisbursementQuery;
 import com.sjherp.domain.payment.PaymentDisbursementService;
+import com.sjherp.domain.settlement.SettlementRecord;
+import com.sjherp.domain.settlement.SettlementRecordRepository;
 import com.sjherp.domain.settlement.SettlementService;
 
 /**
@@ -55,14 +62,20 @@ public class PaymentDisbursementAppService {
     private final PaymentAccountService paymentAccountService;
     private final AccountsPayableRepository payableRepository;
     private final SettlementService settlementService;
+    private final SettlementRecordRepository settlementRecordRepository;
     private final AutoVoucherService autoVoucherService;
+    private final VoucherService voucherService;
+    private final VoucherAppService voucherAppService;
     private final DocumentNumberGenerator numberGenerator;
 
     public PaymentDisbursementAppService(PaymentDisbursementService paymentDisbursementService,
                                          PaymentAccountService paymentAccountService,
                                          AccountsPayableRepository payableRepository,
                                          SettlementService settlementService,
+                                         SettlementRecordRepository settlementRecordRepository,
                                          AutoVoucherService autoVoucherService,
+                                         VoucherService voucherService,
+                                         VoucherAppService voucherAppService,
                                          DocumentNumberGenerator numberGenerator) {
         this.paymentDisbursementService = Objects.requireNonNull(paymentDisbursementService,
                 "paymentDisbursementService 不能为空");
@@ -72,8 +85,13 @@ public class PaymentDisbursementAppService {
                 "payableRepository 不能为空");
         this.settlementService = Objects.requireNonNull(settlementService,
                 "settlementService 不能为空");
+        this.settlementRecordRepository = Objects.requireNonNull(settlementRecordRepository,
+                "settlementRecordRepository 不能为空");
         this.autoVoucherService = Objects.requireNonNull(autoVoucherService,
                 "autoVoucherService 不能为空");
+        this.voucherService = Objects.requireNonNull(voucherService, "voucherService 不能为空");
+        this.voucherAppService = Objects.requireNonNull(voucherAppService,
+                "voucherAppService 不能为空");
         this.numberGenerator = Objects.requireNonNull(numberGenerator, "numberGenerator 不能为空");
     }
 
@@ -144,6 +162,63 @@ public class PaymentDisbursementAppService {
         }
         autoVoucherService.generateForPaymentDisbursement(posted, account.getGlAccountCode(), operator);
         return posted;
+    }
+
+    /**
+     * 冲销付款单（红字单，M4-T07c，最高风险路径，不可逆）：与 {@link CollectionReceiptAppService#reverse} 对称。
+     * 同一外层 {@code @Transactional} 编排——
+     * <ol>
+     *   <li>校验原单 COMPLETED + 未冲销（领域层 reverse 仍兜底再校验，幂等：已 REVERSED 拒）；</li>
+     *   <li>反向核销应付：按 {@code paymentDocNo == 单号} 反查<b>正向</b>核销记录（type=PAYABLE、amount&gt;0），
+     *       逐条 {@link SettlementService#unsettlePayable}（子账 settled 回退、状态回 PARTIAL/OPEN，并追加负额
+     *       反向核销记录）。只取正向记录避免对已有反向记录二次反向；</li>
+     *   <li>红冲现金侧凭证：{@code findBySourceDocNo(单号)} 取 PAYMENT_DISBURSEMENT 自动凭证（借应付/贷现金）→
+     *       {@link VoucherAppService#reverse} 生成借贷对调红字凭证并在原账期过账（账期已关账 →
+     *       {@code PeriodClosedException} → 整 reverse 回滚，闭月天然受保护）；</li>
+     *   <li>红字凭证号作为 {@code reversalDocNo} → {@link PaymentDisbursementService#reverse}：原单 COMPLETED → REVERSED。</li>
+     * </ol>
+     * 任一步失败整事务回滚。这解锁了 T07b 暂拒的"已核销发票红冲"（先冲付款单→应付 settled 回 0→canBeReversed=true
+     * →再红冲采购发票）。无对应自动凭证（理论上金额&gt;0 必有，防御）时用合成冲销引用。
+     *
+     * @param docNo    被冲销的付款单号（须 COMPLETED）
+     * @param operator 操作人
+     * @return 已转 REVERSED 的原付款单
+     */
+    @Transactional
+    public PaymentDisbursement reverse(String docNo, String operator) {
+        // 前置状态守门（主防线，评审 P2）：已冲销/非已过账即拒，绝不依赖后续 unsettle 下溢兜底
+        // （否则二次冲销报错误导）。领域层 reverse 仍兜底再校验。
+        PaymentDisbursement disbursement = paymentDisbursementService.get(docNo);
+        if (disbursement.getStatus() == DocumentStatus.REVERSED) {
+            throw new IllegalStateException("付款单[" + docNo + "] 已冲销，不可重复冲销");
+        }
+        if (disbursement.getStatus() != DocumentStatus.COMPLETED) {
+            throw new IllegalStateException("仅已过账（COMPLETED）付款单可冲销，当前状态=" + disbursement.getStatus());
+        }
+        // 反向核销：只对正向核销记录（amount>0）逐条 unsettle，回退应付子账已核销额
+        for (SettlementRecord record : settlementRecordRepository.findByPaymentDocNo(docNo)) {
+            if (record.getAmount().signum() > 0) {
+                settlementService.unsettlePayable(record.getTargetId(), record.getAmount(),
+                        disbursement.getPaymentDate(), docNo, operator);
+            }
+        }
+        String reversalDocNo = reverseAutoVoucher(docNo, operator);
+        return paymentDisbursementService.reverse(disbursement.getDocNo(), reversalDocNo, operator);
+    }
+
+    /**
+     * 红冲付款单现金侧自动凭证：按来源单据号取 PAYMENT_DISBURSEMENT 类型的自动凭证 → 冲销 → 返回红字凭证号。
+     * 已过账付款单必生成现金侧凭证（金额&gt;0），故缺失即账证不符（异常数据）——抛 IllegalStateException 整事务
+     * 回滚，绝不以合成引用静默把单标 REVERSED 而无红字凭证（评审 P3，账证一致红线）。
+     */
+    private String reverseAutoVoucher(String docNo, String operator) {
+        return voucherService.findBySourceDocNo(docNo).stream()
+                .filter(v -> VoucherSourceType.PAYMENT_DISBURSEMENT.name().equals(v.getSourceDocType()))
+                .findFirst()
+                .map(Voucher::getDocNo)
+                .map(voucherDocNo -> voucherAppService.reverse(voucherDocNo, operator).getDocNo())
+                .orElseThrow(() -> new IllegalStateException("付款单[" + docNo
+                        + "] 无对应现金侧自动凭证，无法红冲（账证不符，需排查）"));
     }
 
     /** 按单据号查（不存在抛 PaymentDisbursementNotFoundException → 404） */

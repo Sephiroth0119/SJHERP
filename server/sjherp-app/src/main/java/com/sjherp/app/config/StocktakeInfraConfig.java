@@ -6,6 +6,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import com.sjherp.app.stocktake.TransactionalInventoryPostingAdapter;
 import com.sjherp.domain.common.event.DomainEventPublisher;
+import com.sjherp.domain.inventory.InventoryTransactionRepository;
 import com.sjherp.domain.stocktake.InventoryPostingPort;
 import com.sjherp.domain.stocktake.StockCountRepository;
 import com.sjherp.domain.stocktake.StockCountService;
@@ -46,8 +47,10 @@ public class StocktakeInfraConfig {
 
     @Bean
     public InventoryPostingPort stockCountInventoryPostingPort(
-            TransactionalInventoryService transactionalInventoryService) {
-        return new TransactionalInventoryPostingAdapter(transactionalInventoryService);
+            TransactionalInventoryService transactionalInventoryService,
+            InventoryTransactionRepository inventoryTransactionRepository) {
+        return new TransactionalInventoryPostingAdapter(transactionalInventoryService,
+                inventoryTransactionRepository);
     }
 
     // ---------------- 领域服务（所有盘点写操作的唯一入口） ----------------

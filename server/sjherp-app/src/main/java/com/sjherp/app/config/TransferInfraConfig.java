@@ -6,6 +6,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import com.sjherp.app.transfer.TransactionalInventoryPostingAdapter;
 import com.sjherp.domain.common.event.DomainEventPublisher;
+import com.sjherp.domain.inventory.InventoryTransactionRepository;
 import com.sjherp.domain.transfer.InventoryPostingPort;
 import com.sjherp.domain.transfer.TransferRepository;
 import com.sjherp.domain.transfer.TransferService;
@@ -47,8 +48,10 @@ public class TransferInfraConfig {
 
     @Bean
     public InventoryPostingPort transferInventoryPostingPort(
-            TransactionalInventoryService transactionalInventoryService) {
-        return new TransactionalInventoryPostingAdapter(transactionalInventoryService);
+            TransactionalInventoryService transactionalInventoryService,
+            InventoryTransactionRepository inventoryTransactionRepository) {
+        return new TransactionalInventoryPostingAdapter(transactionalInventoryService,
+                inventoryTransactionRepository);
     }
 
     // ---------------- 领域服务（所有调拨写操作的唯一入口） ----------------

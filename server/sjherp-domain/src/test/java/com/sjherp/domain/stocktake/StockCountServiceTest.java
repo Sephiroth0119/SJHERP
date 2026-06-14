@@ -276,9 +276,78 @@ class StockCountServiceTest {
     }
 
     @Test
-    void 冲销暂未实现_抛UnsupportedOperation() {
+    void 冲销非已过账盘点单被拒() {
+        // M4-T07c：reverse 已落地——草稿/未过账单不可冲销（仅 COMPLETED 可冲销）
         service.create("SC-1", WH, null, List.of(line(P_A, "1")), OPERATOR);
-        assertThrows(UnsupportedOperationException.class, () -> service.reverse("SC-1", OPERATOR));
+        assertThrows(IllegalStateException.class, () -> service.reverse("SC-1", OPERATOR));
+    }
+
+    @Test
+    void 冲销已过账盘点单_盘盈反向出库_盘亏反向入库_原单转REVERSED() {
+        // 账面 P_A=100 盘盈到 110（+10）、P_B=50 盘亏到 45（-5）
+        inventory.setBalance(WH, P_A, "100", "1200.00"); // 派生 12.000000
+        inventory.setBalance(WH, P_B, "50", "500.00");   // 派生 10.000000
+        service.create("SC-1", WH, null, List.of(line(P_A, "100"), line(P_B, "50")), OPERATOR);
+        service.enterCount("SC-1", 1, new BigDecimal("110"), OPERATOR);
+        service.enterCount("SC-1", 2, new BigDecimal("45"), OPERATOR);
+        service.approve("SC-1", OPERATOR);
+        service.post("SC-1", OPERATOR);
+        // 桩原盘盈/盘亏流水固化单价（按原行幂等键 STOCK_COUNT:SC-1:行号）
+        inventory.setOriginalUnitCost("STOCK_COUNT:SC-1:1", "12.000000"); // 原盘盈单价
+        inventory.setOriginalUnitCost("STOCK_COUNT:SC-1:2", "10.000000"); // 原盘亏成本
+
+        StockCountDocument reversed = service.reverse("SC-1", OPERATOR);
+        assertEquals(DocumentStatus.REVERSED, reversed.getStatus());
+
+        assertEquals(2, inventory.executedBatches.size()); // 过账 + 反向
+        List<StockMovementCommand> batch = inventory.lastBatch();
+        assertEquals(2, batch.size());
+
+        // ① 原盘盈（COUNT_GAIN +10）→ 反向 COUNT_LOSS 出库 10，overriddenUnitCost=原盘盈单价，幂等键 REVERSAL:...
+        OutboundCommand loss = (OutboundCommand) batch.get(0);
+        assertEquals(InventoryTxnType.COUNT_LOSS, loss.txnType());
+        assertEquals(WH, loss.warehouseId());
+        assertEquals(P_A, loss.productId());
+        assertEqualsDecimal("10", loss.quantity());
+        assertEqualsDecimal("12.000000", loss.overriddenUnitCost());
+        assertEquals("REVERSAL:SC-1:1", loss.idempotencyKey());
+
+        // ② 原盘亏（COUNT_LOSS -5）→ 反向 COUNT_GAIN 入库 5，单价=原盘亏成本，幂等键 REVERSAL:...
+        InboundCommand gain = (InboundCommand) batch.get(1);
+        assertEquals(InventoryTxnType.COUNT_GAIN, gain.txnType());
+        assertEquals(P_B, gain.productId());
+        assertEqualsDecimal("5", gain.quantity());
+        assertEqualsDecimal("10.000000", gain.unitCost());
+        assertEquals("REVERSAL:SC-1:2", gain.idempotencyKey());
+    }
+
+    @Test
+    void 冲销全无差异盘点单_仅推状态不产生反向流水() {
+        inventory.setBalance(WH, P_A, "100", "1000.00");
+        service.create("SC-1", WH, null, List.of(line(P_A, "100")), OPERATOR);
+        service.enterCount("SC-1", 1, new BigDecimal("100"), OPERATOR); // 无差异
+        service.approve("SC-1", OPERATOR);
+        service.post("SC-1", OPERATOR); // 无流水
+
+        StockCountDocument reversed = service.reverse("SC-1", OPERATOR);
+        assertEquals(DocumentStatus.REVERSED, reversed.getStatus());
+        // 全程零库存批次（过账与反向均无差异行）
+        assertTrue(inventory.executedBatches.isEmpty());
+    }
+
+    @Test
+    void 重复冲销已REVERSED盘点单被拒_幂等() {
+        inventory.setBalance(WH, P_A, "100", "1200.00");
+        service.create("SC-1", WH, null, List.of(line(P_A, "100")), OPERATOR);
+        service.enterCount("SC-1", 1, new BigDecimal("110"), OPERATOR); // 盘盈
+        service.approve("SC-1", OPERATOR);
+        service.post("SC-1", OPERATOR);
+        inventory.setOriginalUnitCost("STOCK_COUNT:SC-1:1", "12.000000");
+        service.reverse("SC-1", OPERATOR);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> service.reverse("SC-1", OPERATOR));
+        assertTrue(ex.getMessage().contains("已冲销"), ex.getMessage());
     }
 
     // ---------------------------------------------------------------
@@ -334,13 +403,28 @@ class StockCountServiceTest {
         }
     }
 
-    /** 捕获过账批次的库存端口（可桩当前余额、可注入 execute 失败） */
+    /** 捕获过账批次的库存端口（可桩当前余额、可注入 execute 失败、可桩原流水固化单价供红冲读回） */
     private static final class CapturingInventoryPort implements InventoryPostingPort {
 
         private final Map<String, InventoryBalanceView> balances = new HashMap<>();
         final List<List<StockMovementCommand>> executedBatches = new ArrayList<>();
+        /** 按原流水幂等键桩固化单价（M4-T07c originalUnitCost 读回） */
+        final Map<String, BigDecimal> originalUnitCosts = new HashMap<>();
         boolean failOnExecute;
         private final AtomicLong txnId = new AtomicLong();
+
+        void setOriginalUnitCost(String idempotencyKey, String unitCost) {
+            originalUnitCosts.put(idempotencyKey, new BigDecimal(unitCost));
+        }
+
+        @Override
+        public BigDecimal originalUnitCost(String idempotencyKey) {
+            BigDecimal cost = originalUnitCosts.get(idempotencyKey);
+            if (cost == null) {
+                throw new IllegalStateException("原流水缺失或无单价（幂等键 " + idempotencyKey + "）");
+            }
+            return cost;
+        }
 
         void setBalance(long warehouseId, long productId, String quantity, String costAmount) {
             balances.put(key(warehouseId, productId), new InventoryBalanceView(warehouseId, productId,

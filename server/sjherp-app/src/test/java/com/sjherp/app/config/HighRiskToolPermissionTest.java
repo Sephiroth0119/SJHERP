@@ -100,17 +100,19 @@ class HighRiskToolPermissionTest {
 
     @Test
     void 注册清单覆盖既有工具规模_防注册清单漂移() {
-        // M4-T07b 基线：常驻 57 个（查询 21 NORMAL + 资金账户建档 1 NORMAL + 写 35 HIGH；
+        // M4-T07c 基线：常驻 63 个（查询 21 NORMAL + 资金账户建档 1 NORMAL + 写 41 HIGH；
         // 含 M3-T11 全量 20 工具 [采购收货/发票 10 + 销售出库/发票 10] + M3-T13 run_consistency_check
         // + M4-T04a create_payment_account / search_payment_accounts
         // + M4-T04c 收款单 3 HIGH + 付款单 3 HIGH + query_collection_receipts / query_payment_disbursements 2 NORMAL
         // + M4-T05 precheck_period_close 1 NORMAL + close_accounting_period 1 HIGH
         // + M4-T07a reverse_voucher 1 HIGH
         // + M4-T07b reverse_purchase_receipt / reverse_purchase_invoice 2 HIGH
-        // + M4-T07b reverse_sales_delivery / reverse_sales_invoice 2 HIGH）
-        // + 演示 2 个（echo + demo_post_document）= 59。
+        // + M4-T07b reverse_sales_delivery / reverse_sales_invoice 2 HIGH
+        // + M4-T07c reverse_collection_receipt / reverse_payment_disbursement 2 HIGH
+        // + M4-T07c reverse_transfer / reverse_stock_count 2 HIGH）
+        // + 演示 2 个（echo + demo_post_document）= 65。
         // 新增工具装配类后此处会先于权限断言提醒维护注册清单。
-        assertTrue(registryWithAllTools().all().size() >= 59,
-                "注册工具数少于 M4-T07b 基线（59 个）——若调整了工具装配，请同步维护本测试的注册清单");
+        assertTrue(registryWithAllTools().all().size() >= 63,
+                "注册工具数少于 M4-T07c 基线（63 个）——若调整了工具装配，请同步维护本测试的注册清单");
     }
 }

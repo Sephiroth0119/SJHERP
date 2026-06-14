@@ -113,6 +113,50 @@ class SettlementRecordTest {
         assertTrue(r.auditSummary().contains("收付款单=PAY-2026-0007"));
     }
 
+    // ---------------- M4-T07c 反向核销记录工厂（recordReversal，负额） ----------------
+
+    private static SettlementRecord reversal(String amount, String paymentDocNo) {
+        return SettlementRecord.recordReversal(SettlementType.RECEIVABLE, 5L, SRC,
+                new BigDecimal(amount), DATE, paymentDocNo, OPERATOR);
+    }
+
+    @Test
+    void recordReversal_负额记录_字段落位() {
+        SettlementRecord r = reversal("-300.00", "RCPT-1");
+        assertNull(r.getId(), "落库前 id 应为 null");
+        assertEquals(SettlementType.RECEIVABLE, r.getType());
+        assertEquals(5L, r.getTargetId());
+        assertEquals(SRC, r.getTargetSourceDocNo());
+        assertEqualsDecimal("-300.00", r.getAmount());
+        assertTrue(r.getAmount().signum() < 0, "反向核销记录金额必须为负");
+        assertEquals("RCPT-1", r.getPaymentDocNo(), "反查锚点=被冲销收付款单号");
+        assertEquals(OPERATOR, r.getCreatedBy());
+        org.junit.jupiter.api.Assertions.assertNotNull(r.getCreatedAt());
+    }
+
+    @Test
+    void recordReversal_金额为零或正或null_拒绝() {
+        // 反向记录必须 < 0；0 / 正额 / null 均拒（正额走 record，负额走 recordReversal，边界互斥）
+        assertThrows(IllegalArgumentException.class, () -> reversal("0", "RCPT-1"));
+        assertThrows(IllegalArgumentException.class, () -> reversal("1", "RCPT-1"));
+        assertThrows(IllegalArgumentException.class, () -> SettlementRecord.recordReversal(
+                SettlementType.PAYABLE, 1L, SRC, null, DATE, "PAYV-1", OPERATOR));
+    }
+
+    @Test
+    void recordReversal_负三位小数HALF_UP归一为两位() {
+        // -33.335 → -33.34（HALF_UP 对负数同样归一到 2 位）
+        SettlementRecord r = reversal("-33.335", "RCPT-1");
+        assertEqualsDecimal("-33.34", r.getAmount());
+        assertEquals(2, r.getAmount().scale(), "归一为 2 位标度");
+    }
+
+    @Test
+    void 正向record仍强制正额_不接受负额() {
+        // 边界对照：正向工厂 record 仍校验 > 0，负额走它必拒（与 recordReversal 互斥）
+        assertThrows(IllegalArgumentException.class, () -> record("-1", "RCPT-1"));
+    }
+
     private static void assertEqualsDecimal(String expected, BigDecimal actual) {
         assertEquals(0, new BigDecimal(expected).compareTo(actual),
                 "期望 " + expected + " 实际 " + (actual == null ? "null" : actual.toPlainString()));

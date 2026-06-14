@@ -118,6 +118,20 @@ public class StocktakeService {
         return stockCountService.post(docNo, operator);
     }
 
+    /**
+     * 冲销盘点单（红字盘点单，M4-T07c，最高风险路径，不可逆）：对已过账（COMPLETED）的盘点单
+     * 按原盘盈/盘亏成本<b>对称反向库存</b>（原盘盈→反向出库、原盘亏→反向入库），原单
+     * COMPLETED → REVERSED。<b>盘点不出 GL 凭证</b>，故只反向库存、不红冲凭证（设计真源 §77）。
+     *
+     * <p>外层 {@code @Transactional}：领域 {@link StockCountService#reverse} 内库存反向经
+     * {@link TransactionalInventoryService}（REQUIRED 加入本事务）原子提交——任一行失败整事务回滚
+     * （库存与单据状态一致）。幂等：原单已 REVERSED / 非 COMPLETED → 领域层拒（→ 409）。
+     */
+    @Transactional
+    public StockCountDocument reverse(String docNo, String operator) {
+        return stockCountService.reverse(docNo, operator);
+    }
+
     /** 按单据号查（不存在抛 StockCountNotFoundException → 404） */
     @Transactional(readOnly = true)
     public StockCountDocument get(String docNo) {

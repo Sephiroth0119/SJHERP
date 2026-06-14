@@ -68,8 +68,20 @@ class TransferIntegrationTest extends MySqlContainerTestBase {
         inventoryService = new InventoryService(balanceRepository, transactionRepository,
                 new MovingWeightedAverageCalculator(), InventoryPolicy.defaults());
         transferRepository = new JdbcTransferRepository(jdbc);
-        // 调拨过账端口直接转调领域 InventoryService（生产经 TransactionalInventoryService，事务在此由 txTemplate 提供）
-        InventoryPostingPort postingPort = inventoryService::execute;
+        // 调拨过账端口直接转调领域 InventoryService（生产经 TransactionalInventoryService，事务在此由 txTemplate 提供）。
+        // M4-T07c 给 InventoryPostingPort 增 originalUnitCost（调拨红冲读原成本）后其非函数式接口，改匿名类实现两方法；
+        // 本测试只覆盖调拨过账不涉及红冲，originalUnitCost 不被调用。
+        InventoryPostingPort postingPort = new InventoryPostingPort() {
+            @Override
+            public List<StockMovementResult> execute(List<StockMovementCommand> batch, String operator) {
+                return inventoryService.execute(batch, operator);
+            }
+
+            @Override
+            public BigDecimal originalUnitCost(String idempotencyKey) {
+                throw new UnsupportedOperationException("本调拨过账集成测试不涉及红冲，无需 originalUnitCost");
+            }
+        };
         transferService = new TransferService(transferRepository, postingPort, NoopPublisher.INSTANCE);
         txTemplate = new TransactionTemplate(new DataSourceTransactionManager(jdbc.getDataSource()));
     }

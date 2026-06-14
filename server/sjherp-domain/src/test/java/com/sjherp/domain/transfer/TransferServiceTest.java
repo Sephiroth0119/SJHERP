@@ -203,9 +203,73 @@ class TransferServiceTest {
     }
 
     @Test
-    void 冲销暂未实现_抛UnsupportedOperation() {
+    void 冲销非已过账调拨单被拒() {
+        // M4-T07c：reverse 已落地——草稿/未过账单不可冲销（仅 COMPLETED 可冲销）
         service.create("TR-1", WH_FROM, WH_TO, null, List.of(line(P_A, "1")), OPERATOR);
-        assertThrows(UnsupportedOperationException.class, () -> service.reverse("TR-1", OPERATOR));
+        assertThrows(IllegalStateException.class, () -> service.reverse("TR-1", OPERATOR));
+    }
+
+    @Test
+    void 冲销已过账调拨单_两腿对称反向_原单转REVERSED() {
+        // 过账 1 行（数量 70）→ COMPLETED；桩原两腿固化单价供红冲读回
+        service.create("TR-1", WH_FROM, WH_TO, null, List.of(line(P_A, "70")), OPERATOR);
+        service.approve("TR-1", OPERATOR);
+        service.post("TR-1", OPERATOR);
+        // 原 TRANSFER_OUT 固化单价 12.000000、原 TRANSFER_IN 固化 12.000000（守恒）
+        inventory.setOriginalUnitCost("TRANSFER:TR-1:1:IN", "12.000000");
+
+        TransferDocument reversed = service.reverse("TR-1", OPERATOR);
+        assertEquals(DocumentStatus.REVERSED, reversed.getStatus());
+
+        // 反向是第二批 execute（第一批=过账）
+        assertEquals(2, inventory.executedBatches.size());
+        List<StockMovementCommand> batch = inventory.lastBatch();
+        assertEquals(2, batch.size());
+
+        // ① 反向调出腿：TRANSFER_IN 回调出仓，transferOutKey=原调出流水键（库存取原固化值），幂等键 REVERSAL:...:OUT
+        InboundCommand backIn = (InboundCommand) batch.get(0);
+        assertEquals(InventoryTxnType.TRANSFER_IN, backIn.txnType());
+        assertEquals(WH_FROM, backIn.warehouseId(), "反向调出腿回到调出仓");
+        assertEquals(P_A, backIn.productId());
+        assertEqualsDecimal("70", backIn.quantity());
+        assertNull(backIn.unitCost(), "反向调出腿不指定单价（取原调出流水固化值）");
+        assertEquals("TRANSFER:TR-1:1:OUT", backIn.transferOutKey(), "transferOutKey 指向原调出流水键");
+        assertEquals("REVERSAL:TR-1:1:OUT", backIn.idempotencyKey());
+
+        // ② 反向调入腿：TRANSFER_OUT 从调入仓出，overriddenUnitCost=原调入固化单价，幂等键 REVERSAL:...:IN
+        OutboundCommand backOut = (OutboundCommand) batch.get(1);
+        assertEquals(InventoryTxnType.TRANSFER_OUT, backOut.txnType());
+        assertEquals(WH_TO, backOut.warehouseId(), "反向调入腿从调入仓出");
+        assertEquals(P_A, backOut.productId());
+        assertEqualsDecimal("70", backOut.quantity());
+        assertEqualsDecimal("12.000000", backOut.overriddenUnitCost());
+        assertEquals("REVERSAL:TR-1:1:IN", backOut.idempotencyKey());
+    }
+
+    @Test
+    void 重复冲销已REVERSED调拨单被拒_幂等() {
+        service.create("TR-1", WH_FROM, WH_TO, null, List.of(line(P_A, "70")), OPERATOR);
+        service.approve("TR-1", OPERATOR);
+        service.post("TR-1", OPERATOR);
+        inventory.setOriginalUnitCost("TRANSFER:TR-1:1:IN", "12.000000");
+        service.reverse("TR-1", OPERATOR);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> service.reverse("TR-1", OPERATOR));
+        assertTrue(ex.getMessage().contains("已冲销"), ex.getMessage());
+        // 不再产生反向批次（仍是 过账 + 第一次反向 = 2 批）
+        assertEquals(2, inventory.executedBatches.size());
+    }
+
+    @Test
+    void 冲销库存反向抛异常_整体冒泡() {
+        service.create("TR-1", WH_FROM, WH_TO, null, List.of(line(P_A, "70")), OPERATOR);
+        service.approve("TR-1", OPERATOR);
+        service.post("TR-1", OPERATOR);
+        inventory.setOriginalUnitCost("TRANSFER:TR-1:1:IN", "12.000000");
+        inventory.failOnExecute = true;
+
+        assertThrows(IllegalStateException.class, () -> service.reverse("TR-1", OPERATOR));
     }
 
     @Test
@@ -263,12 +327,18 @@ class TransferServiceTest {
         }
     }
 
-    /** 捕获过账批次的库存端口（可注入 execute 失败） */
+    /** 捕获过账批次的库存端口（可注入 execute 失败；可桩原流水固化单价供红冲反向读回） */
     private static final class CapturingInventoryPort implements InventoryPostingPort {
 
         final List<List<StockMovementCommand>> executedBatches = new ArrayList<>();
+        /** 按原流水幂等键桩固化单价（M4-T07c originalUnitCost 读回） */
+        final Map<String, BigDecimal> originalUnitCosts = new HashMap<>();
         boolean failOnExecute;
         private final AtomicLong txnId = new AtomicLong();
+
+        void setOriginalUnitCost(String idempotencyKey, String unitCost) {
+            originalUnitCosts.put(idempotencyKey, new BigDecimal(unitCost));
+        }
 
         @Override
         public List<StockMovementResult> execute(List<StockMovementCommand> batch, String operator) {
@@ -284,6 +354,15 @@ class TransferServiceTest {
                         c.srcLineNo(), c.idempotencyKey()));
             }
             return results;
+        }
+
+        @Override
+        public BigDecimal originalUnitCost(String idempotencyKey) {
+            BigDecimal cost = originalUnitCosts.get(idempotencyKey);
+            if (cost == null) {
+                throw new IllegalStateException("原流水缺失或无单价（幂等键 " + idempotencyKey + "）");
+            }
+            return cost;
         }
 
         List<StockMovementCommand> lastBatch() {

@@ -1,5 +1,6 @@
 package com.sjherp.domain.stocktake;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import com.sjherp.domain.inventory.InventoryBalanceView;
@@ -26,4 +27,17 @@ public interface InventoryPostingPort {
 
     /** 批量过账（盘点多行同事务原子，任一失败整体回滚） */
     List<StockMovementResult> execute(List<StockMovementCommand> batch, String operator);
+
+    /**
+     * 按幂等键读回原流水已固化的单价（M4-T07c 盘点红冲：按原成本反向）。
+     *
+     * <p>盘盈入库/盘亏出库的成本由库存服务在过账时算定并落流水（盘盈派生加权或录入单价、
+     * 盘亏移动加权）；红冲时须<b>按已固化的原成本反向</b>（期间可能已进新货，重算会失真，
+     * 设计真源 §1.6/§77）。本方法按原盘盈/盘亏流水的幂等键读回其 {@code unit_cost}。
+     * 流水不存在或无单价抛 {@link IllegalStateException}（已过账盘点行理应有流水，防御性）。
+     *
+     * @param idempotencyKey 原流水幂等键（{@code STOCK_COUNT:SC号:行号}）
+     * @return 原流水固化单价（6 位小数）
+     */
+    BigDecimal originalUnitCost(String idempotencyKey);
 }

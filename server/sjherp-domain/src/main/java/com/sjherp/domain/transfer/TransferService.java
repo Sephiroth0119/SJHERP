@@ -1,9 +1,11 @@
 package com.sjherp.domain.transfer;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
+import com.sjherp.domain.common.DocumentStatus;
 import com.sjherp.domain.common.PageResult;
 import com.sjherp.domain.common.audit.Audited;
 import com.sjherp.domain.common.event.DomainEventPublisher;
@@ -119,18 +121,56 @@ public class TransferService {
         return document;
     }
 
+    /** 红字调拨反向流水的合成关联引用（调拨无 GL 凭证、不复制业务单头，故用合成号关联） */
+    static final String REVERSAL_REF_PREFIX = "REVERSAL:";
+
     /**
-     * 冲销已完成调拨单（红字调拨单）。
+     * 冲销已完成调拨单（红字调拨单，M4-T07c）：按已固化的原成本<b>对称反向两腿库存</b>，原单
+     * COMPLETED → REVERSED。<b>调拨不出 GL 凭证</b>（企业内部库存转移，无损益/资产净变动），
+     * 故本冲销只反向库存、不红冲凭证（设计真源 §75）。物理删除不存在（CLAUDE.md 原则 2）。
      *
-     * <p>TODO（M4 统一做）：生成反向调拨单驱动反向两腿流水（原调入仓出库、原调出仓入库），
-     * 原单 COMPLETED → REVERSED 并红字关联。当前未实现——调拨流水的纠错暂走反向调拨单，
-     * 调拨单本身不提供物理删除（CLAUDE.md 原则 2：只可冲销不可删除）。
+     * <p>同一外层事务内（由 {@code TransferAppService.reverse} 提供 @Transactional）执行：
+     * <ol>
+     *   <li>校验原单 COMPLETED（非则 {@link IllegalStateException}）、未被冲销（幂等：已 REVERSED 拒）；</li>
+     *   <li>对每行按原两腿成本对称反向，组成<b>一批</b>同事务原子过账（{@link InventoryPostingPort#execute}）：
+     *     <ul>
+     *       <li>反向调出腿：{@code INBOUND TRANSFER_IN} <b>回调出仓</b>，单价 = 原 TRANSFER_OUT 流水固化成本
+     *           （调出仓数量/金额回到调拨前），幂等键 {@code REVERSAL:TR号:行号:OUT}；</li>
+     *       <li>反向调入腿：{@code OUTBOUND TRANSFER_OUT} <b>从调入仓出</b>，{@code overriddenUnitCost}
+     *           = 原 TRANSFER_IN 流水固化成本（按原调入单价精确出库，避重算移动加权失真），
+     *           幂等键 {@code REVERSAL:TR号:行号:IN}；</li>
+     *     </ul>
+     *     原两腿成本守恒（OUT==IN），反向后调出仓/调入仓数量与金额双双回到调拨前，企业库存价值不变；</li>
+     *   <li>原单 {@link BusinessDocument#reverse}（COMPLETED → REVERSED + 红字关联合成引用）。</li>
+     * </ol>
+     *
+     * <p>反向幂等键加 {@code REVERSAL:} 前缀，避与原 {@code TRANSFER:} 流水幂等键撞；原成本经
+     * {@link InventoryPostingPort#originalUnitCost} 按原两腿幂等键读回（流水缺失/无单价 → 防御性
+     * {@link IllegalStateException} → 整事务回滚）。
+     *
+     * @param docNo    被冲销的调拨单号（须 COMPLETED）
+     * @param operator 操作人
+     * @return 已转 REVERSED 的原调拨单
      */
     @Audited(action = "stock_transfer.reverse", targetType = "stock_transfer")
     public TransferDocument reverse(String docNo, String operator) {
         requireOperator(operator);
-        throw new UnsupportedOperationException(
-                "调拨单冲销（红字调拨单）尚未实现，统一在 M4 落地");
+        TransferDocument document = get(docNo);
+        if (document.getStatus() == DocumentStatus.REVERSED) {
+            throw new IllegalStateException("调拨单[" + docNo + "] 已冲销，不可重复冲销");
+        }
+        if (document.getStatus() != DocumentStatus.COMPLETED) {
+            throw new IllegalStateException("调拨单[" + docNo + "] 当前状态 " + document.getStatus()
+                    + " 不可冲销（仅已过账的调拨单可冲销）");
+        }
+        document.registerEventPublisher(eventPublisher);
+        // 按原两腿成本对称反向（一批同事务原子过账）
+        List<StockMovementCommand> batch = buildReversalMovements(document);
+        inventory.execute(batch, operator);
+        // 原单 COMPLETED → REVERSED + 红字关联（调拨无凭证/无红字单头，用合成引用）
+        document.reverse(operator, REVERSAL_REF_PREFIX + docNo);
+        repository.save(document);
+        return document;
     }
 
     /** 按单据号查（不存在抛 {@link TransferNotFoundException} → API 404） */
@@ -166,9 +206,48 @@ public class TransferService {
         return batch;
     }
 
+    /**
+     * 按各行组装反向两腿库存指令（M4-T07c 红冲），对称还原原调拨（金额守恒）：
+     * <ul>
+     *   <li><b>反向调出腿</b>：{@code TRANSFER_IN} 回调出仓，{@code transferOutKey} 指向<b>原调出流水
+     *       幂等键</b>——库存服务由原 TRANSFER_OUT 流水读回固化 total/qty 原值入库（与调拨过账同口径，
+     *       数量须与原调出一致，由库存服务校验），调出仓数量/金额精确回到调拨前；</li>
+     *   <li><b>反向调入腿</b>：{@code TRANSFER_OUT} 从调入仓出，{@code overriddenUnitCost} = 原 TRANSFER_IN
+     *       流水固化成本（{@link InventoryPostingPort#originalUnitCost} 按原调入腿幂等键读回），
+     *       跳过移动加权按原调入单价精确反向（期间可能已进新货，重算会失真，设计真源 §1.6/§75）。</li>
+     * </ul>
+     * 原两腿成本守恒（OUT==IN），反向后两仓双双归位；反向幂等键加 {@code REVERSAL:} 前缀避撞原流水。
+     */
+    private List<StockMovementCommand> buildReversalMovements(TransferDocument document) {
+        List<StockMovementCommand> batch = new ArrayList<>(document.getLines().size() * 2);
+        for (TransferLine line : document.getLines()) {
+            // 原两腿幂等键
+            String originalOutKey = idempotencyKey(document.getDocNo(), line.getLineNo(), "OUT");
+            String originalInKey = idempotencyKey(document.getDocNo(), line.getLineNo(), "IN");
+            // 反向两腿幂等键（避与原流水撞）
+            String reversalOutKey = reversalIdempotencyKey(document.getDocNo(), line.getLineNo(), "OUT");
+            String reversalInKey = reversalIdempotencyKey(document.getDocNo(), line.getLineNo(), "IN");
+            // ① 反向调出腿：TRANSFER_IN 回调出仓，transferOutKey=原调出流水（库存服务取原固化成本，金额守恒）
+            batch.add(new InboundCommand(document.getFromWarehouseId(), line.getProductId(),
+                    InventoryTxnType.TRANSFER_IN, line.getQuantity(), null, originalOutKey,
+                    SRC_DOC_TYPE, document.getDocNo(), line.getLineNo(), reversalOutKey));
+            // ② 反向调入腿：TRANSFER_OUT 从调入仓出，overriddenUnitCost=原调入腿固化成本（精确反向）
+            BigDecimal inCost = inventory.originalUnitCost(originalInKey);
+            batch.add(new OutboundCommand(document.getToWarehouseId(), line.getProductId(),
+                    InventoryTxnType.TRANSFER_OUT, line.getQuantity(),
+                    SRC_DOC_TYPE, document.getDocNo(), line.getLineNo(), reversalInKey, inCost));
+        }
+        return batch;
+    }
+
     /** 幂等键约定 TRANSFER:docNo:行号:腿（OUT/IN，拆解 §1.3/§1.6.5） */
     private static String idempotencyKey(String docNo, int lineNo, String leg) {
         return SRC_DOC_TYPE + ":" + docNo + ":" + lineNo + ":" + leg;
+    }
+
+    /** 红冲反向两腿幂等键 REVERSAL:docNo:行号:腿（M4-T07c，避与原 TRANSFER 流水幂等键撞） */
+    private static String reversalIdempotencyKey(String docNo, int lineNo, String leg) {
+        return REVERSAL_REF_PREFIX + docNo + ":" + lineNo + ":" + leg;
     }
 
     private static void requireOperator(String operator) {

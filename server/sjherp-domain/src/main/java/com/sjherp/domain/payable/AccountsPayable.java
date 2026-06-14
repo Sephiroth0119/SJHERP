@@ -135,6 +135,49 @@ public final class AccountsPayable implements AuditTarget {
     }
 
     /**
+     * 核销反向（M4-T07c 收付款单红冲）：把本次反向金额从 {@link #settledAmount} 扣回并重算状态。
+     *
+     * <p>语义（设计真源 §2 核销反向引擎，与 {@link #settle} 对称、与 {@code AccountsReceivable.unsettle} 镜像）：
+     * <ul>
+     *   <li>{@code amount <= 0} → {@link IllegalArgumentException}；先 {@code setScale(AMOUNT_SCALE, ROUNDING)} 归一；</li>
+     *   <li>{@code newSettled = settledAmount - amount}；若 {@code newSettled < 0}
+     *       抛 {@link IllegalArgumentException}（反向额超过已核销额，绝不允许下溢）；</li>
+     *   <li>落 {@code settledAmount = newSettled}；状态重算：
+     *       {@code == 0 → OPEN}、{@code == amount(总额) → SETTLED}、否则 {@code PARTIAL}；</li>
+     *   <li>{@link PayableStatus#REVERSED} 子账不可反向（其 settled 恒 0），抛 {@link IllegalStateException}。</li>
+     * </ul>
+     *
+     * <p>只动 {@link #settledAmount} / {@link #status}（其余 final 字段不变）：原始 {@link #amount} 永不变
+     * （CLAUDE.md 原则 2）。反向同样追加一条（负额）只追加核销记录，子账 {@code settledAmount}
+     * 仍是核销记录的维护型 rollup（Σ含负额恒等于 settledAmount）。
+     *
+     * @param amount 本次反向核销金额（> 0，2 位精度；从已核销额扣回）
+     */
+    public void unsettle(BigDecimal amount) {
+        if (status == PayableStatus.REVERSED) {
+            throw new IllegalStateException("应付[" + sourceDocNo + "] 已冲销，不可反向核销");
+        }
+        if (amount == null || amount.signum() <= 0) {
+            throw new IllegalArgumentException("反向核销金额必须大于 0: "
+                    + (amount == null ? "null" : amount.toPlainString()));
+        }
+        BigDecimal delta = amount.setScale(CostingStrategy.AMOUNT_SCALE, CostingStrategy.ROUNDING);
+        BigDecimal newSettled = settledAmount.subtract(delta);
+        if (newSettled.signum() < 0) {
+            throw new IllegalArgumentException("反向核销额 " + delta.toPlainString()
+                    + " 超过已核销额 " + settledAmount.toPlainString() + "（应付[" + sourceDocNo + "]）");
+        }
+        this.settledAmount = newSettled;
+        if (newSettled.signum() == 0) {
+            this.status = PayableStatus.OPEN;
+        } else if (newSettled.compareTo(this.amount) == 0) {
+            this.status = PayableStatus.SETTLED;
+        } else {
+            this.status = PayableStatus.PARTIAL;
+        }
+    }
+
+    /**
      * 是否可冲销（M4-T07b 业务单据红冲）：仅<b>未发生任何核销且仍 OPEN</b> 的应付可整笔冲回。
      *
      * <p>设计真源 §1.7/§2 共享基元 2：已（部分）核销的发票须先冲销对应付款单（T07c），

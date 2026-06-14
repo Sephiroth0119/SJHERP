@@ -21,6 +21,7 @@ import org.mockito.InOrder;
 import org.mockito.Mockito;
 
 import com.sjherp.app.gl.AutoVoucherService;
+import com.sjherp.app.gl.VoucherAppService;
 import com.sjherp.domain.collection.CollectionReceipt;
 import com.sjherp.domain.collection.CollectionReceiptLine;
 import com.sjherp.domain.collection.CollectionReceiptService;
@@ -33,8 +34,14 @@ import com.sjherp.domain.fund.PaymentAccountService;
 import com.sjherp.domain.fund.PaymentAccountType;
 import com.sjherp.domain.receivable.AccountsReceivable;
 import com.sjherp.domain.receivable.ReceivableService;
+import com.sjherp.domain.gl.VoucherService;
 import com.sjherp.domain.receivable.ReceivableStatus;
+import com.sjherp.domain.gl.Voucher;
+import com.sjherp.domain.gl.VoucherSourceType;
+import com.sjherp.domain.settlement.SettlementRecord;
+import com.sjherp.domain.settlement.SettlementRecordRepository;
 import com.sjherp.domain.settlement.SettlementService;
+import com.sjherp.domain.settlement.SettlementType;
 
 /**
  * 收款单应用服务编排单测（M4-T04b）：mock 全部依赖，验证 {@link CollectionReceiptAppService#post}
@@ -66,7 +73,10 @@ class CollectionReceiptAppServiceTest {
     private PaymentAccountService paymentAccountService;
     private ReceivableService receivableService;
     private SettlementService settlementService;
+    private SettlementRecordRepository settlementRecordRepository;
     private AutoVoucherService autoVoucherService;
+    private VoucherService voucherService;
+    private VoucherAppService voucherAppService;
     private DocumentNumberGenerator numberGenerator;
     private CollectionReceiptAppService appService;
 
@@ -76,10 +86,14 @@ class CollectionReceiptAppServiceTest {
         paymentAccountService = Mockito.mock(PaymentAccountService.class);
         receivableService = Mockito.mock(ReceivableService.class);
         settlementService = Mockito.mock(SettlementService.class);
+        settlementRecordRepository = Mockito.mock(SettlementRecordRepository.class);
         autoVoucherService = Mockito.mock(AutoVoucherService.class);
+        voucherService = Mockito.mock(VoucherService.class);
+        voucherAppService = Mockito.mock(VoucherAppService.class);
         numberGenerator = Mockito.mock(DocumentNumberGenerator.class);
         appService = new CollectionReceiptAppService(collectionReceiptService, paymentAccountService,
-                receivableService, settlementService, autoVoucherService, numberGenerator);
+                receivableService, settlementService, settlementRecordRepository, autoVoucherService,
+                voucherService, voucherAppService, numberGenerator);
     }
 
     // ----------------------------------------------------- 建单：自动编号 + 委托领域服务
@@ -261,6 +275,116 @@ class CollectionReceiptAppServiceTest {
 
         Mockito.verify(autoVoucherService).generateForCollectionReceipt(eq(posted), eq("1001"),
                 eq(OPERATOR));
+    }
+
+    // ----------------------------------------------------- 冲销编排（M4-T07c）
+
+    @Test
+    void 冲销_反查正向核销记录逐条unsettle_红冲现金侧凭证_原单转REVERSED_次序正确() {
+        CollectionReceipt receipt = postedReceipt(CUSTOMER, DocumentStatus.COMPLETED,
+                line(1, RECEIVABLE_A, "300.00"), line(2, RECEIVABLE_B, "200.00"));
+        Mockito.when(collectionReceiptService.get(DOC_NO)).thenReturn(receipt);
+        // 反查核销记录：两条正向（amount>0）
+        Mockito.when(settlementRecordRepository.findByPaymentDocNo(DOC_NO)).thenReturn(List.of(
+                SettlementRecord.record(SettlementType.RECEIVABLE, RECEIVABLE_A, "SINV-A",
+                        new BigDecimal("300.00"), D, DOC_NO, OPERATOR),
+                SettlementRecord.record(SettlementType.RECEIVABLE, RECEIVABLE_B, "SINV-B",
+                        new BigDecimal("200.00"), D, DOC_NO, OPERATOR)));
+        // 现金侧凭证：findBySourceDocNo 命中一张 COLLECTION_RECEIPT 凭证
+        Voucher cashVoucher = Mockito.mock(Voucher.class);
+        Mockito.when(cashVoucher.getSourceDocType()).thenReturn(VoucherSourceType.COLLECTION_RECEIPT.name());
+        Mockito.when(cashVoucher.getDocNo()).thenReturn("VCH-1");
+        Mockito.when(voucherService.findBySourceDocNo(DOC_NO)).thenReturn(List.of(cashVoucher));
+        Voucher redVoucher = Mockito.mock(Voucher.class);
+        Mockito.when(redVoucher.getDocNo()).thenReturn("VCH-RED-1");
+        Mockito.when(voucherAppService.reverse("VCH-1", OPERATOR)).thenReturn(redVoucher);
+        CollectionReceipt reversed = postedReceipt(CUSTOMER, DocumentStatus.REVERSED,
+                line(1, RECEIVABLE_A, "300.00"));
+        Mockito.when(collectionReceiptService.reverse(eq(DOC_NO), eq("VCH-RED-1"), eq(OPERATOR)))
+                .thenReturn(reversed);
+
+        CollectionReceipt result = appService.reverse(DOC_NO, OPERATOR);
+        assertSame(reversed, result);
+
+        // 逐条反向核销（金额=正向记录额、业务日=收款日、paymentDocNo=单号）
+        Mockito.verify(settlementService).unsettleReceivable(eq(RECEIVABLE_A), argEq("300.00"),
+                eq(D), eq(DOC_NO), eq(OPERATOR));
+        Mockito.verify(settlementService).unsettleReceivable(eq(RECEIVABLE_B), argEq("200.00"),
+                eq(D), eq(DOC_NO), eq(OPERATOR));
+        // 红冲现金侧凭证用红字号回传领域 reverse
+        Mockito.verify(voucherAppService).reverse("VCH-1", OPERATOR);
+        Mockito.verify(collectionReceiptService).reverse(DOC_NO, "VCH-RED-1", OPERATOR);
+
+        // 次序：先逐条 unsettle → 红冲凭证 → 原单 reverse
+        InOrder inOrder = Mockito.inOrder(settlementService, voucherAppService, collectionReceiptService);
+        inOrder.verify(settlementService).unsettleReceivable(eq(RECEIVABLE_A), any(), any(), any(), any());
+        inOrder.verify(settlementService).unsettleReceivable(eq(RECEIVABLE_B), any(), any(), any(), any());
+        inOrder.verify(voucherAppService).reverse("VCH-1", OPERATOR);
+        inOrder.verify(collectionReceiptService).reverse(DOC_NO, "VCH-RED-1", OPERATOR);
+    }
+
+    @Test
+    void 冲销_只对正向核销记录unsettle_负额反向记录跳过() {
+        // 多次红冲场景：同 paymentDocNo 同时含正向与负额记录——只对正向 unsettle，避免对自己追加的负额二次反向
+        CollectionReceipt receipt = postedReceipt(CUSTOMER, DocumentStatus.COMPLETED,
+                line(1, RECEIVABLE_A, "300.00"));
+        Mockito.when(collectionReceiptService.get(DOC_NO)).thenReturn(receipt);
+        Mockito.when(settlementRecordRepository.findByPaymentDocNo(DOC_NO)).thenReturn(List.of(
+                SettlementRecord.record(SettlementType.RECEIVABLE, RECEIVABLE_A, "SINV-A",
+                        new BigDecimal("300.00"), D, DOC_NO, OPERATOR),
+                SettlementRecord.recordReversal(SettlementType.RECEIVABLE, RECEIVABLE_A, "SINV-A",
+                        new BigDecimal("-300.00"), D, DOC_NO, OPERATOR)));
+        // 现金侧凭证命中（已过账收款单必有，reverseAutoVoucher 无凭证现抛账证不符异常）
+        Voucher cashVoucher = Mockito.mock(Voucher.class);
+        Mockito.when(cashVoucher.getSourceDocType()).thenReturn(VoucherSourceType.COLLECTION_RECEIPT.name());
+        Mockito.when(cashVoucher.getDocNo()).thenReturn("VCH-1");
+        Mockito.when(voucherService.findBySourceDocNo(DOC_NO)).thenReturn(List.of(cashVoucher));
+        Voucher redVoucher = Mockito.mock(Voucher.class);
+        Mockito.when(redVoucher.getDocNo()).thenReturn("VCH-RED-1");
+        Mockito.when(voucherAppService.reverse("VCH-1", OPERATOR)).thenReturn(redVoucher);
+        Mockito.when(collectionReceiptService.reverse(eq(DOC_NO), anyString(), eq(OPERATOR)))
+                .thenReturn(postedReceipt(CUSTOMER, DocumentStatus.REVERSED, line(1, RECEIVABLE_A, "300.00")));
+
+        appService.reverse(DOC_NO, OPERATOR);
+
+        // 只对正向记录 unsettle 一次（负额记录被 signum()>0 过滤）
+        Mockito.verify(settlementService, Mockito.times(1))
+                .unsettleReceivable(eq(RECEIVABLE_A), argEq("300.00"), eq(D), eq(DOC_NO), eq(OPERATOR));
+        Mockito.verifyNoMoreInteractions(settlementService);
+    }
+
+    @Test
+    void 冲销_无现金侧凭证_抛账证不符异常_不转REVERSED() {
+        // 已过账收款单必有现金侧凭证；缺失即账证不符（异常数据）→ 抛 IllegalStateException 整事务回滚，
+        // 绝不静默把单标 REVERSED 而无红字凭证（评审 P3，账证一致红线）
+        CollectionReceipt receipt = postedReceipt(CUSTOMER, DocumentStatus.COMPLETED,
+                line(1, RECEIVABLE_A, "300.00"));
+        Mockito.when(collectionReceiptService.get(DOC_NO)).thenReturn(receipt);
+        Mockito.when(settlementRecordRepository.findByPaymentDocNo(DOC_NO)).thenReturn(List.of());
+        Mockito.when(voucherService.findBySourceDocNo(DOC_NO)).thenReturn(List.of());
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> appService.reverse(DOC_NO, OPERATOR));
+        assertTrue(ex.getMessage().contains("账证不符") || ex.getMessage().contains("无对应现金侧"),
+                ex.getMessage());
+        // 未转 REVERSED（整事务回滚，不调领域 reverse）
+        Mockito.verify(collectionReceiptService, Mockito.never())
+                .reverse(anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void 冲销_原单已REVERSED_前置守门拒_未触反向核销() {
+        // 前置状态守门（评审 P2）：已 REVERSED 直接拒，不触达反向核销/凭证红冲/领域 reverse
+        CollectionReceipt receipt = postedReceipt(CUSTOMER, DocumentStatus.REVERSED,
+                line(1, RECEIVABLE_A, "300.00"));
+        Mockito.when(collectionReceiptService.get(DOC_NO)).thenReturn(receipt);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> appService.reverse(DOC_NO, OPERATOR));
+        assertTrue(ex.getMessage().contains("已冲销"), ex.getMessage());
+        Mockito.verifyNoInteractions(settlementService);
+        Mockito.verify(collectionReceiptService, Mockito.never())
+                .reverse(anyString(), anyString(), anyString());
     }
 
     // ----------------------------------------------------- 审核 / 查询委托

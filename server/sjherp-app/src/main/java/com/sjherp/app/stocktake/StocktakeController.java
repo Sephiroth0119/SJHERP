@@ -80,6 +80,16 @@ public class StocktakeController {
         return StockCountResponse.from(stocktakeService.post(docNo, CurrentUser.operator()));
     }
 
+    /**
+     * 冲销（红字盘点单，M4-T07c，COMPLETED → REVERSED）：按原盘盈/盘亏成本对称反向库存
+     * （原盘盈→反向出库、原盘亏→反向入库），不出 GL 凭证；不可逆。原单非 COMPLETED/已冲销 → 409，
+     * 单据不存在 → 404。
+     */
+    @PostMapping("/{docNo}/reverse")
+    public StockCountResponse reverse(@PathVariable String docNo) {
+        return StockCountResponse.from(stocktakeService.reverse(docNo, CurrentUser.operator()));
+    }
+
     /** 单据详情（不存在 404） */
     @GetMapping("/{docNo}")
     public StockCountResponse get(@PathVariable String docNo) {

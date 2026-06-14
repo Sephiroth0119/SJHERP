@@ -222,6 +222,50 @@ class SettlementRollupConsistencyTest {
         assertThat(breaks).allMatch(b -> "PINV-1#PAYABLE#7".equals(b.key()));
     }
 
+    // ===================== M4-T07c 反向核销：负额记录纳入 Σ 后仍 0 ERROR =====================
+
+    @Test
+    void 反向核销后_负额记录纳入Σ_settled与真源仍一致_部分回退PARTIAL不报() {
+        // settle 1000 后 unsettle 400：核销记录 Σ = 1000 + (-400) = 600 == 子账 settled；
+        // 余额 = 1500-600 = 900 > 0、settled > 0 → PARTIAL 相符。三规则均不报。
+        List<ConsistencyBreak> breaks = ConsistencyCheckService.checkSettlementRollup(
+                ar(5, "SINV-1", "1500.00", "600.00", "PARTIAL", "600.00"));
+        assertThat(breaks).isEmpty();
+    }
+
+    @Test
+    void 反向核销全额回退后_Σ归零_状态回OPEN_不报() {
+        // settle 1500 后 unsettle 1500：Σ = 1500 + (-1500) = 0 == 子账 settled=0；状态回 OPEN。
+        List<ConsistencyBreak> breaks = ConsistencyCheckService.checkSettlementRollup(
+                ar(5, "SINV-1", "1500.00", "0.00", "OPEN", "0.00"));
+        assertThat(breaks).isEmpty();
+    }
+
+    @Test
+    void 反向核销应付全额回退后_Σ归零_状态回OPEN_不报() {
+        List<ConsistencyBreak> breaks = ConsistencyCheckService.checkSettlementRollup(
+                ap(7, "PINV-1", "1250.00", "0.00", "OPEN", "0.00"));
+        assertThat(breaks).isEmpty();
+    }
+
+    @Test
+    void check_反向核销后子账纳入_报告干净_不阻塞月末关账() {
+        // 端到端口径：应收 settle 1000 后 unsettle 400（Σ含负额=600=settled、PARTIAL）；
+        // 应付 settle 后全额 unsettle 回退（Σ=0=settled、OPEN）——一致性闸门 0 ERROR。
+        ConsistencyCheckDao dao = mock(ConsistencyCheckDao.class);
+        when(dao.receivableRollups()).thenReturn(List.of(
+                ar(5, "SINV-1", "1500.00", "600.00", "PARTIAL", "600.00")));
+        when(dao.payableRollups()).thenReturn(List.of(
+                ap(7, "PINV-1", "1250.00", "0.00", "OPEN", "0.00")));
+
+        ConsistencyCheckService service = new ConsistencyCheckService(dao, false,
+                Clock.fixed(Instant.parse("2026-06-14T00:00:00Z"), ZoneOffset.UTC));
+        ConsistencyReport report = service.check();
+
+        assertThat(report.clean()).isTrue();
+        assertThat(report.errorCount()).isEqualTo(0);
+    }
+
     // ===================== check() 编排：rollup 行纳入报告 =====================
 
     @Test

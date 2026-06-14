@@ -71,6 +71,17 @@ public class PaymentDisbursementController {
                 paymentDisbursementAppService.post(docNo, CurrentUser.operator()));
     }
 
+    /**
+     * 冲销（红字单，M4-T07c，COMPLETED → REVERSED，不可逆）：反向核销应付（按付款单号反查正向核销记录
+     * 逐条冲回）+ 红冲现金侧凭证（借贷对调）；原单转「已冲销」。已冲销/未过账单不可冲销，账期已关账 → 409，
+     * 单据不存在 → 404。这解锁已核销采购发票的红冲（先冲付款单→应付 settled 回 0→可冲发票）。
+     */
+    @PostMapping("/{docNo}/reverse")
+    public PaymentDisbursementResponse reverse(@PathVariable String docNo) {
+        return PaymentDisbursementResponse.from(
+                paymentDisbursementAppService.reverse(docNo, CurrentUser.operator()));
+    }
+
     /** 单据详情（不存在 404） */
     @GetMapping("/{docNo}")
     public PaymentDisbursementResponse get(@PathVariable String docNo) {

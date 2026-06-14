@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Objects;
 
 import com.sjherp.domain.common.audit.Audited;
+import com.sjherp.domain.inventory.CostingStrategy;
 import com.sjherp.domain.payable.AccountsPayable;
 import com.sjherp.domain.payable.AccountsPayableRepository;
 import com.sjherp.domain.payable.PayableNotFoundException;
@@ -98,6 +99,66 @@ public class SettlementService {
         payableRepository.save(ap);
         SettlementRecord record = SettlementRecord.record(SettlementType.PAYABLE,
                 ap.getId(), ap.getSourceDocNo(), amount, settlementDate, paymentDocNo, operator);
+        settlementRepository.save(record);
+        return record;
+    }
+
+    /**
+     * 反向核销一笔应收（收款单红冲冲回，M4-T07c 同事务内触发）：装载应收 → {@code ar.unsettle(amount)}
+     * （下溢 / REVERSED 抛异常 → 400）→ 保存子账（UPDATE settled_amount/status）→ 落一条<b>负额</b>反向核销记录。
+     *
+     * <p>反向记录使 {@code Σ settlement_record.amount == 子账 settled_amount} 不变式继续成立
+     * （rollup 口径不变，一致性规则 8/9/10 无需改）。
+     *
+     * @param receivableId   应收主键（不存在抛 {@link ReceivableNotFoundException} → 404）
+     * @param amount         本次反向核销金额（> 0；从已核销额扣回）
+     * @param settlementDate 核销业务日（非空）
+     * @param paymentDocNo   被冲销的收款单号（反查锚点，非空）
+     * @param operator       操作人（审计；非空）
+     * @return 落库后的反向核销记录（负额，含回填 id）
+     */
+    @Audited(action = "settlement.unsettle.receivable", targetType = "settlement")
+    public SettlementRecord unsettleReceivable(long receivableId, BigDecimal amount,
+                                               LocalDate settlementDate, String paymentDocNo,
+                                               String operator) {
+        requireOperator(operator);
+        Objects.requireNonNull(settlementDate, "核销业务日不能为空");
+        AccountsReceivable ar = receivableRepository.findById(receivableId)
+                .orElseThrow(() -> new ReceivableNotFoundException(receivableId));
+        ar.unsettle(amount);
+        receivableRepository.save(ar);
+        SettlementRecord record = SettlementRecord.recordReversal(SettlementType.RECEIVABLE,
+                ar.getId(), ar.getSourceDocNo(),
+                amount.setScale(CostingStrategy.AMOUNT_SCALE, CostingStrategy.ROUNDING).negate(),
+                settlementDate, paymentDocNo, operator);
+        settlementRepository.save(record);
+        return record;
+    }
+
+    /**
+     * 反向核销一笔应付（付款单红冲冲回，M4-T07c 同事务内触发）：与 {@link #unsettleReceivable} 对称。
+     *
+     * @param payableId      应付主键（不存在抛 {@link PayableNotFoundException} → 404）
+     * @param amount         本次反向核销金额（> 0；从已核销额扣回）
+     * @param settlementDate 核销业务日（非空）
+     * @param paymentDocNo   被冲销的付款单号（反查锚点，非空）
+     * @param operator       操作人（审计；非空）
+     * @return 落库后的反向核销记录（负额，含回填 id）
+     */
+    @Audited(action = "settlement.unsettle.payable", targetType = "settlement")
+    public SettlementRecord unsettlePayable(long payableId, BigDecimal amount,
+                                            LocalDate settlementDate, String paymentDocNo,
+                                            String operator) {
+        requireOperator(operator);
+        Objects.requireNonNull(settlementDate, "核销业务日不能为空");
+        AccountsPayable ap = payableRepository.findById(payableId)
+                .orElseThrow(() -> new PayableNotFoundException(payableId));
+        ap.unsettle(amount);
+        payableRepository.save(ap);
+        SettlementRecord record = SettlementRecord.recordReversal(SettlementType.PAYABLE,
+                ap.getId(), ap.getSourceDocNo(),
+                amount.setScale(CostingStrategy.AMOUNT_SCALE, CostingStrategy.ROUNDING).negate(),
+                settlementDate, paymentDocNo, operator);
         settlementRepository.save(record);
         return record;
     }
