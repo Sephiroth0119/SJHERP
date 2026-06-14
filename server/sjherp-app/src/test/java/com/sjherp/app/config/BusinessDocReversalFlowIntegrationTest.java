@@ -320,7 +320,9 @@ class BusinessDocReversalFlowIntegrationTest {
         LocalDate d = today;
         String period = ymNow.format(java.time.format.DateTimeFormatter.ofPattern("yyyyMM"));
 
-        txTemplate.executeWithoutResult(s -> accountingPeriodService.open(period, OPERATOR));
+        // 幂等开账（@Tag integration-db 共享 MySQL：now(UTC) 当月账期常被其他当月集成测试先开，
+        // 不能盲目 open 否则撞「账期已存在」——与本类其余用例一致走 ensurePeriodOpen 复用既有 OPEN 账期）
+        ensurePeriodOpen(period);
 
         // ---- ① 采购线：下单 100@12.50 → 审核 → 收 100 → 入库 post（自动凭证 借1405/贷220201 各 1250） ----
         txTemplate.executeWithoutResult(s -> purchaseOrderService.create(poNo, supplierId, d, "整链采购",
