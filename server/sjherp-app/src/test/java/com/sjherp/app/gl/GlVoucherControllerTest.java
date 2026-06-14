@@ -236,6 +236,85 @@ class GlVoucherControllerTest {
                 .andExpect(jsonPath("$.totalAmount").value("500.00"));
     }
 
+    // ================================================================ 2b. 冲销（M4-T07a）
+
+    /** 构造红字（VOUCHER_REVERSAL 来源、借贷对调、APPROVED）凭证 stub。 */
+    private static Voucher reversalVoucher() {
+        // 原凭证 1001 借 500 / 6001 贷 500 的红字：对调为 1001 贷 / 6001 借
+        List<VoucherLine> lines = List.of(
+                VoucherLine.restore(1L, 1, "1001", new BigDecimal("0.00"), new BigDecimal("500.00"),
+                        "冲销:收现"),
+                VoucherLine.restore(2L, 2, "6001", new BigDecimal("500.00"), new BigDecimal("0.00"),
+                        "冲销:收入"));
+        return Voucher.restore("VCH-202606-0009", "202606", LocalDate.of(2026, 6, 2), "记",
+                new BigDecimal("500.00"), "冲销 VCH-202606-0002",
+                "VOUCHER_REVERSAL", "VCH-202606-0002",
+                DocumentStatus.APPROVED, lines, "alice");
+    }
+
+    /**
+     * 冲销成功 → 200，返回借贷对调的红字凭证（来源 VOUCHER_REVERSAL/原号、状态 APPROVED、金额字符串）。
+     */
+    @Test
+    void 冲销成功_200_返回红字凭证() throws Exception {
+        Mockito.when(voucherAppService.reverse(anyString(), anyString()))
+                .thenReturn(reversalVoucher());
+
+        mockMvc.perform(post("/api/gl/vouchers/VCH-202606-0002/reverse"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.docNo").value("VCH-202606-0009"))
+                .andExpect(jsonPath("$.status").value("APPROVED"))
+                .andExpect(jsonPath("$.sourceDocType").value("VOUCHER_REVERSAL"))
+                .andExpect(jsonPath("$.sourceDocNo").value("VCH-202606-0002"))
+                .andExpect(jsonPath("$.totalAmount").value("500.00"))
+                // 借贷对调：原 1001 借 → 红字 1001 贷
+                .andExpect(jsonPath("$.lines[0].accountCode").value("1001"))
+                .andExpect(jsonPath("$.lines[0].debit").value("0.00"))
+                .andExpect(jsonPath("$.lines[0].credit").value("500.00"));
+
+        Mockito.verify(voucherAppService).reverse(Mockito.eq("VCH-202606-0002"), anyString());
+    }
+
+    /**
+     * 冲销非 APPROVED / 已冲销 / 既存红字 → AppService 抛 IllegalStateException
+     * → GlExceptionHandler 映射 409。
+     */
+    @Test
+    void 冲销非法状态_409() throws Exception {
+        Mockito.when(voucherAppService.reverse(anyString(), anyString()))
+                .thenThrow(new IllegalStateException("凭证已冲销，红字号=VCH-202606-0009，不可重复冲销"));
+
+        mockMvc.perform(post("/api/gl/vouchers/VCH-202606-0002/reverse"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").isNotEmpty());
+    }
+
+    /**
+     * 冲销时原凭证账期已关账 → PeriodClosedException（extends IllegalStateException）→ 409。
+     */
+    @Test
+    void 冲销账期已关账_409() throws Exception {
+        Mockito.when(voucherAppService.reverse(anyString(), anyString()))
+                .thenThrow(new PeriodClosedException("202606"));
+
+        mockMvc.perform(post("/api/gl/vouchers/VCH-202606-0002/reverse"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").isNotEmpty());
+    }
+
+    /**
+     * 冲销不存在的原凭证 → VoucherNotFoundException → 404。
+     */
+    @Test
+    void 冲销原凭证不存在_404() throws Exception {
+        Mockito.when(voucherAppService.reverse(anyString(), anyString()))
+                .thenThrow(new VoucherNotFoundException("VCH-999999-0001"));
+
+        mockMvc.perform(post("/api/gl/vouchers/VCH-999999-0001/reverse"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").isNotEmpty());
+    }
+
     // ================================================================ 3. 凭证详情
 
     /**

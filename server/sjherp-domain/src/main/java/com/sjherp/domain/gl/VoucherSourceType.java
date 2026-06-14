@@ -35,7 +35,14 @@ public enum VoucherSourceType {
      * 净额结转入 4103 本年利润。来源单据号回填为账期键（yyyyMM，6 位），配合
      * {@code uk_voucher_source} 物理唯一兜底——每账期至多一张结转凭证（拆解 §5 决策 2）。
      */
-    PERIOD_CLOSING;
+    PERIOD_CLOSING,
+
+    /**
+     * 凭证冲销（M4-T07a 红字凭证）：对已过账凭证生成借贷对调（反向分录）的红字凭证。
+     * 来源单据号 {@code source_doc_no} 回填为被冲销的原凭证号，配合 {@code uk_voucher_source}
+     * 物理唯一兜底——每张原凭证至多一张红冲凭证（拆解 §1.3，应用层幂等 + 物理唯一双保险）。
+     */
+    VOUCHER_REVERSAL;
 
     /** 中文标签（凭证摘要 / 审计 / 用户可见文案统一出口） */
     public String label() {
@@ -47,6 +54,7 @@ public enum VoucherSourceType {
             case COLLECTION_RECEIPT -> "收款单";
             case PAYMENT_DISBURSEMENT -> "付款单";
             case PERIOD_CLOSING -> "期末结转";
+            case VOUCHER_REVERSAL -> "凭证冲销";
         };
     }
 }

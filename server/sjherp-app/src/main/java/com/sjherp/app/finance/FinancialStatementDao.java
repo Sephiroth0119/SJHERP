@@ -48,8 +48,10 @@ public class FinancialStatementDao {
     /**
      * 资产负债表派生（设计真源 §1.1）：科目累计净额，截至账期 P 末（时点，含 P）。
      *
-     * <p>取<b>全部</b>已过账凭证（status='APPROVED'），<b>含</b>结转损益凭证——4103 本年利润因此
-     * 承接累计净利润；损益类经结转后累计净额=0，正确不进资产负债表。按 account_code 分组聚合。
+     * <p>取已过账（APPROVED）+ 已冲销（REVERSED）凭证（M4-T07a 红字法：REVERSED 原凭证发生额已真实
+     * 入账、由其借贷对调红字凭证抵消，二者须都计入才净额归零；DRAFT/CANCELLED 不计入），<b>含</b>结转
+     * 损益凭证——4103 本年利润因此承接累计净利润；损益类经结转后累计净额=0，正确不进资产负债表。
+     * 按 account_code 分组聚合。
      *
      * @param period 账期键 yyyyMM（6 位）
      * @return 截至 P 末有过账记录的各科目借贷累计净额行
@@ -62,7 +64,7 @@ public class FinancialStatementDao {
                 + " SUM(vl.credit) AS total_credit"
                 + " FROM voucher_line vl"
                 + " JOIN voucher v ON vl.voucher_id = v.id"
-                + " WHERE v.tenant_id = 0 AND v.status = 'APPROVED' AND v.period <= ?"
+                + " WHERE v.tenant_id = 0 AND v.status IN ('APPROVED', 'REVERSED') AND v.period <= ?"
                 + " GROUP BY vl.account_code";
         return jdbc.query(sql, NET_MAPPER, period);
     }
@@ -73,6 +75,10 @@ public class FinancialStatementDao {
      * <p><b>排除结转损益凭证</b>（source_doc_type &lt;&gt; 'PERIOD_CLOSING'）：利润表反映经营活动的
      * 收入/费用，结转凭证是内部期末结转（把损益冲入 4103），若计入则损益类发生额自相抵消归零、
      * 利润表全为 0。排除后损益类发生额=经营真实发生额，且净利润（利润表）==结转净利润==4103 本期变动。
+     *
+     * <p>计入已过账（APPROVED）+ 已冲销（REVERSED）凭证（M4-T07a 红字法：被冲销发票的原凭证 REVERSED +
+     * 其借贷对调红字凭证 APPROVED 二者都计入 → 该笔收入/费用净额归零，正确剔除已冲销业务的损益影响）；
+     * DRAFT/CANCELLED 不计入。
      *
      * @param fromPeriod 区间起始账期键 yyyyMM（含）
      * @param toPeriod   区间结束账期键 yyyyMM（含）
@@ -87,7 +93,7 @@ public class FinancialStatementDao {
                 + " SUM(vl.credit) AS total_credit"
                 + " FROM voucher_line vl"
                 + " JOIN voucher v ON vl.voucher_id = v.id"
-                + " WHERE v.tenant_id = 0 AND v.status = 'APPROVED'"
+                + " WHERE v.tenant_id = 0 AND v.status IN ('APPROVED', 'REVERSED')"
                 + " AND v.period BETWEEN ? AND ?"
                 + " AND (v.source_doc_type IS NULL OR v.source_doc_type <> 'PERIOD_CLOSING')"
                 + " GROUP BY vl.account_code";

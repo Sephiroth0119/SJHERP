@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
+import com.sjherp.domain.common.DocumentStatus;
 import com.sjherp.domain.common.PageResult;
 import com.sjherp.domain.common.audit.Audited;
 import com.sjherp.domain.common.event.DomainEventPublisher;
@@ -26,9 +27,9 @@ import com.sjherp.domain.common.event.DomainEventPublisher;
  * {@link #post} 先校验所属账期 OPEN，否则抛 {@link PeriodClosedException}（CLAUDE.md 原则 2：
  * 关账后禁止过账）；再 {@code voucher.post(operator)}（DRAFT→APPROVED 一步流转）；save。
  *
- * <h2>冲销（留 T07）</h2>
- * {@link #reverse} 当前抛 {@link UnsupportedOperationException}（照 PurchaseInvoiceService.reverse
- * 先例，红字冲销统一在 M4-T07 落地）。凭证本身不提供物理删除（CLAUDE.md 原则 2）。
+ * <h2>冲销（M4-T07a）</h2>
+ * {@link #reverse} 生成借贷对调（反向分录）的红字凭证、在原账期过账，并把原凭证 APPROVED→REVERSED、
+ * 双向回填红字 linkage（详见方法文档）。凭证本身永不提供物理删除（CLAUDE.md 原则 2：只可冲销不可删除）。
  */
 public class VoucherService {
 
@@ -152,15 +153,87 @@ public class VoucherService {
     }
 
     /**
-     * 冲销已过账凭证（红字凭证）。
+     * 冲销已过账凭证（红字凭证，M4-T07a；CLAUDE.md 原则 2「财务记录只可冲销不可物理删除」）。
      *
-     * <p>TODO（M4-T07 统一做）：生成反向凭证（红字分录抵消原凭证），原单 APPROVED → REVERSED
-     * 并红字关联。当前未实现——凭证本身不提供物理删除（CLAUDE.md 原则 2：财务记录只可冲销不可删除）。
+     * <p>红字 = <b>借贷对调（反向分录），不用负额</b>（拆解 §1.1）：原凭证每行 {@code debit↔credit}
+     * 对调、金额不变，由 {@link VoucherLine#create} 强制「恰一方>0、非负、2 位」，科目净额与原凭证抵消归零、
+     * Σ借==Σ贷守恒、总额>0、行数≥2 全部满足。红字凭证经 {@link #createFromSource} 落
+     * {@code source_doc_type=VOUCHER_REVERSAL、source_doc_no=原凭证号}（避 uk_voucher_source 与原凭证冲突，
+     * 同时物理唯一兜底每张原凭证至多一张红冲）。
+     *
+     * <h2>校验与幂等</h2>
+     * <ul>
+     *   <li>原凭证须 APPROVED（草稿/已冲销/作废抛 {@link IllegalStateException} 清晰报错）；</li>
+     *   <li>原凭证已被冲销（{@code reversedById != null}）抛 {@link IllegalStateException}（应用层幂等）；</li>
+     *   <li>{@link #findBySourceDocNo}(原号) 已含 VOUCHER_REVERSAL 红字凭证抛 {@link IllegalStateException}
+     *       （配 V20 {@code uk_voucher_source} 物理兜底）；</li>
+     *   <li>原凭证账期须 OPEN（{@link AccountingPeriodService#isOpen}）否则抛 {@link PeriodClosedException}
+     *       ——闭月冲销须先人工 reopen，不自动重开（拆解 §1.2）。</li>
+     * </ul>
+     *
+     * <h2>双向 linkage（落库可查）</h2>
+     * 红字凭证 {@code reversalOfId=原号}（DRAFT 时经 {@link Voucher#markAsReversalVoucher} 回填，过账前）、
+     * 原凭证 {@code reversedById=红字号}（经 {@link BusinessDocument#reverse} 回填，APPROVED→REVERSED）。
+     * 红字凭证在原凭证账期、原凭证日期过账（DRAFT→APPROVED）。
+     *
+     * @param docNo         被冲销的原凭证号（须 APPROVED 且账期 OPEN）
+     * @param reversalDocNo 红字凭证号（app 层用 DocumentNumberGenerator 按原凭证日期年月段预生成传入，
+     *                      与建单分层一致）
+     * @param operator      操作人
+     * @return 已过账（APPROVED）的红字凭证
      */
     @Audited(action = "voucher.reverse", targetType = "voucher")
-    public Voucher reverse(String docNo, String operator) {
+    public Voucher reverse(String docNo, String reversalDocNo, String operator) {
         requireOperator(operator);
-        throw new UnsupportedOperationException("凭证冲销（红字凭证）尚未实现，统一在 M4-T07 落地");
+        Objects.requireNonNull(docNo, "原凭证号不能为空");
+        Objects.requireNonNull(reversalDocNo, "红字凭证号不能为空");
+
+        Voucher original = get(docNo);
+        // 仅已过账凭证可冲销（草稿可作废、已冲销/作废终态不可再冲）
+        if (original.getStatus() != DocumentStatus.APPROVED) {
+            throw new IllegalStateException("仅已过账（APPROVED）凭证可冲销，当前状态="
+                    + original.getStatus() + "，凭证号=" + docNo);
+        }
+        // 幂等①：原凭证已被冲销
+        if (original.getReversedById() != null) {
+            throw new IllegalStateException("凭证已冲销，红字号=" + original.getReversedById()
+                    + "，不可重复冲销: " + docNo);
+        }
+        // 幂等②：已存在以本凭证为来源的红字凭证（应用层查重，配 uk_voucher_source 物理兜底）
+        boolean redExists = findBySourceDocNo(docNo).stream()
+                .anyMatch(v -> VoucherSourceType.VOUCHER_REVERSAL.name().equals(v.getSourceDocType()));
+        if (redExists) {
+            throw new IllegalStateException("凭证已存在红字冲销记录，不可重复冲销: " + docNo);
+        }
+        // 账期 OPEN 校验：闭月冲销须先人工 reopen（拆解 §1.2），不自动重开
+        if (!accountingPeriodService.isOpen(original.getPeriod())) {
+            throw new PeriodClosedException(original.getPeriod());
+        }
+
+        // 借贷对调构造红字行（金额不变、调借贷方向）
+        List<VoucherLineInput> redLines = new ArrayList<>(original.getLines().size());
+        for (VoucherLine line : original.getLines()) {
+            redLines.add(new VoucherLineInput(line.getAccountCode(), line.getCredit(), line.getDebit(),
+                    "冲销:" + (line.getSummary() == null ? "" : line.getSummary())));
+        }
+
+        // 红字凭证：原账期、原凭证日期，来源回填 VOUCHER_REVERSAL/原号（草稿，借贷平衡由 create 强制）
+        Voucher red = createFromSource(reversalDocNo, original.getPeriod(), original.getVoucherDate(),
+                "冲销 " + docNo, VoucherSourceType.VOUCHER_REVERSAL, docNo, redLines, operator);
+        // DRAFT 时回填红字凭证 → 原凭证的反向 linkage（过账前）
+        red.markAsReversalVoucher(docNo);
+        red.registerEventPublisher(eventPublisher);
+        repository.save(red);
+        // 过账红字凭证（账期 OPEN 已校验）
+        red.post(operator);
+        repository.save(red);
+
+        // 原凭证 APPROVED→REVERSED + 回填 reversedById=红字号（双向 linkage 另一侧）
+        original.registerEventPublisher(eventPublisher);
+        original.reverse(operator, reversalDocNo);
+        repository.save(original);
+
+        return red;
     }
 
     /** 按单据号查（不存在抛 {@link VoucherNotFoundException} → API 404） */

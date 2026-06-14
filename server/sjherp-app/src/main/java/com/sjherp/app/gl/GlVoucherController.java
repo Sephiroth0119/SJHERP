@@ -29,6 +29,8 @@ import jakarta.validation.Valid;
  * <ul>
  *   <li>POST /api/gl/vouchers → 201 建凭证（自动 VCH- 编号，账期由凭证日期推算；借贷不平 → 400，验收①）；</li>
  *   <li>POST /api/gl/vouchers/{docNo}/post → 200 过账（DRAFT→APPROVED；关账期 → 409，验收②）；</li>
+ *   <li>POST /api/gl/vouchers/{docNo}/reverse → 200 冲销（M4-T07a，借贷对调红字凭证，原凭证 REVERSED；
+ *       非 APPROVED/已冲销/关账期 → 409）；</li>
  *   <li>GET  /api/gl/vouchers/{docNo} → 200 凭证详情（不存在 404）；</li>
  *   <li>GET  /api/gl/vouchers?period=&status=&page=&size= → 200 分页（按创建倒序）；</li>
  *   <li>GET  /api/gl/trial-balance?period= → 200 试算平衡（已过账凭证行按科目汇总，Σ借==Σ贷）；</li>
@@ -37,7 +39,6 @@ import jakarta.validation.Valid;
  *
  * <p>权限（docs/权限矩阵.md）：凭证整体属受控动作，写/查均须 {@code finance:voucher}
  * （ADMIN/BOSS/ACCOUNTANT，类级 @PreAuthorize 覆盖全部端点）。错误契约见 {@link GlExceptionHandler}。
- * 红字冲销实现留 M4-T07。
  */
 @RestController
 @RequestMapping("/api/gl")
@@ -62,6 +63,16 @@ public class GlVoucherController {
     @PostMapping("/vouchers/{docNo}/post")
     public VoucherResponse post(@PathVariable String docNo) {
         return VoucherResponse.from(voucherAppService.post(docNo, CurrentUser.operator()));
+    }
+
+    /**
+     * 冲销已过账凭证（M4-T07a，红字凭证）：对 {@code APPROVED} 凭证生成借贷对调红字凭证并在原账期过账，
+     * 原凭证转 {@code REVERSED}、双向 linkage 落库。返回红字凭证。
+     * 原凭证不存在 → 404；非 APPROVED / 已冲销 / 既存红字 / 账期已关账 → 409（见 {@link GlExceptionHandler}）。
+     */
+    @PostMapping("/vouchers/{docNo}/reverse")
+    public VoucherResponse reverse(@PathVariable String docNo) {
+        return VoucherResponse.from(voucherAppService.reverse(docNo, CurrentUser.operator()));
     }
 
     /** 凭证详情（不存在 404） */

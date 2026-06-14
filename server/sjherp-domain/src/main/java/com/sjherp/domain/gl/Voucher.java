@@ -167,6 +167,16 @@ public final class Voucher extends BusinessDocument implements AuditTarget {
         }
     }
 
+    /**
+     * 标记本凭证为某原凭证的红字冲销凭证（M4-T07a）：暴露基类 {@code protected markAsReversalOf}
+     * 供凭证领域服务 {@link VoucherService#reverse} 在红字凭证 <b>DRAFT 状态、过账前</b> 回填
+     * {@code reversalOfId}（建立红字凭证 → 原凭证的反向 linkage，原凭证侧 reversedById 经
+     * {@link BusinessDocument#reverse} 回填，二者双向落库可查）。基类约束不变：仅 DRAFT 可标记、只一次。
+     */
+    public void markAsReversalVoucher(String originalDocNo) {
+        markAsReversalOf(originalDocNo);
+    }
+
     /** 仓储落库后回填头自增 id（只允许一次） */
     public void assignId(long id) {
         if (this.id != null) {

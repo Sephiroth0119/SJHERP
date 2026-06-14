@@ -181,13 +181,16 @@ public class JdbcVoucherRepository implements VoucherRepository {
     @Override
     @Transactional(readOnly = true)
     public List<AccountBalance> aggregateBalances(String period) {
-        // 仅统计已过账（APPROVED）凭证行：草稿/作废/冲销不计入科目发生额；命中 idx_voucher_line_account
+        // 统计已过账（APPROVED）+ 已冲销（REVERSED）凭证行（M4-T07a 红字法关键）：红字法下原凭证被冲销后
+        // 转 REVERSED，其经济发生额已真实入账、由其借贷对调的红字凭证（APPROVED）抵消，二者必须都计入科目
+        // 发生额才能净额归零——否则原凭证被整笔剔除、仅红字计入，科目余额被写成真实业务的反方向（错账）。
+        // 草稿（DRAFT）/作废（CANCELLED）未过账，不计入。命中 idx_voucher_line_account。
         return jdbc.query(
                 "SELECT vl.account_code AS account_code, "
                         + "COALESCE(SUM(vl.debit), 0) AS total_debit, "
                         + "COALESCE(SUM(vl.credit), 0) AS total_credit "
                         + "FROM voucher_line vl JOIN voucher v ON vl.voucher_id = v.id "
-                        + "WHERE v.tenant_id = 0 AND v.period = ? AND v.status = 'APPROVED' "
+                        + "WHERE v.tenant_id = 0 AND v.period = ? AND v.status IN ('APPROVED', 'REVERSED') "
                         + "GROUP BY vl.account_code ORDER BY vl.account_code",
                 (rs, rowNum) -> new AccountBalance(
                         rs.getString("account_code"),

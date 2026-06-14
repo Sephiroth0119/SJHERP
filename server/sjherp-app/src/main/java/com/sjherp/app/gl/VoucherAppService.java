@@ -90,6 +90,29 @@ public class VoucherAppService {
         return voucherService.post(docNo, operator);
     }
 
+    /**
+     * 冲销已过账凭证（红字凭证，M4-T07a）：外层事务包「红字号生成 + 借贷对调红字凭证过账 + 原凭证
+     * REVERSED + 双向 linkage」原子事务。红字号按 <b>原凭证日期所属年月段</b> 计序（与原凭证账期一致，
+     * 复用 VCH- 编号规则），随后委托领域 {@link VoucherService#reverse}（校验/对调/幂等/账期 OPEN/linkage
+     * 全在领域层）。
+     *
+     * <p>异常（沿用 {@link GlExceptionHandler} 契约）：原凭证不存在 → 404；非 APPROVED / 已冲销 / 既存红字 /
+     * 账期已关账 → 409。
+     *
+     * @param docNo    被冲销的原凭证号
+     * @param operator 操作人
+     * @return 已过账的红字凭证
+     */
+    @Transactional
+    public Voucher reverse(String docNo, String operator) {
+        Objects.requireNonNull(docNo, "原凭证号不能为空");
+        Voucher original = voucherService.get(docNo);
+        // 红字凭证号按原凭证日期年月段计序（与原凭证账期一致，与建单分层一致——号在 app 层生成）
+        String reversalDocNo = numberGenerator.generate(VOUCHER_RULE,
+                YearMonth.from(original.getVoucherDate()));
+        return voucherService.reverse(docNo, reversalDocNo, operator);
+    }
+
     /** 按单据号查（不存在抛 VoucherNotFoundException → 404） */
     @Transactional(readOnly = true)
     public Voucher get(String docNo) {
