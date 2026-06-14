@@ -288,15 +288,17 @@ class InventoryReversalFlowIntegrationTest {
             stockCountService.enterCount(scNo, 3, new BigDecimal("30"), OPERATOR);
         });
         txTemplate.executeWithoutResult(s -> stockCountService.approve(scNo, OPERATOR));
+        // 记录盘点前（过账前）余额金额——红冲后须精确回到此值。
+        // 修复：原捕获点在 post 之后，取到的是盘点后金额（盘盈 1050/盘亏 900），与红冲后回归的
+        // 盘点前值（1000/1000）矛盾致断言失败；移到 post 前捕获盘点前真实值。
+        BigDecimal gainAmtBefore = balanceAmount(warehouseId, productGain);   // 盘点前 100@10 = 1000.00
+        BigDecimal lossAmtBefore = balanceAmount(warehouseId, productLoss);   // 盘点前 50@20 = 1000.00
         txTemplate.executeWithoutResult(s -> stockCountService.post(scNo, OPERATOR));
 
         // 过账后：盘盈 105、盘亏 45、无差异 30
         assertBalanceQty(warehouseId, productGain, "105");
         assertBalanceQty(warehouseId, productLoss, "45");
         assertBalanceQty(warehouseId, productSame, "30");
-        // 记录盘点前余额金额（红冲后须精确回到此值）
-        BigDecimal gainAmtBefore = balanceAmount(warehouseId, productGain);   // 盘点前 100@10 = 1000.00
-        BigDecimal lossAmtBefore = balanceAmount(warehouseId, productLoss);
 
         long reverseAuditBefore = auditCount("stock_count.reverse");
 
