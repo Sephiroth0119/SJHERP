@@ -48,13 +48,15 @@ import com.sjherp.domain.identity.Role;
 class GlPeriodControllerTest {
 
     private AccountingPeriodAppService accountingPeriodAppService;
+    private PeriodCloseService periodCloseService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         accountingPeriodAppService = Mockito.mock(AccountingPeriodAppService.class);
+        periodCloseService = Mockito.mock(PeriodCloseService.class);
         mockMvc = MockMvcBuilders
-                .standaloneSetup(new GlPeriodController(accountingPeriodAppService))
+                .standaloneSetup(new GlPeriodController(accountingPeriodAppService, periodCloseService))
                 .setControllerAdvice(new GlExceptionHandler())
                 .build();
         // standaloneSetup 不走 JWT 过滤器，直接将认证态注入 SecurityContextHolder
@@ -156,36 +158,30 @@ class GlPeriodControllerTest {
     }
 
     // ================================================================ 2. 关账
+    // 说明（M4-T05）：close 端点已由 GlPeriodController 改走 PeriodCloseService.close
+    //（结转关账编排器），返回 PeriodCloseResult。关账成功/被闸门拒(409+reasons)/试算断言/
+    // PeriodClosed/账期不存在等完整契约移交 GlPeriodCloseControllerTest 专测；本测保留一例
+    // 验证 close 端点确实路由到 PeriodCloseService（而非旧的 AccountingPeriodAppService.close）。
 
     /**
-     * 关账（OPEN → CLOSED）→ 200，状态变为 CLOSED，closedBy 有值。
+     * 关账成功 → 200，返回 PeriodCloseResult（period 字段断言）；
+     * 同时验证 close 端点路由到 PeriodCloseService.close 而非旧 AccountingPeriodAppService.close。
      */
     @Test
-    void 关账_200_状态CLOSED_含关账人() throws Exception {
-        Mockito.when(accountingPeriodAppService.close(anyString(), anyString()))
-                .thenReturn(closedPeriod("202606"));
+    void 关账_200_路由到PeriodCloseService() throws Exception {
+        Mockito.when(periodCloseService.close(anyString(), anyString()))
+                .thenReturn(new com.sjherp.app.gl.GlDtos.PeriodCloseResult("202606", "VCH-202606-0001",
+                        "1000.00", "600.00", "400.00", "5000.00", "5000.00", "alice",
+                        "2026-06-30T00:00:00Z"));
 
         mockMvc.perform(post("/api/gl/periods/202606/close"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.period").value("202606"))
-                .andExpect(jsonPath("$.status").value("CLOSED"))
-                .andExpect(jsonPath("$.statusLabel").value("关闭"))
-                .andExpect(jsonPath("$.closedBy").value("alice"))
-                .andExpect(jsonPath("$.closedAt").isNotEmpty());
-    }
+                .andExpect(jsonPath("$.netProfit").value("400.00"));
 
-    /**
-     * 重复关账 → 领域层 AccountingPeriod.close 抛 IllegalStateException
-     * → GlExceptionHandler 映射 409。
-     */
-    @Test
-    void 重复关账_409_已关账不可再关() throws Exception {
-        Mockito.when(accountingPeriodAppService.close(anyString(), anyString()))
-                .thenThrow(new IllegalStateException("账期[202606] 已关闭，不可重复关账"));
-
-        mockMvc.perform(post("/api/gl/periods/202606/close"))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.error").isNotEmpty());
+        // 路由契约：走结转关账编排器，不再直调 AccountingPeriodAppService.close
+        Mockito.verify(periodCloseService).close(Mockito.eq("202606"), anyString());
+        Mockito.verify(accountingPeriodAppService, Mockito.never()).close(anyString(), anyString());
     }
 
     // ================================================================ 3. 重开账期

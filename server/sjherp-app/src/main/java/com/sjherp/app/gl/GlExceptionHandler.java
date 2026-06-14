@@ -1,5 +1,6 @@
 package com.sjherp.app.gl;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 import org.springframework.http.HttpStatus;
@@ -67,6 +68,18 @@ public class GlExceptionHandler {
     @ExceptionHandler(IllegalStateTransitionException.class)
     public ResponseEntity<Map<String, String>> handleIllegalTransition(IllegalStateTransitionException e) {
         return error(HttpStatus.CONFLICT, e.getMessage());
+    }
+
+    /**
+     * 月末关账被闸门拒绝（M4-T05，账期非 OPEN / 已存在结转凭证 / 结转前一致性 ERROR）→ 409。
+     * 比 {@link IllegalStateException} 更具体，优先命中；体含 reasons 清单，供向导/Agent 复述原因。
+     */
+    @ExceptionHandler(PeriodCloseBlockedException.class)
+    public ResponseEntity<Map<String, Object>> handlePeriodCloseBlocked(PeriodCloseBlockedException e) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("error", e.getMessage());
+        body.put("reasons", e.getReasons());
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
 
     /** 状态约束拒绝（账期重复关账/重复重开等）→ 409 */

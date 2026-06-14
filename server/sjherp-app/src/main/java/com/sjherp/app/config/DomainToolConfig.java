@@ -56,6 +56,8 @@ import com.sjherp.app.tool.sales.PostSalesInvoiceTool;
 import com.sjherp.app.tool.sales.QuerySalesInvoiceTool;
 import com.sjherp.app.tool.sales.QueryReceivablesTool;
 import com.sjherp.app.tool.consistency.RunConsistencyCheckTool;
+import com.sjherp.app.tool.gl.CloseAccountingPeriodTool;
+import com.sjherp.app.tool.gl.PrecheckPeriodCloseTool;
 import com.sjherp.app.tool.fund.CreatePaymentAccountTool;
 import com.sjherp.app.tool.fund.SearchPaymentAccountsTool;
 import com.sjherp.app.tool.collection.CreateCollectionReceiptTool;
@@ -70,6 +72,7 @@ import com.sjherp.domain.catalog.ProductService;
 import com.sjherp.domain.catalog.UnitService;
 import com.sjherp.app.collection.CollectionReceiptAppService;
 import com.sjherp.app.payment.PaymentDisbursementAppService;
+import com.sjherp.app.gl.PeriodCloseService;
 import com.sjherp.domain.partner.CustomerService;
 import com.sjherp.domain.fund.PaymentAccountService;
 import com.sjherp.domain.partner.SupplierService;
@@ -78,29 +81,33 @@ import com.sjherp.domain.warehouse.WarehouseService;
 /**
  * 领域 Agent 工具装配（M2-T08 基础档案 + M3-T01c 库存 + M3-T03 盘点 + M3-T04 调拨
  * + M3-T05/T06/T07 采购线 + M3-T08/T09/T10 销售线 + M3-T11 进销存工具全量
- * + M3-T13 一致性校验 + M4-T04a 资金账户档案 + M4-T04c 收付款单 Agent 工具），
- * <b>常驻注册</b> 50 个（所有 profile 生效，区别于
+ * + M3-T13 一致性校验 + M4-T04a 资金账户档案 + M4-T04c 收付款单 Agent 工具
+ * + M4-T05 月末结转关账 Agent 工具），
+ * <b>常驻注册</b> 52 个（所有 profile 生效，区别于
  * dev-only 的演示工具 {@link ToolConfig.DemoToolConfig}）。完整清单见 docs/领域工具清单.md。
  *
- * <p>查询类（NORMAL，登录即可）20 个：search_products / get_product_detail /
+ * <p>查询类（NORMAL，登录即可）21 个：search_products / get_product_detail /
  * search_customers / search_suppliers / search_warehouses / query_inventory_balance /
  * query_stock_count / query_transfer / query_purchase_order / query_sales_order /
  * query_purchase_receipt / query_purchase_invoice / query_payables /
  * query_sales_delivery / query_sales_invoice / query_receivables / run_consistency_check /
- * search_payment_accounts / query_collection_receipts / query_payment_disbursements；
+ * search_payment_accounts / query_collection_receipts / query_payment_disbursements /
+ * precheck_period_close（M4-T05，关账可行性预检，只读）；
  * 建档类（NORMAL）1 个：create_payment_account（M4-T04a，
  * glAccountCode 须为末级启用 GL 科目）；
- * 写类（HIGH，框架强制确认卡片）29 个：create_customer / create_supplier /
+ * 写类（HIGH，框架强制确认卡片）30 个：create_customer / create_supplier /
  * create_product / create_warehouse / adjust_inventory / create_stock_count /
  * create_transfer / create_purchase_order / create_sales_order + M3-T11 采购线
  * （approve_purchase_order / create·approve·post_purchase_receipt /
  * create·approve·post_purchase_invoice）+ M3-T11 销售线（approve_sales_order /
  * create·approve·post_sales_delivery / create·approve·post_sales_invoice）
  * + M4-T04c 收款单（create·approve·post_collection_receipt）
- * + M4-T04c 付款单（create·approve·post_payment_disbursement）。
+ * + M4-T04c 付款单（create·approve·post_payment_disbursement）
+ * + M4-T05 月末结转关账（close_accounting_period）。
  * 全部经各领域/应用服务唯一写入口执行（CLAUDE.md 原则 1：工具即领域服务，绝不绕过）；
  * 建单·审核(approve)·过账(post) 各为独立 HIGH 工具，忠于状态机与职责分离。
  * 收付款单建·审·过账涉及资金过账与核销，均为独立 HIGH（HITL 确认，框架级）。
+ * 月末关账（close_accounting_period）为最高风险路径，独立 HIGH（不可逆，HITL 确认）。
  *
  * <p>⚠️ 新增工具后必须同步：{@code HighRiskToolPermissionTest} 注册清单与数量基线、
  * docs/领域工具清单.md、LlmAgent 系统提示词「当前业务能力」段。
@@ -130,7 +137,8 @@ public class DomainToolConfig {
                      ConsistencyCheckService consistencyCheckService,
                      PaymentAccountService paymentAccountService,
                      CollectionReceiptAppService collectionReceiptAppService,
-                     PaymentDisbursementAppService paymentDisbursementAppService) {
+                     PaymentDisbursementAppService paymentDisbursementAppService,
+                     PeriodCloseService periodCloseService) {
         // 查询类（NORMAL）
         registry.register(new SearchProductsTool(productService, unitService));
         registry.register(new GetProductDetailTool(productService, unitService));
@@ -157,6 +165,8 @@ public class DomainToolConfig {
         // 收/付款单查询（M4-T04c，NORMAL，登录即可）
         registry.register(new QueryCollectionReceiptsTool(collectionReceiptAppService));
         registry.register(new QueryPaymentDisbursementsTool(paymentDisbursementAppService));
+        // 月末关账预检（M4-T05，NORMAL：只读跑结转预览/一致性/试算平衡，不写不过账）
+        registry.register(new PrecheckPeriodCloseTool(periodCloseService));
         // 写类（HIGH：影响主数据/产生库存流水/形成业务承诺，框架强制人工确认）
         registry.register(new CreateProductTool(productService, unitService));
         registry.register(new CreateCustomerTool(customerService));
@@ -198,9 +208,12 @@ public class DomainToolConfig {
         registry.register(new CreatePaymentDisbursementTool(paymentDisbursementAppService));
         registry.register(new ApprovePaymentDisbursementTool(paymentDisbursementAppService));
         registry.register(new PostPaymentDisbursementTool(paymentDisbursementAppService));
+        // 月末结转关账（M4-T05，HIGH：最高风险路径，结转损益+关账不可逆，HITL 确认）
+        registry.register(new CloseAccountingPeriodTool(periodCloseService));
         log.info("已注册领域工具（M2-T08 档案 + M3-T01c 库存 + M3-T03 盘点 + M3-T04 调拨"
                 + " + M3-T05/T06/T07 采购线 + M3-T08/T09/T10 销售线 + M3-T11 全量注册"
-                + " + M3-T13 一致性校验 + M4-T04a 资金账户 + M4-T04c 收付款单，常驻）："
-                + "查询 20 个（NORMAL）+ 资金账户建档 1 个（NORMAL）+ 写 29 个（HIGH）");
+                + " + M3-T13 一致性校验 + M4-T04a 资金账户 + M4-T04c 收付款单"
+                + " + M4-T05 月末结转关账，常驻）："
+                + "查询 21 个（NORMAL）+ 资金账户建档 1 个（NORMAL）+ 写 30 个（HIGH）");
     }
 }

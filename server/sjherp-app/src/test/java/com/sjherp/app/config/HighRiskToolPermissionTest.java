@@ -13,6 +13,7 @@ import com.sjherp.agent.tool.ToolRegistry;
 import com.sjherp.agent.tool.ToolRiskLevel;
 import com.sjherp.app.collection.CollectionReceiptAppService;
 import com.sjherp.app.consistency.ConsistencyCheckService;
+import com.sjherp.app.gl.PeriodCloseService;
 import com.sjherp.app.inventory.InventoryAdjustmentService;
 import com.sjherp.app.payment.PaymentDisbursementAppService;
 import com.sjherp.app.purchase.PurchaseInvoiceAppService;
@@ -71,7 +72,8 @@ class HighRiskToolPermissionTest {
                 mock(ConsistencyCheckService.class),
                 mock(PaymentAccountService.class),
                 mock(CollectionReceiptAppService.class),
-                mock(PaymentDisbursementAppService.class));
+                mock(PaymentDisbursementAppService.class),
+                mock(PeriodCloseService.class));
         // dev-only：演示工具（EchoTool NORMAL + DemoHighRiskTool HIGH），一并纳入断言
         new ToolConfig.DemoToolConfig(registry);
         return registry;
@@ -96,13 +98,14 @@ class HighRiskToolPermissionTest {
 
     @Test
     void 注册清单覆盖既有工具规模_防注册清单漂移() {
-        // M4-T04c 基线：常驻 50 个（查询 20 NORMAL + 资金账户建档 1 NORMAL + 写 29 HIGH；
+        // M4-T05 基线：常驻 52 个（查询 21 NORMAL + 资金账户建档 1 NORMAL + 写 30 HIGH；
         // 含 M3-T11 全量 20 工具 [采购收货/发票 10 + 销售出库/发票 10] + M3-T13 run_consistency_check
         // + M4-T04a create_payment_account / search_payment_accounts
-        // + M4-T04c 收款单 3 HIGH + 付款单 3 HIGH + query_collection_receipts / query_payment_disbursements 2 NORMAL）
-        // + 演示 2 个（echo + demo_post_document）= 52。
+        // + M4-T04c 收款单 3 HIGH + 付款单 3 HIGH + query_collection_receipts / query_payment_disbursements 2 NORMAL
+        // + M4-T05 precheck_period_close 1 NORMAL + close_accounting_period 1 HIGH）
+        // + 演示 2 个（echo + demo_post_document）= 54。
         // 新增工具装配类后此处会先于权限断言提醒维护注册清单。
-        assertTrue(registryWithAllTools().all().size() >= 52,
-                "注册工具数少于 M4-T04c 基线（52 个）——若调整了工具装配，请同步维护本测试的注册清单");
+        assertTrue(registryWithAllTools().all().size() >= 54,
+                "注册工具数少于 M4-T05 基线（54 个）——若调整了工具装配，请同步维护本测试的注册清单");
     }
 }

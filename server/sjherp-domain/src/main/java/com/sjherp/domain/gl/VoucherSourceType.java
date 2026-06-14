@@ -28,7 +28,14 @@ public enum VoucherSourceType {
     COLLECTION_RECEIPT,
 
     /** 付款单过账：借 220202 应付账款，贷 现金/银行（资金账户 glAccountCode）（M4-T04） */
-    PAYMENT_DISBURSEMENT;
+    PAYMENT_DISBURSEMENT,
+
+    /**
+     * 期末结转损益（M4-T05）：账结法月结，把损益类（{@link AccountType#PROFIT_LOSS}）科目本期
+     * 净额结转入 4103 本年利润。来源单据号回填为账期键（yyyyMM，6 位），配合
+     * {@code uk_voucher_source} 物理唯一兜底——每账期至多一张结转凭证（拆解 §5 决策 2）。
+     */
+    PERIOD_CLOSING;
 
     /** 中文标签（凭证摘要 / 审计 / 用户可见文案统一出口） */
     public String label() {
@@ -39,6 +46,7 @@ public enum VoucherSourceType {
             case SALES_INVOICE -> "销售发票";
             case COLLECTION_RECEIPT -> "收款单";
             case PAYMENT_DISBURSEMENT -> "付款单";
+            case PERIOD_CLOSING -> "期末结转";
         };
     }
 }

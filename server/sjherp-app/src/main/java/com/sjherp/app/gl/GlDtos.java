@@ -143,6 +143,63 @@ public final class GlDtos {
         }
     }
 
+    // =============================================================== 月末结转关账（M4-T05）
+
+    /**
+     * 单条结转损益行预览（M4-T05）：损益类科目本期净额结转到本年利润 4103 的一条分录。
+     * 收入类科目借方冲平（debit&gt;0）、费用类科目贷方冲平（credit&gt;0）、4103 承接收入(贷)/费用(借)。
+     *
+     * @param accountCode 科目编码
+     * @param accountName 科目名称
+     * @param debit       借方金额（字符串，未发生记 "0.00"）
+     * @param credit      贷方金额（字符串，未发生记 "0.00"）
+     */
+    public record ClosingPreviewLine(String accountCode, String accountName, String debit,
+                                     String credit) {
+    }
+
+    /**
+     * 关账可行性预检响应（M4-T05，只读向导/Agent 引导展示用）。
+     *
+     * @param period             账期键 yyyyMM
+     * @param status             账期状态（OPEN/CLOSED）
+     * @param closeable          是否可关账（= isOpen &amp;&amp; 无既存结转凭证 &amp;&amp; 无 ERROR break）
+     * @param alreadyClosed      是否已存在本期结转损益凭证（重开后重结场景，需先冲销）
+     * @param consistencyErrors  结转前一致性 ERROR break 摘要（非空则阻断关账）
+     * @param consistencyWarnings 结转前一致性 WARN break 摘要（不阻断，仅提示）
+     * @param closingPreviewLines 损益结转分录预览（不过账，供"关了什么样"展示）
+     * @param totalRevenue       本期收入合计（字符串）
+     * @param totalExpense       本期费用合计（字符串）
+     * @param netProfit          本期净利润 = 收入 − 费用（字符串，正=盈利）
+     * @param trialBalanceDebit  当前试算平衡全部借方合计（字符串）
+     * @param trialBalanceCredit 当前试算平衡全部贷方合计（字符串）
+     */
+    public record PeriodCloseReadiness(String period, String status, boolean closeable,
+                                       boolean alreadyClosed, List<String> consistencyErrors,
+                                       List<String> consistencyWarnings,
+                                       List<ClosingPreviewLine> closingPreviewLines,
+                                       String totalRevenue, String totalExpense, String netProfit,
+                                       String trialBalanceDebit, String trialBalanceCredit) {
+    }
+
+    /**
+     * 月末结转关账结果响应（M4-T05，验收核心返回体）。
+     *
+     * @param period             账期键 yyyyMM
+     * @param closingVoucherDocNo 结转损益凭证号（无损益发生额则为 null）
+     * @param totalRevenue       本期收入合计（字符串）
+     * @param totalExpense       本期费用合计（字符串）
+     * @param netProfit          本期净利润 = 收入 − 费用（字符串，正=盈利）
+     * @param trialBalanceDebit  关账后试算平衡全部借方合计（字符串，应=贷方）
+     * @param trialBalanceCredit 关账后试算平衡全部贷方合计（字符串，应=借方）
+     * @param closedBy           关账人
+     * @param closedAt           关账时间（ISO-8601 UTC 字符串）
+     */
+    public record PeriodCloseResult(String period, String closingVoucherDocNo, String totalRevenue,
+                                    String totalExpense, String netProfit, String trialBalanceDebit,
+                                    String trialBalanceCredit, String closedBy, String closedAt) {
+    }
+
     // =============================================================== 分页
 
     /** 分页响应（与库存/采购/销售 API 同构） */
