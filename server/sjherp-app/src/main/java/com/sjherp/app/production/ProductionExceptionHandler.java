@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import com.sjherp.domain.production.BillOfMaterialsNotFoundException;
 import com.sjherp.domain.production.BomCycleException;
+import com.sjherp.domain.production.DemandPlanNotFoundException;
+import com.sjherp.domain.production.MrpRunNotFoundException;
 import com.sjherp.domain.production.RoutingNotFoundException;
 
 /**
@@ -31,6 +33,18 @@ public class ProductionExceptionHandler {
     /** 工艺路线不存在 → 404 {"error": "..."} */
     @ExceptionHandler(RoutingNotFoundException.class)
     public ResponseEntity<Map<String, String>> handleRoutingNotFound(RoutingNotFoundException e) {
+        return error(HttpStatus.NOT_FOUND, e.getMessage());
+    }
+
+    /** 需求计划不存在 → 404 {"error": "..."} */
+    @ExceptionHandler(DemandPlanNotFoundException.class)
+    public ResponseEntity<Map<String, String>> handleDemandPlanNotFound(DemandPlanNotFoundException e) {
+        return error(HttpStatus.NOT_FOUND, e.getMessage());
+    }
+
+    /** MRP 运行结果不存在 → 404 {"error": "..."} */
+    @ExceptionHandler(MrpRunNotFoundException.class)
+    public ResponseEntity<Map<String, String>> handleMrpRunNotFound(MrpRunNotFoundException e) {
         return error(HttpStatus.NOT_FOUND, e.getMessage());
     }
 

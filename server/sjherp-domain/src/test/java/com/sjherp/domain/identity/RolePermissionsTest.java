@@ -52,6 +52,8 @@ class RolePermissionsTest {
                 Permission.FINANCE_REPORT,
                 Permission.PRODUCTION_BOM,
                 Permission.PRODUCTION_ROUTING,
+                Permission.PRODUCTION_PLAN,
+                Permission.PRODUCTION_MRP,
                 Permission.DATA_IMPORT,
                 Permission.GAP_TRIAGE), boss);
         assertFalse(boss.contains(Permission.DEMO_POST_DOCUMENT));

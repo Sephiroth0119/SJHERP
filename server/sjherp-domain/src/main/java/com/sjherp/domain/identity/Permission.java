@@ -197,6 +197,20 @@ public enum Permission {
      */
     PRODUCTION_ROUTING("production:routing", "工艺路线维护"),
 
+    /**
+     * 需求计划维护（M5-T02）：需求计划建档/更新
+     * （REST POST·PUT /api/production/demand-plans）。
+     * 授 ADMIN/BOSS。
+     */
+    PRODUCTION_PLAN("production:plan", "需求计划"),
+
+    /**
+     * MRP 运行（M5-T02）：触发 MRP 运算/查询历史/查看建议
+     * （REST POST /api/production/mrp/runs，GET 查询）。
+     * 授 ADMIN/BOSS。
+     */
+    PRODUCTION_MRP("production:mrp", "MRP 运行"),
+
     // ------------------------------------------------- 流程缺口
 
     /** 缺口状态流转（GapController POST /api/gaps/{id}/status，开发侧操作） */
