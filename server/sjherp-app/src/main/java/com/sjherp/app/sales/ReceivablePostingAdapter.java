@@ -27,4 +27,9 @@ public class ReceivablePostingAdapter implements ReceivablePostingPort {
                      String operator) {
         receivableService.open(customerId, amount, sourceDocNo, dueDate, operator);
     }
+
+    @Override
+    public void reverse(String sourceDocNo, String operator) {
+        receivableService.reverse(sourceDocNo, operator);
+    }
 }

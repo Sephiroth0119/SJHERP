@@ -3,6 +3,7 @@ package com.sjherp.domain.payable;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -174,6 +175,62 @@ class AccountsPayableTest {
         assertEquals(PayableStatus.SETTLED, ap.getStatus());
         assertEqualsDecimal("100.00", ap.getSettledAmount());
         assertEqualsDecimal("0", ap.outstandingAmount());
+    }
+
+    // ---------------- M4-T07b 冲销分支（canBeReversed / markReversed） ----------------
+
+    @Test
+    void 未核销且OPEN_可冲销() {
+        AccountsPayable ap = openAp("1000.00");
+        assertTrue(ap.canBeReversed());
+    }
+
+    @Test
+    void 已部分核销_不可冲销() {
+        AccountsPayable ap = openAp("1000.00");
+        ap.settle(new BigDecimal("300.00"));
+        assertFalse(ap.canBeReversed());
+    }
+
+    @Test
+    void 已全额SETTLED_不可冲销() {
+        AccountsPayable ap = openAp("1000.00");
+        ap.settle(new BigDecimal("1000.00"));
+        assertFalse(ap.canBeReversed());
+    }
+
+    @Test
+    void markReversed_满足条件_状态转REVERSED() {
+        AccountsPayable ap = openAp("1000.00");
+        ap.markReversed(OPERATOR);
+        assertEquals(PayableStatus.REVERSED, ap.getStatus());
+        assertFalse(ap.canBeReversed());   // 已冲销不可再冲
+    }
+
+    @Test
+    void markReversed_已部分核销_抛IllegalState且非OverSettlement_状态不变() {
+        AccountsPayable ap = openAp("1000.00");
+        ap.settle(new BigDecimal("300.00"));
+        // markReversed 抛 IllegalStateException（不可冲），区别于 settle 超额的 OverSettlementException
+        // （后者是 IllegalArgumentException 子类）——二者类型不相关，此处校验抛的是 IllegalState 即可。
+        assertThrows(IllegalStateException.class, () -> ap.markReversed(OPERATOR));
+        assertEquals(PayableStatus.PARTIAL, ap.getStatus());
+    }
+
+    @Test
+    void markReversed_已SETTLED_抛IllegalState() {
+        AccountsPayable ap = openAp("500.00");
+        ap.settle(new BigDecimal("500.00"));
+        assertThrows(IllegalStateException.class, () -> ap.markReversed(OPERATOR));
+        assertEquals(PayableStatus.SETTLED, ap.getStatus());
+    }
+
+    @Test
+    void markReversed_重复冲销_第二次抛IllegalState() {
+        AccountsPayable ap = openAp("100.00");
+        ap.markReversed(OPERATOR);
+        assertThrows(IllegalStateException.class, () -> ap.markReversed(OPERATOR));
+        assertEquals(PayableStatus.REVERSED, ap.getStatus());
     }
 
     private static void assertEqualsDecimal(String expected, BigDecimal actual) {

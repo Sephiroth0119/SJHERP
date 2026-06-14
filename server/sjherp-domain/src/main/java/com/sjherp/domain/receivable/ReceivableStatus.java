@@ -15,7 +15,10 @@ public enum ReceivableStatus {
     PARTIAL("部分核销"),
 
     /** 已核销（M4-T03 收款核销引入） */
-    SETTLED("已核销");
+    SETTLED("已核销"),
+
+    /** 已冲销（M4-T07b 业务单据红冲：应收随销售发票红冲整笔冲回，须无核销才可冲） */
+    REVERSED("已冲销");
 
     private final String label;
 

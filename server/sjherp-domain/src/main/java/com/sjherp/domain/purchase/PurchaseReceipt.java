@@ -129,6 +129,21 @@ public final class PurchaseReceipt extends BusinessDocument implements AuditTarg
         lineByNo(lineNo).addInvoiced(invoiced);
     }
 
+    /**
+     * 回滚指定收货行的本次开票量（M4-T07b 采购发票红冲时由 {@link PurchaseReceiptService} 编排调用）。
+     * 仅已过账（COMPLETED）的收货单可回写；回滚后已开票量守门不 &lt; 0（由 {@link PurchaseReceiptLine} 守）。
+     *
+     * @param lineNo  收货行号
+     * @param invoiced 本次回滚的开票数量（&gt; 0，基本单位）
+     */
+    public void reverseInvoiceLine(int lineNo, BigDecimal invoiced) {
+        if (getStatus() != DocumentStatus.COMPLETED) {
+            throw new IllegalStateException("采购入库单[" + getDocNo() + "] 当前状态 " + getStatus()
+                    + " 未过账，不可回滚开票量");
+        }
+        lineByNo(lineNo).subtractInvoiced(invoiced);
+    }
+
     private PurchaseReceiptLine lineByNo(int lineNo) {
         return lines.stream().filter(l -> l.getLineNo() == lineNo).findFirst()
                 .orElseThrow(() -> new IllegalArgumentException(

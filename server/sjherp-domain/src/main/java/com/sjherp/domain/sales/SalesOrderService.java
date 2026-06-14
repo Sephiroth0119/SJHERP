@@ -105,6 +105,23 @@ public class SalesOrderService {
         repository.save(order);
     }
 
+    /**
+     * 回滚某行累计发货量（M4-T07b 销售出库单红冲时调用）：与 {@link #recordDelivery} 对称，
+     * 校验回滚不下溢 &lt; 0（{@link SalesOrderLine#subtractDelivered}），否则拒绝。
+     *
+     * <p>由出库红冲编排在同一外层事务内调用，与库存反向入库原子提交。
+     * 不单独标 @Audited（口径同 {@link #recordDelivery}，随出库单红冲审计覆盖），故无 operator 参数。
+     *
+     * @param docNo  销售订单号
+     * @param lineNo 订单行号
+     * @param qty    本次回滚发货量（基本单位，&gt; 0）
+     */
+    public void reverseDelivery(String docNo, int lineNo, java.math.BigDecimal qty) {
+        SalesOrder order = get(docNo);
+        order.lineByNo(lineNo).subtractDelivered(qty);
+        repository.save(order);
+    }
+
     /** 按单据号查（不存在抛 {@link SalesOrderNotFoundException} → API 404） */
     public SalesOrder get(String docNo) {
         return repository.findByDocNo(docNo)

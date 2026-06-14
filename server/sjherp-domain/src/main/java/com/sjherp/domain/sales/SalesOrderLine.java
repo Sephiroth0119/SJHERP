@@ -111,6 +111,25 @@ public final class SalesOrderLine {
         this.deliveredQty = this.deliveredQty.add(deliveredDelta);
     }
 
+    /**
+     * 回滚本行发货量（M4-T07b 销售出库红冲时由 {@link SalesOrder} 编排回写）。
+     * delta &gt; 0 校验；回滚后累计发货量不得 &lt; 0（守门，防回滚多于已发虚减——保模型不破碎）。
+     *
+     * @param delta 本次回滚的发货量（&gt; 0，基本单位）
+     */
+    public void subtractDelivered(BigDecimal delta) {
+        Objects.requireNonNull(delta, "本次回滚发货量不能为空");
+        if (delta.signum() <= 0) {
+            throw new IllegalArgumentException("本次回滚发货量必须大于 0: " + delta.toPlainString());
+        }
+        BigDecimal next = deliveredQty.subtract(delta);
+        if (next.signum() < 0) {
+            throw new IllegalArgumentException("行号 " + lineNo + "（商品 " + productId
+                    + "）回滚发货量 " + delta.toPlainString() + " 超过累计发货量 " + deliveredQty.toPlainString());
+        }
+        this.deliveredQty = next;
+    }
+
     private static BigDecimal validatedQuantity(BigDecimal quantity) {
         if (quantity == null) {
             throw new IllegalArgumentException("订单数量不能为空");

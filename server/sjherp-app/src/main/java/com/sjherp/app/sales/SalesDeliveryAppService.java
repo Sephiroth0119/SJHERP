@@ -9,11 +9,15 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.sjherp.app.config.TransactionalInventoryService;
 import com.sjherp.app.gl.AutoVoucherService;
+import com.sjherp.app.gl.VoucherAppService;
 import com.sjherp.app.sales.SalesDtos.SalesDeliveryLineRequest;
 import com.sjherp.domain.common.ArchiveStatus;
 import com.sjherp.domain.common.PageResult;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
 import com.sjherp.domain.common.numbering.DocumentNumberRule;
+import com.sjherp.domain.gl.Voucher;
+import com.sjherp.domain.gl.VoucherService;
+import com.sjherp.domain.gl.VoucherSourceType;
 import com.sjherp.domain.sales.SalesDelivery;
 import com.sjherp.domain.sales.SalesDeliveryLineInput;
 import com.sjherp.domain.sales.SalesDeliveryQuery;
@@ -44,15 +48,21 @@ public class SalesDeliveryAppService {
     private final WarehouseService warehouseService;
     private final DocumentNumberGenerator numberGenerator;
     private final AutoVoucherService autoVoucherService;
+    private final VoucherService voucherService;
+    private final VoucherAppService voucherAppService;
 
     public SalesDeliveryAppService(SalesDeliveryService salesDeliveryService,
                                    WarehouseService warehouseService,
                                    DocumentNumberGenerator numberGenerator,
-                                   AutoVoucherService autoVoucherService) {
+                                   AutoVoucherService autoVoucherService,
+                                   VoucherService voucherService,
+                                   VoucherAppService voucherAppService) {
         this.salesDeliveryService = Objects.requireNonNull(salesDeliveryService, "salesDeliveryService 不能为空");
         this.warehouseService = Objects.requireNonNull(warehouseService, "warehouseService 不能为空");
         this.numberGenerator = Objects.requireNonNull(numberGenerator, "numberGenerator 不能为空");
         this.autoVoucherService = Objects.requireNonNull(autoVoucherService, "autoVoucherService 不能为空");
+        this.voucherService = Objects.requireNonNull(voucherService, "voucherService 不能为空");
+        this.voucherAppService = Objects.requireNonNull(voucherAppService, "voucherAppService 不能为空");
     }
 
     /**
@@ -102,6 +112,39 @@ public class SalesDeliveryAppService {
         SalesDelivery delivery = salesDeliveryService.post(docNo, operator);
         autoVoucherService.generateForSalesDelivery(delivery, operator);   // T02 自动凭证（COGS 已回填）
         return delivery;
+    }
+
+    /**
+     * 冲销已过账出库单（红字出库，M4-T07b）：同一 {@code @Transactional} 内
+     * ①红冲出库自动凭证（借贷对调 SALES_DELIVERY 凭证，{@link VoucherAppService#reverse}——内含账期 OPEN
+     * 校验，闭月时抛 PeriodClosedException 使整单回滚）→②库存按原 COGS 反向入库 + 回退订单累计发货量 +
+     * 单据 COMPLETED → REVERSED（{@link SalesDeliveryService#reverse}），红字凭证号作冲销链路锚点。
+     *
+     * <p>顺序：先红冲凭证拿到红字号作锚点，再驱动库存/单据反向；任一步失败整事务回滚（库存/订单/凭证/单据
+     * 一并撤销，设计真源 §2 原子性）。原单已 REVERSED 时 {@code salesDeliveryService.reverse} 经状态机非法流转拒
+     * （幂等兜底）。COGS=0 的出库单无自动凭证（无金额无凭证），此时无凭证可红冲、锚点退化为原单号。
+     */
+    @Transactional
+    public SalesDelivery reverse(String docNo, String operator) {
+        // ① 红冲出库自动凭证（按来源单据号反查 SALES_DELIVERY 凭证）→ 红字号作冲销链路锚点
+        String reversalAnchor = reverseAutoVoucher(docNo, operator);
+        // ② 库存按原 COGS 反向入库 + 回退订单发货量 + 单据冲销（同事务原子）
+        return salesDeliveryService.reverse(docNo, reversalAnchor, operator);
+    }
+
+    /**
+     * 红冲某出库单的自动凭证（SALES_DELIVERY 来源），返回冲销链路锚点：
+     * 命中则红冲并返回红字凭证号；COGS=0 无自动凭证时返回原单号（仍是可审计的有意义锚点）。
+     */
+    private String reverseAutoVoucher(String docNo, String operator) {
+        Voucher source = voucherService.findBySourceDocNo(docNo).stream()
+                .filter(v -> VoucherSourceType.SALES_DELIVERY.name().equals(v.getSourceDocType()))
+                .findFirst()
+                .orElse(null);
+        if (source == null) {
+            return docNo;   // COGS=0 无自动凭证：锚点退化为原出库单号
+        }
+        return voucherAppService.reverse(source.getDocNo(), operator).getDocNo();
     }
 
     /** 作废出库单（仅 DRAFT 可作废） */

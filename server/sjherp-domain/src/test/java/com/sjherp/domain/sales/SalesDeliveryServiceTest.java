@@ -208,10 +208,67 @@ class SalesDeliveryServiceTest {
     }
 
     @Test
-    void 退货冲销暂未实现_抛UnsupportedOperation() {
+    void 冲销已过账出库单_状态转REVERSED并回填红字关联() {
+        approvedOrder("SO-1");
+        service.create("SD-1", "SO-1", WH, null, List.of(deliveryLine(1, P_A, "70")), OPERATOR);
+        service.approve("SD-1", OPERATOR);
+        service.post("SD-1", OPERATOR);
+
+        SalesDelivery reversed = service.reverse("SD-1", "VCH-REV-1", OPERATOR);
+
+        assertEquals(DocumentStatus.REVERSED, reversed.getStatus());
+        assertEquals("VCH-REV-1", reversed.getReversedById());
+    }
+
+    @Test
+    void 冲销已过账出库单_按原COGS反向入库_幂等键REVERSAL前缀() {
+        approvedOrder("SO-1");
+        service.create("SD-1", "SO-1", WH, null, List.of(deliveryLine(1, P_A, "70")), OPERATOR);
+        service.approve("SD-1", OPERATOR);
+        // 出库 COGS=700.00（移动加权口径负数）→ 回填正数 700.00，单价=700/70=10
+        inventory.cogsTotalByKey.put("SALES_DELIVERY:SD-1:1", new BigDecimal("-700.00"));
+        service.post("SD-1", OPERATOR);
+
+        service.reverse("SD-1", "VCH-REV-1", OPERATOR);
+
+        // 反向入库批次：第二次 execute（首次为出库）
+        assertEquals(2, inventory.executedBatches.size());
+        List<StockMovementCommand> batch = inventory.lastBatch();
+        assertEquals(1, batch.size());
+        com.sjherp.domain.inventory.InboundCommand in =
+                (com.sjherp.domain.inventory.InboundCommand) batch.get(0);
+        assertEquals(InventoryTxnType.PURCHASE_IN, in.txnType());
+        assertEquals(WH, in.warehouseId());
+        assertEquals(P_A, in.productId());
+        assertEqualsDecimal("70", in.quantity());
+        // 按原 COGS 反向：单价=COGS/数量=700/70=10（不重算移动加权）
+        assertEqualsDecimal("10", in.unitCost());
+        assertEquals("REVERSAL:SD-1:1", in.idempotencyKey());
+    }
+
+    @Test
+    void 冲销已过账出库单_回退销售订单累计发货量() {
+        approvedOrder("SO-1");
+        service.create("SD-1", "SO-1", WH, null, List.of(deliveryLine(1, P_A, "70")), OPERATOR);
+        service.approve("SD-1", OPERATOR);
+        service.post("SD-1", OPERATOR);
+        // 过账后订单行1已发 70
+        assertEqualsDecimal("70", orderService.get("SO-1").lineByNo(1).getDeliveredQty());
+
+        service.reverse("SD-1", "VCH-REV-1", OPERATOR);
+
+        // 冲销后回退为 0、剩余可发恢复 100
+        assertEqualsDecimal("0", orderService.get("SO-1").lineByNo(1).getDeliveredQty());
+        assertEqualsDecimal("100", orderService.get("SO-1").lineByNo(1).remainingQty());
+    }
+
+    @Test
+    void 冲销未过账出库单_非法流转拒绝() {
         approvedOrder("SO-1");
         service.create("SD-1", "SO-1", WH, null, List.of(deliveryLine(1, P_A, "1")), OPERATOR);
-        assertThrows(UnsupportedOperationException.class, () -> service.reverse("SD-1", OPERATOR));
+        // DRAFT → REVERSED 非法流转（仅 APPROVED/EXECUTING/COMPLETED 可冲销）
+        assertThrows(IllegalStateTransitionException.class,
+                () -> service.reverse("SD-1", "VCH-REV-1", OPERATOR));
     }
 
     // ---------------------------------------------------------------
@@ -296,14 +353,21 @@ class SalesDeliveryServiceTest {
             executedBatches.add(new ArrayList<>(batch));
             List<StockMovementResult> results = new ArrayList<>(batch.size());
             for (StockMovementCommand c : batch) {
-                // 销售出库链路一律 OutboundCommand（SALES_OUT），由此取出库数量
-                OutboundCommand out = (OutboundCommand) c;
-                // 默认出库 totalCost = -1（负数口径），可被 cogsTotalByKey 覆盖
-                BigDecimal total = cogsTotalByKey.getOrDefault(c.idempotencyKey(), new BigDecimal("-1"));
-                results.add(new StockMovementResult(txnId.incrementAndGet(), c.warehouseId(),
-                        c.productId(), c.txnType(), out.quantity().negate(), null, total,
-                        BigDecimal.ZERO, BigDecimal.ZERO, c.srcDocType(), c.srcDocNo(),
-                        c.srcLineNo(), c.idempotencyKey()));
+                // 出库（SALES_OUT，正常过账）= 负数量负成本；入库（PURCHASE_IN，M4-T07b 红冲反向入库）= 正数量正成本
+                if (c instanceof OutboundCommand out) {
+                    BigDecimal total = cogsTotalByKey.getOrDefault(c.idempotencyKey(), new BigDecimal("-1"));
+                    results.add(new StockMovementResult(txnId.incrementAndGet(), c.warehouseId(),
+                            c.productId(), c.txnType(), out.quantity().negate(), null, total,
+                            BigDecimal.ZERO, BigDecimal.ZERO, c.srcDocType(), c.srcDocNo(),
+                            c.srcLineNo(), c.idempotencyKey()));
+                } else if (c instanceof com.sjherp.domain.inventory.InboundCommand in) {
+                    results.add(new StockMovementResult(txnId.incrementAndGet(), c.warehouseId(),
+                            c.productId(), c.txnType(), in.quantity(), in.unitCost(),
+                            in.unitCost() == null ? BigDecimal.ZERO
+                                    : in.unitCost().multiply(in.quantity()),
+                            BigDecimal.ZERO, BigDecimal.ZERO, c.srcDocType(), c.srcDocNo(),
+                            c.srcLineNo(), c.idempotencyKey()));
+                }
             }
             return results;
         }

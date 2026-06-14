@@ -68,6 +68,12 @@ public class SalesDeliveryController {
         return SalesDeliveryResponse.from(salesDeliveryAppService.post(docNo, CurrentUser.operator()));
     }
 
+    /** 冲销（红字出库，M4-T07b：COMPLETED → REVERSED，库存按原 COGS 反向入库 + 红冲出库凭证 + 回退订单发货量） */
+    @PostMapping("/{docNo}/reverse")
+    public SalesDeliveryResponse reverse(@PathVariable String docNo) {
+        return SalesDeliveryResponse.from(salesDeliveryAppService.reverse(docNo, CurrentUser.operator()));
+    }
+
     /** 作废（仅 DRAFT） */
     @PostMapping("/{docNo}/cancel")
     public SalesDeliveryResponse cancel(@PathVariable String docNo) {

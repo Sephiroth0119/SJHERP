@@ -9,11 +9,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.sjherp.app.gl.AutoVoucherService;
+import com.sjherp.app.gl.VoucherAppService;
 import com.sjherp.app.purchase.PurchaseDtos.PurchaseReceiptLineRequest;
 import com.sjherp.domain.common.ArchiveStatus;
 import com.sjherp.domain.common.PageResult;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
 import com.sjherp.domain.common.numbering.DocumentNumberRule;
+import com.sjherp.domain.gl.Voucher;
+import com.sjherp.domain.gl.VoucherService;
+import com.sjherp.domain.gl.VoucherSourceType;
 import com.sjherp.domain.purchase.PurchaseReceipt;
 import com.sjherp.domain.purchase.PurchaseReceiptLineInput;
 import com.sjherp.domain.purchase.PurchaseReceiptQuery;
@@ -44,17 +48,24 @@ public class PurchaseReceiptAppService {
     private final WarehouseService warehouseService;
     private final DocumentNumberGenerator numberGenerator;
     private final AutoVoucherService autoVoucherService;
+    private final VoucherService voucherService;
+    private final VoucherAppService voucherAppService;
 
     public PurchaseReceiptAppService(PurchaseReceiptService purchaseReceiptService,
                                      WarehouseService warehouseService,
                                      DocumentNumberGenerator numberGenerator,
-                                     AutoVoucherService autoVoucherService) {
+                                     AutoVoucherService autoVoucherService,
+                                     VoucherService voucherService,
+                                     VoucherAppService voucherAppService) {
         this.purchaseReceiptService = Objects.requireNonNull(purchaseReceiptService,
                 "purchaseReceiptService 不能为空");
         this.warehouseService = Objects.requireNonNull(warehouseService, "warehouseService 不能为空");
         this.numberGenerator = Objects.requireNonNull(numberGenerator, "numberGenerator 不能为空");
         this.autoVoucherService = Objects.requireNonNull(autoVoucherService,
                 "autoVoucherService 不能为空");
+        this.voucherService = Objects.requireNonNull(voucherService, "voucherService 不能为空");
+        this.voucherAppService = Objects.requireNonNull(voucherAppService,
+                "voucherAppService 不能为空");
     }
 
     /**
@@ -103,6 +114,43 @@ public class PurchaseReceiptAppService {
         PurchaseReceipt receipt = purchaseReceiptService.post(docNo, operator);
         autoVoucherService.generateForPurchaseReceipt(receipt, operator);   // T02 自动凭证
         return receipt;
+    }
+
+    /**
+     * 冲销采购入库单（红字单，M4-T07b，最高风险路径，不可逆）：同一外层 {@code @Transactional} 编排——
+     * <ol>
+     *   <li>红冲入库自动凭证：{@code findBySourceDocNo(PR号)} 取 PURCHASE_RECEIPT 自动凭证（暂估应付
+     *       借 1405 / 贷 220201）→ {@link VoucherAppService#reverse} 生成借贷对调红字凭证并在原账期过账
+     *       （账期已关账 → {@code PeriodClosedException} → 整 reverse 回滚，闭月天然受保护，设计真源 §58）；</li>
+     *   <li>红字凭证号作为 {@code reversalDocNo} → {@link PurchaseReceiptService#reverse}：反向库存
+     *       （按原成本 SALES_OUT 出库）+ 回退采购订单到货量 + 原单 COMPLETED → REVERSED。</li>
+     * </ol>
+     * 任一步失败整事务回滚（库存/到货量/凭证/单据状态一致）。幂等：原单已 REVERSED → 领域层拒；
+     * 自动凭证红冲幂等（T07a 三道）兜底。无自动凭证（理论上金额>0 必有，防御）时用合成冲销引用。
+     *
+     * @param docNo    被冲销的采购入库单号（须 COMPLETED）
+     * @param operator 操作人
+     * @return 已转 REVERSED 的原采购入库单
+     */
+    @Transactional
+    public PurchaseReceipt reverse(String docNo, String operator) {
+        // 先校验原单可冲销（COMPLETED、未冲销），避免对脏单白白红冲凭证（领域层 reverse 仍兜底再校验）
+        PurchaseReceipt receipt = purchaseReceiptService.get(docNo);
+        String reversalDocNo = reverseAutoVoucher(docNo, operator);
+        return purchaseReceiptService.reverse(receipt.getDocNo(), reversalDocNo, operator);
+    }
+
+    /**
+     * 红冲采购入库自动凭证：按来源单据号取 PURCHASE_RECEIPT 类型的自动凭证 → 冲销 → 返回红字凭证号。
+     * 无对应自动凭证（金额>0 时不应发生，防御）→ 返回合成冲销引用 {@code REVERSAL:<PR号>}。
+     */
+    private String reverseAutoVoucher(String docNo, String operator) {
+        return voucherService.findBySourceDocNo(docNo).stream()
+                .filter(v -> VoucherSourceType.PURCHASE_RECEIPT.name().equals(v.getSourceDocType()))
+                .findFirst()
+                .map(Voucher::getDocNo)
+                .map(voucherDocNo -> voucherAppService.reverse(voucherDocNo, operator).getDocNo())
+                .orElse("REVERSAL:" + docNo);
     }
 
     /** 按单据号查（不存在抛 PurchaseReceiptNotFoundException → 404） */

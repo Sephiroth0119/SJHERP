@@ -206,10 +206,12 @@ class PurchaseReceiptServiceTest {
     }
 
     @Test
-    void 冲销暂未实现_抛UnsupportedOperation() {
+    void 冲销未过账入库单_抛IllegalState() {
+        // M4-T07b：仅 COMPLETED 入库单可冲销，DRAFT 直接红冲被拒（领域层兜底）
         approvedOrder();
         service.create("PR-1", "PO-1", WAREHOUSE, D, null, List.of(receiptLine(1, "10", null)), OPERATOR);
-        assertThrows(UnsupportedOperationException.class, () -> service.reverse("PR-1", OPERATOR));
+        assertThrows(IllegalStateException.class,
+                () -> service.reverse("PR-1", "VCH-RED-1", OPERATOR));
     }
 
     @Test

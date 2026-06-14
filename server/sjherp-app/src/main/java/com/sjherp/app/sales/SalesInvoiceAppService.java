@@ -9,10 +9,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.sjherp.app.gl.AutoVoucherService;
+import com.sjherp.app.gl.VoucherAppService;
 import com.sjherp.app.sales.SalesDtos.SalesInvoiceLineRequest;
 import com.sjherp.domain.common.PageResult;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
 import com.sjherp.domain.common.numbering.DocumentNumberRule;
+import com.sjherp.domain.gl.Voucher;
+import com.sjherp.domain.gl.VoucherService;
+import com.sjherp.domain.gl.VoucherSourceType;
 import com.sjherp.domain.sales.SalesDelivery;
 import com.sjherp.domain.sales.SalesDeliveryService;
 import com.sjherp.domain.sales.SalesInvoice;
@@ -48,17 +52,23 @@ public class SalesInvoiceAppService {
     private final SalesOrderService salesOrderService;
     private final DocumentNumberGenerator numberGenerator;
     private final AutoVoucherService autoVoucherService;
+    private final VoucherService voucherService;
+    private final VoucherAppService voucherAppService;
 
     public SalesInvoiceAppService(SalesInvoiceService salesInvoiceService,
                                   SalesDeliveryService salesDeliveryService,
                                   SalesOrderService salesOrderService,
                                   DocumentNumberGenerator numberGenerator,
-                                  AutoVoucherService autoVoucherService) {
+                                  AutoVoucherService autoVoucherService,
+                                  VoucherService voucherService,
+                                  VoucherAppService voucherAppService) {
         this.salesInvoiceService = Objects.requireNonNull(salesInvoiceService, "salesInvoiceService 不能为空");
         this.salesDeliveryService = Objects.requireNonNull(salesDeliveryService, "salesDeliveryService 不能为空");
         this.salesOrderService = Objects.requireNonNull(salesOrderService, "salesOrderService 不能为空");
         this.numberGenerator = Objects.requireNonNull(numberGenerator, "numberGenerator 不能为空");
         this.autoVoucherService = Objects.requireNonNull(autoVoucherService, "autoVoucherService 不能为空");
+        this.voucherService = Objects.requireNonNull(voucherService, "voucherService 不能为空");
+        this.voucherAppService = Objects.requireNonNull(voucherAppService, "voucherAppService 不能为空");
     }
 
     /**
@@ -113,6 +123,38 @@ public class SalesInvoiceAppService {
         SalesInvoice invoice = salesInvoiceService.post(docNo, operator);
         autoVoucherService.generateForSalesInvoice(invoice, operator);   // T02 自动凭证
         return invoice;
+    }
+
+    /**
+     * 冲销已过账发票（红字发票，M4-T07b）：同一 {@code @Transactional} 内
+     * ①红冲发票自动凭证（借贷对调 SALES_INVOICE 凭证，{@link VoucherAppService#reverse}——内含账期 OPEN
+     * 校验，闭月时抛 PeriodClosedException 使整单回滚）→②应收整笔冲回（前置校验无核销，已核销引导先冲收款单）
+     * + 回退出库行已开票量 + 单据 COMPLETED → REVERSED（{@link SalesInvoiceService#reverse}）。
+     *
+     * <p>顺序：先红冲凭证拿到红字号作锚点，再驱动应收/出库/单据反向；任一步失败整事务回滚（设计真源 §2）。
+     * 带核销的发票其应收 {@code canBeReversed()=false}，在 domain reverse 内抛 IllegalStateException 整事务回滚。
+     */
+    @Transactional
+    public SalesInvoice reverse(String docNo, String operator) {
+        // ① 红冲发票自动凭证（按来源单据号反查 SALES_INVOICE 凭证）→ 红字号作冲销链路锚点
+        String reversalAnchor = reverseAutoVoucher(docNo, operator);
+        // ② 应收冲回 + 回退开票量 + 单据冲销（同事务原子；带核销在此步硬拒回滚）
+        return salesInvoiceService.reverse(docNo, reversalAnchor, operator);
+    }
+
+    /**
+     * 红冲某发票的自动凭证（SALES_INVOICE 来源），返回冲销链路锚点（红字凭证号）。
+     * 发票额恒 &gt; 0 必有自动凭证；防御性：若未命中（异常态）退化为原单号作锚点。
+     */
+    private String reverseAutoVoucher(String docNo, String operator) {
+        Voucher source = voucherService.findBySourceDocNo(docNo).stream()
+                .filter(v -> VoucherSourceType.SALES_INVOICE.name().equals(v.getSourceDocType()))
+                .findFirst()
+                .orElse(null);
+        if (source == null) {
+            return docNo;
+        }
+        return voucherAppService.reverse(source.getDocNo(), operator).getDocNo();
     }
 
     /** 作废发票（仅 DRAFT 可作废） */

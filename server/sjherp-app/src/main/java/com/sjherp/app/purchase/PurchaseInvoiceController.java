@@ -69,6 +69,15 @@ public class PurchaseInvoiceController {
         return PurchaseInvoiceResponse.from(purchaseInvoiceAppService.post(docNo, CurrentUser.operator()));
     }
 
+    /**
+     * 冲销（红字发票，M4-T07b，COMPLETED → REVERSED）：回退收货行已开票量、冲回应付（须无核销）、
+     * 红冲发票自动凭证；不可逆。原单非 COMPLETED/已冲销、应付已核销 → 409，账期已关账 → 409，不存在 → 404。
+     */
+    @PostMapping("/{docNo}/reverse")
+    public PurchaseInvoiceResponse reverse(@PathVariable String docNo) {
+        return PurchaseInvoiceResponse.from(purchaseInvoiceAppService.reverse(docNo, CurrentUser.operator()));
+    }
+
     /** 单据详情（不存在 404） */
     @GetMapping("/{docNo}")
     public PurchaseInvoiceResponse get(@PathVariable String docNo) {

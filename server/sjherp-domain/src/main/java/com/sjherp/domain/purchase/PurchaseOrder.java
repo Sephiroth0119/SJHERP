@@ -106,6 +106,23 @@ public final class PurchaseOrder extends BusinessDocument implements AuditTarget
     }
 
     /**
+     * 回滚某行累计到货量（M4-T07b 采购入库红冲时在同一外层事务内调用）。
+     *
+     * <p>红冲发生在订单仍可收货（APPROVED）期间，与 {@link #receiveLine} 同状态约束；
+     * 回滚后已到货量不得 &lt; 0（由 {@link PurchaseOrderLine#subtractReceived} 守门）。
+     *
+     * @param lineNo   被回滚的采购订单行号
+     * @param received 本次回滚的到货数量（&gt; 0，基本单位）
+     */
+    public void reverseReceiveLine(int lineNo, BigDecimal received) {
+        if (getStatus() != DocumentStatus.APPROVED) {
+            throw new IllegalStateException("采购订单[" + getDocNo() + "] 当前状态 " + getStatus()
+                    + " 不可回滚到货量（仅已审核且未关闭的订单可回滚）");
+        }
+        lineByNo(lineNo).subtractReceived(received);
+    }
+
+    /**
      * 关闭采购订单：APPROVED → EXECUTING → COMPLETED，自此不再收货。
      *
      * <p>EXECUTING 是 BusinessDocument 流转表的中转态（APPROVED 不能直接 → COMPLETED），

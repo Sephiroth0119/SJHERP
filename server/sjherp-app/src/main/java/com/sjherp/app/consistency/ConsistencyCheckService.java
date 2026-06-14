@@ -269,7 +269,7 @@ public class ConsistencyCheckService {
                     amount, settled, ConsistencySeverity.ERROR,
                     "核销额超过应收/应付总额（越权超额持久化）：" + key));
         }
-        // 规则10：状态 ⟺ 余额（OPEN/PARTIAL/SETTLED 三态互斥全覆盖）
+        // 规则10：状态 ⟺ 余额（OPEN/PARTIAL/SETTLED/REVERSED 四态互斥全覆盖）
         BigDecimal open = amount.subtract(settled);
         String status = row.status();
         boolean statusOk;
@@ -280,8 +280,13 @@ public class ConsistencyCheckService {
             statusOk = open.signum() == 0 && amount.signum() > 0;
         } else if ("PARTIAL".equals(status)) {
             statusOk = settled.signum() > 0 && open.signum() > 0;
+        } else if ("REVERSED".equals(status)) {
+            // 已冲销（M4-T07b 业务发票红冲）：仅未核销发票可冲销（canBeReversed 要求 settled==0），
+            // 故 REVERSED 子账必须 settled==0；仍校验以揪出"已核销却被直插改 REVERSED"的腐败。
+            // 红冲子账无未核销余额义务，不参与 rollup 错报（红冲后月末关账闸门不被其阻塞）。
+            statusOk = settled.signum() == 0;
         } else {
-            statusOk = false; // 状态串值非法（非三态之一）
+            statusOk = false; // 状态串值非法（非四态之一）
         }
         if (!statusOk) {
             result.add(ConsistencyBreak.of(ConsistencyCheckType.SETTLEMENT_STATUS, key,

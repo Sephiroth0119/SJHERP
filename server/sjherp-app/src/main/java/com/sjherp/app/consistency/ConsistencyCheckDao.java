@@ -170,7 +170,10 @@ public class ConsistencyCheckDao {
                 + " WHERE pil.purchase_invoice_id = pi.id) AS invoice_amount, "
                 + "ap.amount AS payable_amount "
                 + "FROM purchase_invoice pi "
+                // M4-T07b：排除已冲销应付（红冲后子账与发票一并 REVERSED；发票 REVERSED 已被下方
+                // status='COMPLETED' 过滤剔除，此处再排除 REVERSED 应付兜底，避免红冲对误报勾稽 ERROR）
                 + "LEFT JOIN accounts_payable ap ON ap.tenant_id = 0 AND ap.source_doc_no = pi.doc_no "
+                + " AND ap.status <> 'REVERSED' "
                 + "WHERE pi.tenant_id = 0 AND pi.status = 'COMPLETED' "
                 + "ORDER BY pi.id", PAYABLE_MAPPER);
     }
@@ -186,7 +189,9 @@ public class ConsistencyCheckDao {
                 + " WHERE sil.sales_invoice_id = si.id) AS invoice_amount, "
                 + "ar.amount AS receivable_amount "
                 + "FROM sales_invoice si "
+                // M4-T07b：排除已冲销应收（红冲后子账与发票一并 REVERSED；同采购对称兜底）
                 + "LEFT JOIN accounts_receivable ar ON ar.tenant_id = 0 AND ar.source_doc_no = si.doc_no "
+                + " AND ar.status <> 'REVERSED' "
                 + "WHERE si.tenant_id = 0 AND si.status = 'COMPLETED' "
                 + "ORDER BY si.id", RECEIVABLE_MAPPER);
     }

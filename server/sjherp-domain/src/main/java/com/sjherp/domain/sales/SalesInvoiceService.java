@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Objects;
 
 import com.sjherp.domain.common.DocumentStatus;
+import com.sjherp.domain.common.IllegalStateTransitionException;
 import com.sjherp.domain.common.PageResult;
 import com.sjherp.domain.common.audit.Audited;
 import com.sjherp.domain.common.event.DomainEventPublisher;
@@ -163,16 +164,44 @@ public class SalesInvoiceService {
     }
 
     /**
-     * 冲销已完成发票（红字发票）。
+     * 冲销已完成发票（M4-T07b）：<b>应收整笔冲回 + 回退出库行累计已开票量 + 单据 COMPLETED → REVERSED</b>，
+     * 三者在同一外层事务原子完成（与 {@link #post} 对称——post 做回写开票量+挂应收+状态推进，
+     * 本方法做应收冲回+回退开票量+冲销）。
      *
-     * <p>TODO（M4 统一做）：生成反向发票 + 冲减应收，原单 COMPLETED → REVERSED 并红字关联。
-     * 当前未实现（CLAUDE.md 原则 2：财务记录只可冲销不可删除）。
+     * <p><b>前置校验「应收无核销」</b>（设计真源 §1.7/§2）：先 {@link ReceivablePostingPort#reverse}
+     * 整笔冲回应收（OPEN → REVERSED），已（部分）核销的发票其应收 {@code canBeReversed()=false} →
+     * {@link IllegalStateException} 整事务回滚，引导先冲对应收款单（T07c），不做带核销的递归级联（保模型不破碎）。
+     * 通过后再回退出库行 {@code invoicedQty}（{@link SalesDeliveryService#reverseInvoiced}，下溢守门）。
+     *
+     * <p>红冲发票自动凭证（借贷对调 SALES_INVOICE 凭证）由 app 层 {@code SalesInvoiceAppService.reverse}
+     * 在同一 {@code @Transactional} 内追加（设计真源 §2），红字凭证号作冲销链路锚点。
+     *
+     * @param docNo         被冲销的发票号（须 COMPLETED）
+     * @param reversalDocNo 红字关联锚点（发票自动凭证的红字凭证号）
+     * @param operator      操作人
+     * @return 已冲销（REVERSED）的发票
      */
     @Audited(action = "sales_invoice.reverse", targetType = "sales_invoice")
-    public SalesInvoice reverse(String docNo, String operator) {
+    public SalesInvoice reverse(String docNo, String reversalDocNo, String operator) {
         requireOperator(operator);
-        throw new UnsupportedOperationException(
-                "销售发票冲销（红字发票）尚未实现，统一在 M4 落地");
+        Objects.requireNonNull(reversalDocNo, "红字关联锚点 reversalDocNo 不能为空");
+        SalesInvoice invoice = get(docNo);
+        // 仅已过账（COMPLETED）发票可冲销——只有它挂了应收 + 回写了已开票量，才有反向对象。
+        // 其余状态提前抛流转异常（与 BusinessDocument.reverse 流转表一致）。
+        if (invoice.getStatus() != DocumentStatus.COMPLETED) {
+            throw new IllegalStateTransitionException(docNo, invoice.getStatus(),
+                    DocumentStatus.REVERSED);
+        }
+        invoice.registerEventPublisher(eventPublisher);
+        // ① 应收整笔冲回（前置校验无核销，已核销引导先冲对应收款单）——先冲应收再回退开票量，
+        //    带核销时此步即抛 IllegalStateException 整事务回滚，不留半截副作用
+        receivable.reverse(invoice.getDocNo(), operator);
+        // ② 回退出库行累计已开票量（与 recordInvoiced 对称，下溢守门）
+        salesDeliveryService.reverseInvoiced(invoice.getSalesDeliveryNo(), buildInvoicedLines(invoice));
+        // ③ 单据冲销（COMPLETED → REVERSED + 回填红字关联）
+        invoice.reverse(operator, reversalDocNo);
+        repository.save(invoice);
+        return invoice;
     }
 
     /** 按单据号查（不存在抛 {@link SalesInvoiceNotFoundException} → API 404） */

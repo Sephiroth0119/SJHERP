@@ -112,6 +112,31 @@ public class PurchaseOrderService {
         return order;
     }
 
+    /**
+     * 回滚各行累计到货量（M4-T07b 采购入库单红冲时在同一外层事务内调用）。
+     *
+     * <p>与 {@link #applyReceipt} 对称：采购入库红冲先经库存唯一写入口反向出库，再调本方法把到货量
+     * 从采购订单行回退（部分收货跟踪回滚），二者同事务原子提交。回滚下溢 &lt; 0 由
+     * {@link PurchaseOrder#reverseReceiveLine} 拒绝（整体回滚，宁可拒绝不可破坏模型）。
+     *
+     * <p>是采购订单的写操作，照 {@link #applyReceipt} 例 @Audited。
+     *
+     * @param docNo    被引用的采购订单号
+     * @param received 各行回滚到货量（行号 → 本次回滚数量，由红冲编排按引用关系组装）
+     * @param operator 操作人
+     */
+    @Audited(action = "purchase_order.reverse_receipt", targetType = "purchase_order")
+    public PurchaseOrder reverseReceipt(String docNo, List<ReceivedLine> received, String operator) {
+        requireOperator(operator);
+        Objects.requireNonNull(received, "回滚到货行不能为空");
+        PurchaseOrder order = get(docNo);
+        for (ReceivedLine line : received) {
+            order.reverseReceiveLine(line.lineNo(), line.quantity());
+        }
+        repository.save(order);
+        return order;
+    }
+
     /** 按单据号查（不存在抛 {@link PurchaseOrderNotFoundException} → API 404） */
     public PurchaseOrder get(String docNo) {
         return repository.findByDocNo(docNo)

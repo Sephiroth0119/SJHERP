@@ -15,7 +15,10 @@ public enum PayableStatus {
     PARTIAL("部分核销"),
 
     /** 已核销（M4-T03 预留，本期不产生） */
-    SETTLED("已核销");
+    SETTLED("已核销"),
+
+    /** 已冲销（M4-T07b 业务单据红冲：应付随采购发票红冲整笔冲回，须无核销才可冲） */
+    REVERSED("已冲销");
 
     private final String label;
 

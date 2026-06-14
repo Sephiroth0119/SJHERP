@@ -9,10 +9,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.sjherp.app.gl.AutoVoucherService;
+import com.sjherp.app.gl.VoucherAppService;
 import com.sjherp.app.purchase.PurchaseDtos.PurchaseInvoiceLineRequest;
 import com.sjherp.domain.common.PageResult;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
 import com.sjherp.domain.common.numbering.DocumentNumberRule;
+import com.sjherp.domain.gl.Voucher;
+import com.sjherp.domain.gl.VoucherService;
+import com.sjherp.domain.gl.VoucherSourceType;
 import com.sjherp.domain.partner.Supplier;
 import com.sjherp.domain.partner.SupplierService;
 import com.sjherp.domain.payable.AccountsPayable;
@@ -52,6 +56,8 @@ public class PurchaseInvoiceAppService {
     private final AccountsPayableRepository accountsPayableRepository;
     private final DocumentNumberGenerator numberGenerator;
     private final AutoVoucherService autoVoucherService;
+    private final VoucherService voucherService;
+    private final VoucherAppService voucherAppService;
 
     public PurchaseInvoiceAppService(PurchaseInvoiceService purchaseInvoiceService,
                                      PurchaseReceiptService purchaseReceiptService,
@@ -59,7 +65,9 @@ public class PurchaseInvoiceAppService {
                                      SupplierService supplierService,
                                      AccountsPayableRepository accountsPayableRepository,
                                      DocumentNumberGenerator numberGenerator,
-                                     AutoVoucherService autoVoucherService) {
+                                     AutoVoucherService autoVoucherService,
+                                     VoucherService voucherService,
+                                     VoucherAppService voucherAppService) {
         this.purchaseInvoiceService = Objects.requireNonNull(purchaseInvoiceService,
                 "purchaseInvoiceService 不能为空");
         this.purchaseReceiptService = Objects.requireNonNull(purchaseReceiptService,
@@ -72,6 +80,9 @@ public class PurchaseInvoiceAppService {
         this.numberGenerator = Objects.requireNonNull(numberGenerator, "numberGenerator 不能为空");
         this.autoVoucherService = Objects.requireNonNull(autoVoucherService,
                 "autoVoucherService 不能为空");
+        this.voucherService = Objects.requireNonNull(voucherService, "voucherService 不能为空");
+        this.voucherAppService = Objects.requireNonNull(voucherAppService,
+                "voucherAppService 不能为空");
     }
 
     /**
@@ -126,6 +137,64 @@ public class PurchaseInvoiceAppService {
                 operator);
         autoVoucherService.generateForPurchaseInvoice(posted, operator);   // T02 自动凭证
         return posted;
+    }
+
+    /**
+     * 冲销采购发票（红字发票，M4-T07b，不可逆）：同一外层 {@code @Transactional} 编排——
+     * <ol>
+     *   <li>取原应付（{@code findBySourceDocNo(发票号)}）校验 {@code canBeReversed}（无核销且仍 OPEN）——
+     *       已（部分）核销的应付须先冲对应付款单（T07c），否则前置拒绝清晰报错（设计真源 §1.7）；</li>
+     *   <li>红冲采购发票自动凭证（借 220201 暂估应付 / 贷 220202 应付账款）→ {@link VoucherAppService#reverse}
+     *       生成借贷对调红字凭证并在原账期过账（账期已关账 → {@code PeriodClosedException} → 整 reverse 回滚）；</li>
+     *   <li>{@link PurchaseInvoiceService#reverse}（回退收货行已开票量 + 原发票 COMPLETED → REVERSED，
+     *       reversalDocNo=红字凭证号）；</li>
+     *   <li>应付 {@code markReversed} → 仓储 save 落 REVERSED 状态。</li>
+     * </ol>
+     * 任一步失败整事务回滚。幂等：原单已 REVERSED → 领域层拒；自动凭证红冲幂等兜底。
+     *
+     * @param docNo    被冲销的采购发票号（须 COMPLETED）
+     * @param operator 操作人
+     * @return 已转 REVERSED 的原采购发票
+     */
+    @Transactional
+    public PurchaseInvoice reverse(String docNo, String operator) {
+        // 先取原单与应付，前置校验可冲销（无核销），避免对脏单白白红冲凭证（领域层 reverse 仍兜底再校验）
+        purchaseInvoiceService.get(docNo);   // 不存在抛 PurchaseInvoiceNotFoundException → 404
+        AccountsPayable payable = requireReversiblePayable(docNo);
+        String reversalDocNo = reverseAutoVoucher(docNo, operator);
+        PurchaseInvoice reversed = purchaseInvoiceService.reverse(docNo, reversalDocNo, operator);
+        // 应付冲回（OPEN → REVERSED，账龄与一致性勾稽据此排除该笔）
+        payable.markReversed(operator);
+        accountsPayableRepository.save(payable);
+        return reversed;
+    }
+
+    /**
+     * 取原应付并校验可冲销：无对应应付（理论上发票过账必生成，防御）或已（部分）核销 → 拒绝。
+     */
+    private AccountsPayable requireReversiblePayable(String invoiceDocNo) {
+        AccountsPayable payable = accountsPayableRepository.findBySourceDocNo(invoiceDocNo).stream()
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "采购发票[" + invoiceDocNo + "] 未找到对应应付台账，无法冲销"));
+        if (!payable.canBeReversed()) {
+            throw new IllegalStateException("采购发票[" + invoiceDocNo + "] 对应应付已核销或非未核销状态，"
+                    + "不可直接冲销发票——请先冲销对应的付款单后再冲发票");
+        }
+        return payable;
+    }
+
+    /**
+     * 红冲采购发票自动凭证：按来源单据号取 PURCHASE_INVOICE 类型的自动凭证 → 冲销 → 返回红字凭证号。
+     * 无对应自动凭证（金额>0 时不应发生，防御）→ 返回合成冲销引用 {@code REVERSAL:<发票号>}。
+     */
+    private String reverseAutoVoucher(String docNo, String operator) {
+        return voucherService.findBySourceDocNo(docNo).stream()
+                .filter(v -> VoucherSourceType.PURCHASE_INVOICE.name().equals(v.getSourceDocType()))
+                .findFirst()
+                .map(Voucher::getDocNo)
+                .map(voucherDocNo -> voucherAppService.reverse(voucherDocNo, operator).getDocNo())
+                .orElse("REVERSAL:" + docNo);
     }
 
     /** 按单据号查（不存在抛 PurchaseInvoiceNotFoundException → 404） */

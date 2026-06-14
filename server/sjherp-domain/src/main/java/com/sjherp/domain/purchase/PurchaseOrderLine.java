@@ -106,6 +106,25 @@ public final class PurchaseOrderLine {
         this.receivedQty = next.setScale(CostingStrategy.UNIT_COST_SCALE, CostingStrategy.ROUNDING);
     }
 
+    /**
+     * 回滚本次到货数量（M4-T07b 采购入库红冲时由 {@link PurchaseOrder} 编排回写）。
+     * delta &gt; 0 校验；回滚后已到货量不得 &lt; 0（守门，防回滚多于已到货虚减——保模型不破碎）。
+     *
+     * @param delta 本次回滚的到货数量（&gt; 0，基本单位）
+     */
+    void subtractReceived(BigDecimal delta) {
+        if (delta == null || delta.signum() <= 0) {
+            throw new IllegalArgumentException("本次回滚到货数量必须大于 0: "
+                    + (delta == null ? "null" : delta.toPlainString()));
+        }
+        BigDecimal next = receivedQty.subtract(delta);
+        if (next.signum() < 0) {
+            throw new IllegalArgumentException("行号 " + lineNo + " 回滚到货数量 "
+                    + delta.toPlainString() + " 超过已到货量 " + receivedQty.toPlainString());
+        }
+        this.receivedQty = next.setScale(CostingStrategy.UNIT_COST_SCALE, CostingStrategy.ROUNDING);
+    }
+
     private static BigDecimal normalizedQuantity(BigDecimal quantity) {
         if (quantity == null) {
             throw new IllegalArgumentException("订购数量不能为空");

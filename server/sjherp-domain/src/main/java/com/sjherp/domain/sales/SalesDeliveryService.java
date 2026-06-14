@@ -1,5 +1,6 @@
 package com.sjherp.domain.sales;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -7,9 +8,12 @@ import java.util.Map;
 import java.util.Objects;
 
 import com.sjherp.domain.common.DocumentStatus;
+import com.sjherp.domain.common.IllegalStateTransitionException;
 import com.sjherp.domain.common.PageResult;
 import com.sjherp.domain.common.audit.Audited;
 import com.sjherp.domain.common.event.DomainEventPublisher;
+import com.sjherp.domain.inventory.CostingStrategy;
+import com.sjherp.domain.inventory.InboundCommand;
 import com.sjherp.domain.inventory.InventoryTxnType;
 import com.sjherp.domain.inventory.OutboundCommand;
 import com.sjherp.domain.inventory.StockMovementCommand;
@@ -191,17 +195,64 @@ public class SalesDeliveryService {
     }
 
     /**
-     * 冲销已完成出库单（红字出库单 / 退货）。
+     * 冲销已完成出库单（M4-T07b）：<b>库存按原 COGS 反向入库 + 回退订单累计发货量 + 单据 COMPLETED → REVERSED</b>，
+     * 三者经库存唯一写入口与订单服务、单据状态机在同一外层事务原子完成（与 {@link #post} 对称——post 做
+     * 出库扣减+回写发货量+状态推进，本方法做反向入库+回退发货量+冲销）。
      *
-     * <p>TODO（M4 统一做）：生成反向出库单驱动反向流水（原仓入库回冲）、回退订单累计发货量，
-     * 原单 COMPLETED → REVERSED 并红字关联。当前未实现——退货暂走后续流程，出库单本身不提供
-     * 物理删除（CLAUDE.md 原则 2：只可冲销不可删除）。
+     * <p>库存反向按<b>已固化的原 COGS</b>（{@code SalesDeliveryLine.cogsAmount}）入库，<b>不重算移动加权</b>
+     * （期间可能已进新货，重算会失真，设计真源 §1.6/§2）：每行入库单价 = COGS / 发货数量（6 位 HALF_UP），
+     * 走 PURCHASE_IN 加权回库；幂等键 {@code REVERSAL:SD-xxx:行号}（避与原出库流水 uk_idempotency_key 撞）。
+     *
+     * <p>红冲出库自动凭证（借贷对调 SALES_DELIVERY 凭证）由 app 层 {@code SalesDeliveryAppService.reverse}
+     * 在同一 {@code @Transactional} 内追加（设计真源 §2，不复制业务单据头——红字凭证即红字单据的会计载体，
+     * 原单 REVERSED + reversal linkage + 反向台账完整记录）。
+     *
+     * @param docNo         被冲销的出库单号（须 COMPLETED，否则 BusinessDocument 流转校验拒绝）
+     * @param reversalDocNo 红字关联锚点（出库自动凭证的红字凭证号，保证冲销链路可审计）
+     * @param operator      操作人
+     * @return 已冲销（REVERSED）的出库单
      */
     @Audited(action = "sales_delivery.reverse", targetType = "sales_delivery")
-    public SalesDelivery reverse(String docNo, String operator) {
+    public SalesDelivery reverse(String docNo, String reversalDocNo, String operator) {
         requireOperator(operator);
-        throw new UnsupportedOperationException(
-                "销售出库单冲销（退货 / 红字出库单）尚未实现，统一在 M4 落地");
+        Objects.requireNonNull(reversalDocNo, "红字关联锚点 reversalDocNo 不能为空");
+        SalesDelivery delivery = get(docNo);
+        // 仅已过账（COMPLETED）出库单可冲销——只有它产生了库存出库 + COGS + 订单发货量，才有反向对象。
+        // 其余状态提前抛流转异常（与 BusinessDocument.reverse 流转表一致），避免对无 COGS 单据做库存反向。
+        if (delivery.getStatus() != DocumentStatus.COMPLETED) {
+            throw new IllegalStateTransitionException(docNo, delivery.getStatus(),
+                    DocumentStatus.REVERSED);
+        }
+        delivery.registerEventPublisher(eventPublisher);
+
+        // ① 组批：每行 PURCHASE_IN 按原 COGS 反向入库（单价=COGS/数量 6 位 HALF_UP），幂等键 REVERSAL:docNo:行号
+        List<StockMovementCommand> batch = new ArrayList<>(delivery.getLines().size());
+        for (SalesDeliveryLine line : delivery.getLines()) {
+            BigDecimal cogs = line.getCogsAmount();
+            if (cogs == null) {
+                throw new IllegalStateException("销售出库单[" + docNo + "] 行号 " + line.getLineNo()
+                        + " 无 COGS（未过账？），无法按原成本反向入库");
+            }
+            BigDecimal unitCost = cogs.divide(line.getQuantity(), CostingStrategy.UNIT_COST_SCALE,
+                    CostingStrategy.ROUNDING);
+            batch.add(new InboundCommand(delivery.getWarehouseId(), line.getProductId(),
+                    InventoryTxnType.PURCHASE_IN, line.getQuantity(), unitCost, null,
+                    SRC_DOC_TYPE, delivery.getDocNo(), line.getLineNo(),
+                    reversalIdempotencyKey(delivery.getDocNo(), line.getLineNo())));
+        }
+        // ② 一次原子反向入库（经库存唯一写入口）
+        inventory.execute(batch, operator);
+
+        // ③ 回退销售订单累计发货量（与 recordDelivery 对称）
+        for (SalesDeliveryLine line : delivery.getLines()) {
+            salesOrderService.reverseDelivery(delivery.getSalesOrderNo(), line.getSoLineNo(),
+                    line.getQuantity());
+        }
+
+        // ④ 单据冲销（COMPLETED → REVERSED + 回填红字关联）
+        delivery.reverse(operator, reversalDocNo);
+        repository.save(delivery);
+        return delivery;
     }
 
     /**
@@ -220,6 +271,24 @@ public class SalesDeliveryService {
         SalesDelivery delivery = get(docNo);
         for (InvoicedLine line : invoiced) {
             delivery.invoiceLine(line.lineNo(), line.quantity());
+        }
+        repository.save(delivery);
+    }
+
+    /**
+     * 回滚出库行累计已开票量（M4-T07b 销售发票红冲时由红冲编排在同一外层事务内调用，与应收冲回原子提交）。
+     * 与 {@link #recordInvoiced} 对称：守门「回滚后已开票量 ≥ 0」（下溢抛领域异常）。
+     *
+     * <p>不单独标 @Audited（口径同 {@link #recordInvoiced}，随发票红冲审计覆盖），故无 operator 参数。
+     *
+     * @param docNo    被引用的销售出库单号（必须 COMPLETED）
+     * @param invoiced 各行本次回滚开票量（出库行号 → 回滚数量，由发票红冲按引用关系组装）
+     */
+    public void reverseInvoiced(String docNo, List<InvoicedLine> invoiced) {
+        Objects.requireNonNull(invoiced, "回滚开票行不能为空");
+        SalesDelivery delivery = get(docNo);
+        for (InvoicedLine line : invoiced) {
+            delivery.reverseInvoiceLine(line.lineNo(), line.quantity());
         }
         repository.save(delivery);
     }
@@ -250,6 +319,11 @@ public class SalesDeliveryService {
     /** 幂等键约定 SALES_DELIVERY:docNo:行号（拆解 §1.3） */
     private static String idempotencyKey(String docNo, int lineNo) {
         return SRC_DOC_TYPE + ":" + docNo + ":" + lineNo;
+    }
+
+    /** 红冲反向入库幂等键 REVERSAL:docNo:行号（M4-T07b，避与原出库流水唯一键撞，设计真源 §2） */
+    private static String reversalIdempotencyKey(String docNo, int lineNo) {
+        return "REVERSAL:" + docNo + ":" + lineNo;
     }
 
     private static void requireOperator(String operator) {

@@ -229,11 +229,13 @@ class PurchaseInvoiceServiceTest {
     }
 
     @Test
-    void 冲销暂未实现_抛UnsupportedOperation() {
+    void 冲销未过账发票_抛IllegalState() {
+        // M4-T07b：仅 COMPLETED 发票可冲销，DRAFT 直接红冲被拒（领域层兜底）
         completedReceipt();
         service.create("PINV-1", "PR-1", SUPPLIER, SettlementMethod.MONTHLY, D, null, null,
                 List.of(invoiceLine(1, "60", "750")), OPERATOR);
-        assertThrows(UnsupportedOperationException.class, () -> service.reverse("PINV-1", OPERATOR));
+        assertThrows(IllegalStateException.class,
+                () -> service.reverse("PINV-1", "VCH-RED-1", OPERATOR));
     }
 
     @Test

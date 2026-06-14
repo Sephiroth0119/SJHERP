@@ -14,6 +14,7 @@ import com.sjherp.domain.common.audit.Audited;
 import com.sjherp.domain.common.event.DomainEventPublisher;
 import com.sjherp.domain.inventory.InboundCommand;
 import com.sjherp.domain.inventory.InventoryTxnType;
+import com.sjherp.domain.inventory.OutboundCommand;
 import com.sjherp.domain.inventory.StockMovementCommand;
 
 /**
@@ -164,17 +165,50 @@ public class PurchaseReceiptService {
     }
 
     /**
-     * 冲销已完成采购入库单（退货红字单）。
+     * 冲销已完成采购入库单（退货红字单，M4-T07b）：反向库存 + 回滚采购订单到货量 + 原单转 REVERSED。
      *
-     * <p>TODO（M4-T07 统一做）：生成反向入库单驱动反向 PURCHASE_IN 流水（库存出库、回退采购订单
-     * 到货量），原单 COMPLETED → REVERSED 并红字关联。当前未实现——采购退货暂走 M4 冲销，
-     * 采购入库单本身不提供物理删除（CLAUDE.md 原则 2：只可冲销不可删除）。
+     * <p>同一外层事务内（由 {@code PurchaseReceiptAppService.reverse} 提供）执行：
+     * <ol>
+     *   <li>校验原单 COMPLETED（非则 {@link IllegalStateException}）、未被冲销（幂等：已 REVERSED 拒）；</li>
+     *   <li>各行组一笔 {@code SALES_OUT} 反向出库指令，<b>按已固化的原收货单价反向</b>
+     *       （{@code overriddenUnitCost = 原行 unitCost}，跳过移动加权——期间可能已进新货重算会失真，
+     *       设计真源 §1.6/§2 共享基元 1），幂等键 {@code REVERSAL:<PR号>:<行号>}，经库存唯一写入口；</li>
+     *   <li>同事务调 {@link PurchaseOrderService#reverseReceipt} 把各行到货量从采购订单行回退；</li>
+     *   <li>原单 {@link BusinessDocument#reverse}（COMPLETED → REVERSED + 红字关联 {@code reversalDocNo}）。</li>
+     * </ol>
+     *
+     * <p>红字凭证（红冲采购入库自动凭证）由 app 层 {@code PurchaseReceiptAppService.reverse} 在调用本方法
+     * <b>之前</b>经 {@code VoucherAppService.reverse} 生成，红字凭证号作为本方法的 {@code reversalDocNo}
+     * 传入（保证原单 reversedById 指向红字凭证、冲销链路可审计）。物理删除不存在（CLAUDE.md 原则 2）。
+     *
+     * @param docNo         被冲销的采购入库单号（须 COMPLETED）
+     * @param reversalDocNo 红字关联单据号（红字凭证号，由 app 层冲销自动凭证后回传）
+     * @param operator      操作人
+     * @return 已转 REVERSED 的原采购入库单
      */
     @Audited(action = "purchase_receipt.reverse", targetType = "purchase_receipt")
-    public PurchaseReceipt reverse(String docNo, String operator) {
+    public PurchaseReceipt reverse(String docNo, String reversalDocNo, String operator) {
         requireOperator(operator);
-        throw new UnsupportedOperationException(
-                "采购入库单冲销（退货红字单）尚未实现，统一在 M4-T07 落地");
+        Objects.requireNonNull(reversalDocNo, "红字关联单据号不能为空");
+        PurchaseReceipt receipt = get(docNo);
+        if (receipt.getStatus() == DocumentStatus.REVERSED) {
+            throw new IllegalStateException("采购入库单[" + docNo + "] 已冲销，不可重复冲销");
+        }
+        if (receipt.getStatus() != DocumentStatus.COMPLETED) {
+            throw new IllegalStateException("采购入库单[" + docNo + "] 当前状态 " + receipt.getStatus()
+                    + " 不可冲销（仅已过账的入库单可冲销）");
+        }
+        receipt.registerEventPublisher(eventPublisher);
+        // 反向库存：各行按原收货单价反向出库（SALES_OUT 出库方向，overriddenUnitCost=原单价）
+        List<StockMovementCommand> batch = buildReversalMovements(receipt);
+        inventory.execute(batch, operator);
+        // 同事务回退采购订单各行到货量（采购订单写仍只经其唯一入口）
+        purchaseOrderService.reverseReceipt(receipt.getPurchaseOrderNo(),
+                buildReceivedLines(receipt), operator);
+        // 原单 COMPLETED → REVERSED + 红字关联
+        receipt.reverse(operator, reversalDocNo);
+        repository.save(receipt);
+        return receipt;
     }
 
     /**
@@ -193,6 +227,24 @@ public class PurchaseReceiptService {
         PurchaseReceipt receipt = get(docNo);
         for (InvoicedLine line : invoiced) {
             receipt.invoiceLine(line.lineNo(), line.quantity());
+        }
+        repository.save(receipt);
+    }
+
+    /**
+     * 回滚收货行累计已开票量（M4-T07b 采购发票红冲时由红冲编排在同一外层事务内调用，与应付冲回原子提交）。
+     * 与 {@link #recordInvoiced} 对称：守门「回滚后已开票量 ≥ 0」（下溢抛领域异常）。
+     *
+     * <p>不单独标 @Audited（口径同 {@link #recordInvoiced}，随发票红冲审计覆盖），故无 operator 参数。
+     *
+     * @param docNo    被引用的采购入库单号（必须 COMPLETED）
+     * @param invoiced 各行本次回滚开票量（收货行号 → 回滚数量，由发票红冲按引用关系组装）
+     */
+    public void reverseInvoiced(String docNo, List<InvoicedLine> invoiced) {
+        Objects.requireNonNull(invoiced, "回滚开票行不能为空");
+        PurchaseReceipt receipt = get(docNo);
+        for (InvoicedLine line : invoiced) {
+            receipt.reverseInvoiceLine(line.lineNo(), line.quantity());
         }
         repository.save(receipt);
     }
@@ -224,6 +276,22 @@ public class PurchaseReceiptService {
         return batch;
     }
 
+    /**
+     * 按各行组装反向出库指令（M4-T07b 红冲）：{@code SALES_OUT} 出库方向、数量=原收货量、
+     * {@code overriddenUnitCost = 原收货单价}（按已固化原单价反向，跳过移动加权），
+     * 幂等键 {@code REVERSAL:PR-xxx:行号}（避与原 PURCHASE_IN 流水幂等键撞）。
+     */
+    private List<StockMovementCommand> buildReversalMovements(PurchaseReceipt receipt) {
+        List<StockMovementCommand> batch = new ArrayList<>(receipt.getLines().size());
+        for (PurchaseReceiptLine line : receipt.getLines()) {
+            String key = reversalIdempotencyKey(receipt.getDocNo(), line.getLineNo());
+            batch.add(new OutboundCommand(receipt.getWarehouseId(), line.getProductId(),
+                    InventoryTxnType.SALES_OUT, line.getQuantity(), SRC_DOC_TYPE, receipt.getDocNo(),
+                    line.getLineNo(), key, line.getUnitCost()));
+        }
+        return batch;
+    }
+
     /** 收货量回写：收货行的引用采购订单行号 → 收货数量 */
     private List<PurchaseOrderService.ReceivedLine> buildReceivedLines(PurchaseReceipt receipt) {
         List<PurchaseOrderService.ReceivedLine> received = new ArrayList<>(receipt.getLines().size());
@@ -236,6 +304,11 @@ public class PurchaseReceiptService {
     /** 幂等键约定 PURCHASE_RECEIPT:docNo:行号（拆解 §1.3） */
     private static String idempotencyKey(String docNo, int lineNo) {
         return SRC_DOC_TYPE + ":" + docNo + ":" + lineNo;
+    }
+
+    /** 红冲反向出库幂等键 REVERSAL:docNo:行号（M4-T07b，避与原 PURCHASE_IN 流水幂等键撞） */
+    private static String reversalIdempotencyKey(String docNo, int lineNo) {
+        return "REVERSAL:" + docNo + ":" + lineNo;
     }
 
     private static void requireOperator(String operator) {

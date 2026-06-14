@@ -135,6 +135,33 @@ public final class AccountsReceivable implements AuditTarget {
                 ? ReceivableStatus.SETTLED : ReceivableStatus.PARTIAL;
     }
 
+    /**
+     * 是否可冲销（M4-T07b 业务单据红冲）：仅<b>未发生任何核销且仍 OPEN</b> 的应收可整笔冲回。
+     *
+     * <p>设计真源 §1.7/§2 共享基元 2：已（部分）核销的发票须先冲销对应收款单（T07c），
+     * 不做带核销的递归级联——保数据模型不破碎，复杂级联留显式前置拒绝。
+     */
+    public boolean canBeReversed() {
+        return settledAmount.signum() == 0 && status == ReceivableStatus.OPEN;
+    }
+
+    /**
+     * 标记冲销（M4-T07b 销售发票红冲时由 AppService 同事务调用）：OPEN → REVERSED。
+     *
+     * <p>不满足 {@link #canBeReversed()}（已核销 / 已非 OPEN）抛 {@link IllegalStateException}
+     * （宁可拒绝，不可破坏模型）。只动 {@link #status}，原始 {@link #amount} 永不变（原则 2）。
+     *
+     * @param operator 操作人（保留入参语义统一，状态变更审计由 AppService @Audited 覆盖）
+     */
+    public void markReversed(String operator) {
+        if (!canBeReversed()) {
+            throw new IllegalStateException("应收[" + sourceDocNo + "] 当前状态 " + status.label()
+                    + "、已核销 " + settledAmount.toPlainString()
+                    + " 不可冲销（仅未核销且未冲销的应收可整笔冲回，已核销请先冲对应收款单）");
+        }
+        this.status = ReceivableStatus.REVERSED;
+    }
+
     public Long getId() {
         return id;
     }

@@ -52,6 +52,32 @@ public class ReceivableService {
         return receivable;
     }
 
+    /**
+     * 冲销一笔应收（M4-T07b 销售发票红冲时由 AppService 在同一外层事务内调用，与库存反向/凭证红冲原子提交）：
+     * 按来源发票号装载应收 → {@link AccountsReceivable#markReversed}（仅未核销且 OPEN 才可，否则抛
+     * {@link IllegalStateException} 引导先冲对应收款单）→ 保存（UPDATE status=REVERSED）。
+     *
+     * <p>同来源发票号<b>幂等容忍</b>：应收已 REVERSED 时 {@code markReversed} 会以 IllegalStateException 拒绝
+     * （非 OPEN）——红冲整单回滚由上层「原单已 REVERSED 拒」前置拦截，故正常路径不会重复进入。
+     *
+     * @param sourceDocNo 来源销售发票号（SINV-xxx）
+     * @param operator    操作人（审计；非空）
+     * @return 已冲销（REVERSED）的应收记录
+     */
+    @Audited(action = "receivable.reverse", targetType = "receivable")
+    public AccountsReceivable reverse(String sourceDocNo, String operator) {
+        requireOperator(operator);
+        Objects.requireNonNull(sourceDocNo, "来源单据号不能为空");
+        List<AccountsReceivable> existing = repository.findBySourceDocNo(sourceDocNo);
+        if (existing.isEmpty()) {
+            throw new IllegalStateException("销售发票[" + sourceDocNo + "] 未找到对应应收，无法冲销");
+        }
+        AccountsReceivable receivable = existing.get(0);
+        receivable.markReversed(operator);
+        repository.save(receivable);
+        return receivable;
+    }
+
     /** 按 id 查（不存在抛 {@link ReceivableNotFoundException} → API 404） */
     public AccountsReceivable get(long id) {
         return repository.findById(id)

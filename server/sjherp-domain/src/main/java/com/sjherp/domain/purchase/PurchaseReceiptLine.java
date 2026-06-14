@@ -121,6 +121,25 @@ public final class PurchaseReceiptLine {
         this.invoicedQty = next.setScale(CostingStrategy.UNIT_COST_SCALE, CostingStrategy.ROUNDING);
     }
 
+    /**
+     * 回滚本次开票数量（M4-T07b 采购发票红冲时由 {@link PurchaseReceiptService} 同事务回写）。
+     * delta &gt; 0 校验；回滚后已开票量不得 &lt; 0（守门，防回滚多于已开票虚减——保模型不破碎）。
+     *
+     * @param delta 本次回滚的开票数量（&gt; 0，基本单位）
+     */
+    void subtractInvoiced(BigDecimal delta) {
+        if (delta == null || delta.signum() <= 0) {
+            throw new IllegalArgumentException("本次回滚开票数量必须大于 0: "
+                    + (delta == null ? "null" : delta.toPlainString()));
+        }
+        BigDecimal next = invoicedQty.subtract(delta);
+        if (next.signum() < 0) {
+            throw new IllegalArgumentException("行号 " + lineNo + " 回滚开票数量 "
+                    + delta.toPlainString() + " 超过已开票量 " + invoicedQty.toPlainString());
+        }
+        this.invoicedQty = next.setScale(CostingStrategy.UNIT_COST_SCALE, CostingStrategy.ROUNDING);
+    }
+
     private static BigDecimal normalizedQuantity(BigDecimal quantity) {
         if (quantity == null) {
             throw new IllegalArgumentException("收货数量不能为空");

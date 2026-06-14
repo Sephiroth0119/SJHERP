@@ -120,6 +120,21 @@ public final class SalesDelivery extends BusinessDocument implements AuditTarget
         lineByNo(lineNo).addInvoiced(invoiced);
     }
 
+    /**
+     * 回滚指定出库行的本次开票量（M4-T07b 销售发票红冲时由 {@link SalesDeliveryService} 编排调用）。
+     * 仅已过账（COMPLETED）的出库单可回写；回滚后已开票量守门不 &lt; 0（由 {@link SalesDeliveryLine} 守）。
+     *
+     * @param lineNo   出库行号
+     * @param invoiced 本次回滚的开票数量（&gt; 0，基本单位）
+     */
+    public void reverseInvoiceLine(int lineNo, BigDecimal invoiced) {
+        if (getStatus() != DocumentStatus.COMPLETED) {
+            throw new IllegalStateException("销售出库单[" + getDocNo() + "] 当前状态 " + getStatus()
+                    + " 未过账，不可回滚开票量");
+        }
+        lineByNo(lineNo).subtractInvoiced(invoiced);
+    }
+
     private SalesDeliveryLine lineByNo(int lineNo) {
         return lines.stream().filter(l -> l.getLineNo() == lineNo).findFirst()
                 .orElseThrow(() -> new IllegalArgumentException(

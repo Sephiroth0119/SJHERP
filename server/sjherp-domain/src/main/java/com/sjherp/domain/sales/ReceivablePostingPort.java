@@ -24,4 +24,14 @@ public interface ReceivablePostingPort {
      * @param operator    操作人
      */
     void open(long customerId, BigDecimal amount, String sourceDocNo, LocalDate dueDate, String operator);
+
+    /**
+     * 冲销某来源发票的应收（M4-T07b 销售发票红冲）：按发票号装载应收并整笔冲回（OPEN → REVERSED）。
+     * 仅未发生任何核销且仍 OPEN 的应收可冲（已核销须先冲对应收款单 T07c），否则实现方抛
+     * {@link IllegalStateException} 引导。同外层事务原子。
+     *
+     * @param sourceDocNo 来源销售发票号
+     * @param operator    操作人
+     */
+    void reverse(String sourceDocNo, String operator);
 }

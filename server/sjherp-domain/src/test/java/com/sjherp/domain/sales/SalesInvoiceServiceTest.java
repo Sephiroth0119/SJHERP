@@ -195,11 +195,61 @@ class SalesInvoiceServiceTest {
     }
 
     @Test
-    void 退货冲销暂未实现_抛UnsupportedOperation() {
+    void 冲销已过账发票_状态转REVERSED并回填红字关联() {
         postedDelivery("SO-1", "SD-1");
         service.create("SINV-1", "SD-1", CUSTOMER, INVOICE_DATE, DUE_DATE, null,
                 List.of(invoiceLine(1, P_A, "70", "25")), OPERATOR);
-        assertThrows(UnsupportedOperationException.class, () -> service.reverse("SINV-1", OPERATOR));
+        service.approve("SINV-1", OPERATOR);
+        service.post("SINV-1", OPERATOR);
+
+        SalesInvoice reversed = service.reverse("SINV-1", "VCH-REV-1", OPERATOR);
+
+        assertEquals(DocumentStatus.REVERSED, reversed.getStatus());
+        assertEquals("VCH-REV-1", reversed.getReversedById());
+    }
+
+    @Test
+    void 冲销已过账发票_冲回应收并回退出库行已开票量() {
+        postedDelivery("SO-1", "SD-1");
+        service.create("SINV-1", "SD-1", CUSTOMER, INVOICE_DATE, DUE_DATE, null,
+                List.of(invoiceLine(1, P_A, "40", "25")), OPERATOR);
+        service.approve("SINV-1", OPERATOR);
+        service.post("SINV-1", OPERATOR);
+        assertEqualsDecimal("40", deliveryService.get("SD-1").getLines().get(0).getInvoicedQty());
+
+        service.reverse("SINV-1", "VCH-REV-1", OPERATOR);
+
+        // 应收按发票号整笔冲回（端口被调用）
+        assertTrue(receivable.reversed.contains("SINV-1"), "应收应按发票号冲回");
+        // 出库行已开票量回退为 0、剩余可开票量恢复 70
+        SalesDeliveryLine line = deliveryService.get("SD-1").getLines().get(0);
+        assertEqualsDecimal("0", line.getInvoicedQty());
+        assertEqualsDecimal("70", line.outstandingInvoiceableQty());
+    }
+
+    @Test
+    void 冲销发票_应收不可冲时整事务拒绝_出库行已开票量不动() {
+        postedDelivery("SO-1", "SD-1");
+        service.create("SINV-1", "SD-1", CUSTOMER, INVOICE_DATE, DUE_DATE, null,
+                List.of(invoiceLine(1, P_A, "40", "25")), OPERATOR);
+        service.approve("SINV-1", OPERATOR);
+        service.post("SINV-1", OPERATOR);
+        // 模拟应收已核销不可冲（带核销的发票须先冲收款单 T07c）
+        receivable.failReverse = true;
+
+        assertThrows(IllegalStateException.class, () -> service.reverse("SINV-1", "VCH-REV-1", OPERATOR));
+        // 应收冲回先于回退开票量——抛异常时不应已回退出库行（无半截副作用，依赖外层事务回滚 + 顺序保证）
+        assertEqualsDecimal("40", deliveryService.get("SD-1").getLines().get(0).getInvoicedQty());
+    }
+
+    @Test
+    void 冲销未过账发票_非法流转拒绝() {
+        postedDelivery("SO-1", "SD-1");
+        service.create("SINV-1", "SD-1", CUSTOMER, INVOICE_DATE, DUE_DATE, null,
+                List.of(invoiceLine(1, P_A, "70", "25")), OPERATOR);
+        // DRAFT → REVERSED 非法流转（仅 APPROVED/EXECUTING/COMPLETED 可冲销）
+        assertThrows(com.sjherp.domain.common.IllegalStateTransitionException.class,
+                () -> service.reverse("SINV-1", "VCH-REV-1", OPERATOR));
     }
 
     @Test
@@ -238,11 +288,23 @@ class SalesInvoiceServiceTest {
     private static final class CapturingReceivablePort implements ReceivablePostingPort {
 
         final List<OpenedReceivable> opened = new ArrayList<>();
+        final List<String> reversed = new ArrayList<>();
+        boolean failReverse;
 
         @Override
         public void open(long customerId, BigDecimal amount, String sourceDocNo, LocalDate dueDate,
                          String operator) {
             opened.add(new OpenedReceivable(customerId, amount, sourceDocNo, dueDate));
+        }
+
+        @Override
+        public void reverse(String sourceDocNo, String operator) {
+            // 测试替身：默认无核销可冲（真核销校验在 AccountsReceivable.markReversed 单测覆盖）；
+            // failReverse 模拟「已核销不可冲」——AccountsReceivable.markReversed 抛 IllegalStateException
+            if (failReverse) {
+                throw new IllegalStateException("应收[" + sourceDocNo + "] 已核销不可冲销，请先冲对应收款单");
+            }
+            reversed.add(sourceDocNo);
         }
     }
 

@@ -14,6 +14,7 @@ import com.sjherp.app.purchase.PurchaseReceiptAppService;
 import com.sjherp.app.sales.SalesDeliveryAppService;
 import com.sjherp.app.sales.SalesInvoiceAppService;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
+import com.sjherp.domain.gl.VoucherService;
 import com.sjherp.domain.partner.SettlementMethod;
 import com.sjherp.domain.partner.Supplier;
 import com.sjherp.domain.partner.SupplierService;
@@ -55,7 +56,8 @@ class AutoVoucherHookTest {
         DocumentNumberGenerator numberGenerator = mock(DocumentNumberGenerator.class);
         AutoVoucherService autoVoucherService = mock(AutoVoucherService.class);
         PurchaseReceiptAppService appService = new PurchaseReceiptAppService(
-                receiptService, warehouseService, numberGenerator, autoVoucherService);
+                receiptService, warehouseService, numberGenerator, autoVoucherService,
+                mock(VoucherService.class), mock(VoucherAppService.class));
 
         PurchaseReceipt posted = mock(PurchaseReceipt.class);
         when(receiptService.post("PR-202606-0001", OPERATOR)).thenReturn(posted);
@@ -83,7 +85,7 @@ class AutoVoucherHookTest {
         AutoVoucherService autoVoucherService = mock(AutoVoucherService.class);
         PurchaseInvoiceAppService appService = new PurchaseInvoiceAppService(invoiceService,
                 receiptService, orderService, supplierService, payableRepository, numberGenerator,
-                autoVoucherService);
+                autoVoucherService, mock(VoucherService.class), mock(VoucherAppService.class));
 
         PurchaseInvoice existing = mock(PurchaseInvoice.class);
         when(existing.getSupplierId()).thenReturn(9L);
@@ -114,7 +116,8 @@ class AutoVoucherHookTest {
         DocumentNumberGenerator numberGenerator = mock(DocumentNumberGenerator.class);
         AutoVoucherService autoVoucherService = mock(AutoVoucherService.class);
         SalesDeliveryAppService appService = new SalesDeliveryAppService(
-                deliveryService, warehouseService, numberGenerator, autoVoucherService);
+                deliveryService, warehouseService, numberGenerator, autoVoucherService,
+                mock(VoucherService.class), mock(VoucherAppService.class));
 
         SalesDelivery posted = mock(SalesDelivery.class);
         when(deliveryService.post("SD-202606-0001", OPERATOR)).thenReturn(posted);
@@ -139,7 +142,8 @@ class AutoVoucherHookTest {
         DocumentNumberGenerator numberGenerator = mock(DocumentNumberGenerator.class);
         AutoVoucherService autoVoucherService = mock(AutoVoucherService.class);
         SalesInvoiceAppService appService = new SalesInvoiceAppService(
-                invoiceService, deliveryService, orderService, numberGenerator, autoVoucherService);
+                invoiceService, deliveryService, orderService, numberGenerator, autoVoucherService,
+                mock(VoucherService.class), mock(VoucherAppService.class));
 
         SalesInvoice posted = mock(SalesInvoice.class);
         when(invoiceService.post("SINV-202606-0001", OPERATOR)).thenReturn(posted);
@@ -162,7 +166,8 @@ class AutoVoucherHookTest {
         DocumentNumberGenerator numberGenerator = mock(DocumentNumberGenerator.class);
         AutoVoucherService autoVoucherService = mock(AutoVoucherService.class);
         PurchaseReceiptAppService appService = new PurchaseReceiptAppService(
-                receiptService, warehouseService, numberGenerator, autoVoucherService);
+                receiptService, warehouseService, numberGenerator, autoVoucherService,
+                mock(VoucherService.class), mock(VoucherAppService.class));
 
         when(receiptService.post("PR-202606-0001", OPERATOR))
                 .thenThrow(new IllegalStateException("已过账，不可重复过账"));

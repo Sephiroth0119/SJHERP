@@ -68,6 +68,12 @@ public class SalesInvoiceController {
         return SalesInvoiceResponse.from(salesInvoiceAppService.post(docNo, CurrentUser.operator()));
     }
 
+    /** 冲销（红字发票，M4-T07b：COMPLETED → REVERSED，应收整笔冲回[须无核销] + 红冲发票凭证 + 回退已开票量） */
+    @PostMapping("/{docNo}/reverse")
+    public SalesInvoiceResponse reverse(@PathVariable String docNo) {
+        return SalesInvoiceResponse.from(salesInvoiceAppService.reverse(docNo, CurrentUser.operator()));
+    }
+
     /** 作废（仅 DRAFT） */
     @PostMapping("/{docNo}/cancel")
     public SalesInvoiceResponse cancel(@PathVariable String docNo) {

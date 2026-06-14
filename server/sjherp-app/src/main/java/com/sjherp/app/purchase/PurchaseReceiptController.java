@@ -72,6 +72,15 @@ public class PurchaseReceiptController {
         return PurchaseReceiptResponse.from(purchaseReceiptAppService.post(docNo, CurrentUser.operator()));
     }
 
+    /**
+     * 冲销（红字单，M4-T07b，COMPLETED → REVERSED）：反向库存（按原成本出库）、回退采购订单到货量、
+     * 红冲入库自动凭证；不可逆。原单非 COMPLETED/已冲销 → 409，账期已关账 → 409，单据不存在 → 404。
+     */
+    @PostMapping("/{docNo}/reverse")
+    public PurchaseReceiptResponse reverse(@PathVariable String docNo) {
+        return PurchaseReceiptResponse.from(purchaseReceiptAppService.reverse(docNo, CurrentUser.operator()));
+    }
+
     /** 单据详情（不存在 404） */
     @GetMapping("/{docNo}")
     public PurchaseReceiptResponse get(@PathVariable String docNo) {

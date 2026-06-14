@@ -25,8 +25,10 @@ import com.sjherp.domain.common.PageResult;
  *
  * <h2>账龄口径（设计真源 §4）</h2>
  * <ul>
- *   <li>仅取<b>未结清</b>记录：{@code status <> 'SETTLED'} 与 {@code amount - settled_amount > 0} 双口径并用
- *       （领域服务保证二者等价，余额为兜底单一真相，防越权直插的状态-余额不一致噪声行）；</li>
+ *   <li>仅取<b>未结清且未冲销</b>记录：{@code status NOT IN ('SETTLED','REVERSED')} 与
+ *       {@code amount - settled_amount > 0} 双口径并用（领域服务保证二者等价，余额为兜底单一真相，
+ *       防越权直插的状态-余额不一致噪声行）；REVERSED 是 M4-T07b 业务单红冲后的已冲销子账，
+ *       账龄不应再统计（已无实际债权债务）；</li>
  *   <li>分桶基于<b>未核销余额</b> {@code amount - settled_amount}（非原始金额）；</li>
  *   <li>逾期天数 = {@code asOf - 到期日}（AR 到期日可空 → {@code COALESCE(due_date, DATE(created_at))}；
  *       AP {@code due_date} 非空）；</li>
@@ -98,7 +100,8 @@ public class AgingReportDao {
         // 领域服务保证两者等价，但越过领域的直插/异常数据若致状态-余额不一致（如零额 OPEN），
         // 以「余额>0」为单一真相兜底，使账龄筛选基准与分桶基准（amount-settled）解耦一致、不出噪声行。
         StringBuilder where = new StringBuilder(
-                " WHERE ar.tenant_id = 0 AND ar.status <> 'SETTLED' AND (ar.amount - ar.settled_amount) > 0");
+                " WHERE ar.tenant_id = 0 AND ar.status NOT IN ('SETTLED', 'REVERSED')"
+                        + " AND (ar.amount - ar.settled_amount) > 0");
         List<Object> filterArgs = new ArrayList<>();
         if (customerId != null) {
             where.append(" AND ar.customer_id = ?");
@@ -130,7 +133,8 @@ public class AgingReportDao {
 
         // 同应收：status<>'SETTLED' 与「未核销余额>0」双口径筛选（评审加固，余额为单一真相兜底）
         StringBuilder where = new StringBuilder(
-                " WHERE ap.tenant_id = 0 AND ap.status <> 'SETTLED' AND (ap.amount - ap.settled_amount) > 0");
+                " WHERE ap.tenant_id = 0 AND ap.status NOT IN ('SETTLED', 'REVERSED')"
+                        + " AND (ap.amount - ap.settled_amount) > 0");
         List<Object> filterArgs = new ArrayList<>();
         if (supplierId != null) {
             where.append(" AND ap.supplier_id = ?");

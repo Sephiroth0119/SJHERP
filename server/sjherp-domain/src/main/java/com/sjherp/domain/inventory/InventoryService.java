@@ -181,6 +181,16 @@ public class InventoryService {
             throw new InsufficientStockException(command.warehouseId(), command.productId(),
                     quantityBefore, quantity);
         }
+        // M4-T07b 红冲按原成本反向：指定了出库单价则跳过移动加权，直接按该单价算 totalCost
+        // （期间可能已进新货，重算加权会失真——红冲必须按已固化的原单价反向，设计真源 §1.6/§2）
+        if (command.overriddenUnitCost() != null) {
+            BigDecimal unitCost = scaleUnitCost(command.overriddenUnitCost());
+            if (unitCost.signum() < 0) {
+                throw new IllegalArgumentException("红冲指定出库单价不能为负: " + unitCost.toPlainString());
+            }
+            BigDecimal totalCost = costingStrategy.roundedTotal(unitCost, quantity);
+            return post(command, balance, quantity.negate(), unitCost, totalCost.negate(), operator);
+        }
         BigDecimal unitCost;
         BigDecimal totalCost;
         if (quantityBefore.signum() > 0) {
@@ -278,6 +288,13 @@ public class InventoryService {
                         || existing.getUnitCost().compareTo(scaleUnitCost(in.unitCost())) != 0)) {
             return "unitCost 原 " + (existing.getUnitCost() == null ? "-"
                     : existing.getUnitCost().toPlainString()) + " / 新 " + in.unitCost().toPlainString();
+        }
+        // 红冲指定出库单价的幂等比对（M4-T07b）：同键重放须同单价（防同键不同成本静默吞掉）
+        if (command instanceof OutboundCommand out && out.overriddenUnitCost() != null
+                && (existing.getUnitCost() == null
+                        || existing.getUnitCost().compareTo(scaleUnitCost(out.overriddenUnitCost())) != 0)) {
+            return "overriddenUnitCost 原 " + (existing.getUnitCost() == null ? "-"
+                    : existing.getUnitCost().toPlainString()) + " / 新 " + out.overriddenUnitCost().toPlainString();
         }
         if (command instanceof CostAdjustCommand adjust
                 && existing.getTotalCost().compareTo(scaleAmount(adjust.adjustAmount())) != 0) {

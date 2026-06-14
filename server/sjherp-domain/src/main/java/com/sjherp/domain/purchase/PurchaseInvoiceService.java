@@ -175,17 +175,46 @@ public class PurchaseInvoiceService {
     }
 
     /**
-     * 冲销已完成采购发票（红字发票）。
+     * 冲销已完成采购发票（红字发票，M4-T07b）：回滚收货行已开票量 + 原单转 REVERSED。
      *
-     * <p>TODO（M4-T07 统一做）：生成反向发票驱动红字应付（负向应付抵消原应付），原单
-     * COMPLETED → REVERSED 并红字关联。当前未实现——采购发票本身不提供物理删除
-     * （CLAUDE.md 原则 2：财务记录只可冲销不可删除）。
+     * <p>同一外层事务内（由 {@code PurchaseInvoiceAppService.reverse} 提供）执行：
+     * <ol>
+     *   <li>校验原单 COMPLETED、未被冲销（幂等：已 REVERSED 拒）；</li>
+     *   <li>同事务调 {@link PurchaseReceiptService#reverseInvoiced} 把各行开票量从收货行回退
+     *       （守门回滚后已开票量 ≥ 0），让该收货单可重新开票；</li>
+     *   <li>原单 {@link com.sjherp.domain.common.BusinessDocument#reverse}（COMPLETED → REVERSED + 红字关联）。</li>
+     * </ol>
+     *
+     * <p><b>应付冲回</b>（{@code AccountsPayable.markReversed}，前置 {@code canBeReversed} 校验无核销）与
+     * <b>红字凭证</b>（红冲采购发票自动凭证）由 app 层 {@code PurchaseInvoiceAppService.reverse} 编排
+     * （应付台账/凭证属其它聚合，本服务只负责发票与收货行回写）；红字凭证号作为 {@code reversalDocNo}
+     * 传入。已核销的应付须先冲对应付款单（T07c），由 app 层前置拒绝（设计真源 §1.7）。
+     *
+     * @param docNo         被冲销的采购发票号（须 COMPLETED）
+     * @param reversalDocNo 红字关联单据号（红字凭证号，由 app 层冲销自动凭证后回传）
+     * @param operator      操作人
+     * @return 已转 REVERSED 的原采购发票
      */
     @Audited(action = "purchase_invoice.reverse", targetType = "purchase_invoice")
-    public PurchaseInvoice reverse(String docNo, String operator) {
+    public PurchaseInvoice reverse(String docNo, String reversalDocNo, String operator) {
         requireOperator(operator);
-        throw new UnsupportedOperationException(
-                "采购发票冲销（红字发票）尚未实现，统一在 M4-T07 落地");
+        Objects.requireNonNull(reversalDocNo, "红字关联单据号不能为空");
+        PurchaseInvoice invoice = get(docNo);
+        if (invoice.getStatus() == DocumentStatus.REVERSED) {
+            throw new IllegalStateException("采购发票[" + docNo + "] 已冲销，不可重复冲销");
+        }
+        if (invoice.getStatus() != DocumentStatus.COMPLETED) {
+            throw new IllegalStateException("采购发票[" + docNo + "] 当前状态 " + invoice.getStatus()
+                    + " 不可冲销（仅已过账的发票可冲销）");
+        }
+        invoice.registerEventPublisher(eventPublisher);
+        // 同事务回退收货行累计已开票量（让该收货单可重新开票，守门不下溢 < 0）
+        purchaseReceiptService.reverseInvoiced(invoice.getPurchaseReceiptNo(),
+                buildInvoicedLines(invoice));
+        // 原单 COMPLETED → REVERSED + 红字关联
+        invoice.reverse(operator, reversalDocNo);
+        repository.save(invoice);
+        return invoice;
     }
 
     /** 按单据号查（不存在抛 {@link PurchaseInvoiceNotFoundException} → API 404） */
