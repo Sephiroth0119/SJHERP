@@ -179,6 +179,24 @@ public enum Permission {
      */
     FINANCE_REPORT("finance:report", "会计报表"),
 
+    // ------------------------------------------------- 生产（M5-T01）
+
+    /**
+     * BOM 物料清单维护（M5-T01）：BOM 建档/更新/启停
+     * （REST POST·PUT /api/production/boms、/{id}/enable|disable）。
+     * BOM 查询（GET /api/production/boms、/{productId}/explode）照例不设权限点（登录即可）。
+     * 授 ADMIN/BOSS（生产主数据管理，本批不引入 PRODUCTION 角色）。
+     */
+    PRODUCTION_BOM("production:bom", "BOM维护"),
+
+    /**
+     * 工艺路线维护（M5-T01）：工艺路线建档/更新/启停
+     * （REST POST·PUT /api/production/routings、/{id}/enable|disable）。
+     * 工艺路线查询（GET /api/production/routings）照例不设权限点（登录即可）。
+     * 授 ADMIN/BOSS（生产主数据管理，本批不引入 PRODUCTION 角色）。
+     */
+    PRODUCTION_ROUTING("production:routing", "工艺路线维护"),
+
     // ------------------------------------------------- 流程缺口
 
     /** 缺口状态流转（GapController POST /api/gaps/{id}/status，开发侧操作） */
