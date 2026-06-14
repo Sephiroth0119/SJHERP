@@ -65,6 +65,7 @@ public final class RolePermissions {
                 Permission.FINANCE_VOUCHER,
                 Permission.FINANCE_SETTLEMENT,
                 Permission.FINANCE_PAYMENT_ACCOUNT,
+                Permission.FINANCE_REPORT,
                 Permission.DATA_IMPORT,
                 Permission.GAP_TRIAGE)));
 
@@ -93,7 +94,8 @@ public final class RolePermissions {
                 Permission.PURCHASE_RECEIPT,
                 Permission.SALES_DELIVERY)));
 
-        // ACCOUNTANT：采购发票/应付 + 销售发票/应收 + 总账财务（科目/账期/凭证）+ 核销与账龄（M4-T03）；
+        // ACCOUNTANT：采购发票/应付 + 销售发票/应收 + 总账财务（科目/账期/凭证）+ 核销与账龄（M4-T03）
+        // + 资金账户（M4-T04a）+ 会计报表（finance:report，M4-T06 资产负债表/利润表）；
         // 不含 finance:period_reopen（账期重开高敏，仅 ADMIN/BOSS）。其余 finance:* 留后续任务补充
         grants.put(Role.ACCOUNTANT, Collections.unmodifiableSet(EnumSet.of(
                 Permission.PURCHASE_INVOICE,
@@ -102,7 +104,8 @@ public final class RolePermissions {
                 Permission.FINANCE_PERIOD,
                 Permission.FINANCE_VOUCHER,
                 Permission.FINANCE_SETTLEMENT,
-                Permission.FINANCE_PAYMENT_ACCOUNT)));
+                Permission.FINANCE_PAYMENT_ACCOUNT,
+                Permission.FINANCE_REPORT)));
 
         return Collections.unmodifiableMap(grants);
     }

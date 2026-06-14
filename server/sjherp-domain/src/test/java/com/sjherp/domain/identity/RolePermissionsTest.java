@@ -49,6 +49,7 @@ class RolePermissionsTest {
                 Permission.FINANCE_VOUCHER,
                 Permission.FINANCE_SETTLEMENT,
                 Permission.FINANCE_PAYMENT_ACCOUNT,
+                Permission.FINANCE_REPORT,
                 Permission.DATA_IMPORT,
                 Permission.GAP_TRIAGE), boss);
         assertFalse(boss.contains(Permission.DEMO_POST_DOCUMENT));
@@ -87,7 +88,8 @@ class RolePermissionsTest {
     void ACCOUNTANT_采购销售发票加总账科目账期凭证加核销账龄加资金账户_不含账期重开() {
         assertEquals(EnumSet.of(Permission.PURCHASE_INVOICE, Permission.SALES_INVOICE,
                         Permission.FINANCE_ACCOUNT, Permission.FINANCE_PERIOD, Permission.FINANCE_VOUCHER,
-                        Permission.FINANCE_SETTLEMENT, Permission.FINANCE_PAYMENT_ACCOUNT),
+                        Permission.FINANCE_SETTLEMENT, Permission.FINANCE_PAYMENT_ACCOUNT,
+                        Permission.FINANCE_REPORT),
                 RolePermissions.permissionsOf(Role.ACCOUNTANT));
         // 账期重开是高敏操作，ACCOUNTANT 不持有（仅 ADMIN/BOSS）
         assertFalse(RolePermissions.permissionsOf(Role.ACCOUNTANT)
@@ -233,6 +235,13 @@ class RolePermissionsTest {
         assertFalse(RolePermissions.isGrantedCode(Set.of(Role.PURCHASER), "finance:payment_account"));
         assertFalse(RolePermissions.isGrantedCode(Set.of(Role.SALES), "finance:payment_account"));
         assertFalse(RolePermissions.isGrantedCode(Set.of(Role.WAREHOUSE), "finance:payment_account"));
+        // 会计报表（M4-T06，资产负债表/利润表敏感）：ADMIN/BOSS/ACCOUNTANT 持有，其余角色拒绝
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.ACCOUNTANT), "finance:report"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.BOSS), "finance:report"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.ADMIN), "finance:report"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.PURCHASER), "finance:report"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.SALES), "finance:report"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.WAREHOUSE), "finance:report"));
     }
 
     @Test

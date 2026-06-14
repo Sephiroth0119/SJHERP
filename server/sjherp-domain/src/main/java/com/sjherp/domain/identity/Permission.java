@@ -170,6 +170,15 @@ public enum Permission {
      */
     FINANCE_PAYMENT_ACCOUNT("finance:payment_account", "资金账户档案"),
 
+    /**
+     * 会计报表（M4-T06）：资产负债表 / 利润表的<b>只读</b>查询
+     * （GET /api/reports/balance-sheet、/income-statement）。两报表暴露全盘财务状况
+     * （资产负债结构、收入成本利润，<b>高度敏感</b>），故须本权限点（区别于"查询登录即可"通则）。
+     * 授 ADMIN（allOf 自动）/BOSS/ACCOUNTANT（与 finance:voucher 同档，报表是会计日常产出）。
+     * 财务 Agent 工具（查利润/资产负债，T08）届时复用本权限点。
+     */
+    FINANCE_REPORT("finance:report", "会计报表"),
+
     // ------------------------------------------------- 流程缺口
 
     /** 缺口状态流转（GapController POST /api/gaps/{id}/status，开发侧操作） */
