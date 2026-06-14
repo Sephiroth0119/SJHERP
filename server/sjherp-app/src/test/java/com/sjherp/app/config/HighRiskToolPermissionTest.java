@@ -13,9 +13,12 @@ import com.sjherp.agent.tool.ToolRegistry;
 import com.sjherp.agent.tool.ToolRiskLevel;
 import com.sjherp.app.collection.CollectionReceiptAppService;
 import com.sjherp.app.consistency.ConsistencyCheckService;
+import com.sjherp.app.finance.AgingReportDao;
+import com.sjherp.app.finance.FinancialStatementService;
 import com.sjherp.app.gl.PeriodCloseService;
 import com.sjherp.app.gl.VoucherAppService;
 import com.sjherp.app.inventory.InventoryAdjustmentService;
+import com.sjherp.app.settlement.SettlementReadAppService;
 import com.sjherp.app.payment.PaymentDisbursementAppService;
 import com.sjherp.app.purchase.PurchaseInvoiceAppService;
 import com.sjherp.app.purchase.PurchaseOrderAppService;
@@ -75,7 +78,10 @@ class HighRiskToolPermissionTest {
                 mock(CollectionReceiptAppService.class),
                 mock(PaymentDisbursementAppService.class),
                 mock(PeriodCloseService.class),
-                mock(VoucherAppService.class));
+                mock(VoucherAppService.class),
+                mock(AgingReportDao.class),
+                mock(FinancialStatementService.class),
+                mock(SettlementReadAppService.class));
         // dev-only：演示工具（EchoTool NORMAL + DemoHighRiskTool HIGH），一并纳入断言
         new ToolConfig.DemoToolConfig(registry);
         return registry;
@@ -100,7 +106,7 @@ class HighRiskToolPermissionTest {
 
     @Test
     void 注册清单覆盖既有工具规模_防注册清单漂移() {
-        // M4-T07c 基线：常驻 63 个（查询 21 NORMAL + 资金账户建档 1 NORMAL + 写 41 HIGH；
+        // M4-T08 基线：常驻 69 个（查询 29 NORMAL + 资金账户建档 1 NORMAL + 写 39 HIGH；
         // 含 M3-T11 全量 20 工具 [采购收货/发票 10 + 销售出库/发票 10] + M3-T13 run_consistency_check
         // + M4-T04a create_payment_account / search_payment_accounts
         // + M4-T04c 收款单 3 HIGH + 付款单 3 HIGH + query_collection_receipts / query_payment_disbursements 2 NORMAL
@@ -109,10 +115,13 @@ class HighRiskToolPermissionTest {
         // + M4-T07b reverse_purchase_receipt / reverse_purchase_invoice 2 HIGH
         // + M4-T07b reverse_sales_delivery / reverse_sales_invoice 2 HIGH
         // + M4-T07c reverse_collection_receipt / reverse_payment_disbursement 2 HIGH
-        // + M4-T07c reverse_transfer / reverse_stock_count 2 HIGH）
-        // + 演示 2 个（echo + demo_post_document）= 65。
+        // + M4-T07c reverse_transfer / reverse_stock_count 2 HIGH
+        // + M4-T08 财务只读查询 8 NORMAL：query_receivable_aging / query_payable_aging /
+        //   query_balance_sheet / query_income_statement / query_trial_balance /
+        //   query_account_balance / query_receivable_settlements / query_payable_settlements）
+        // + 演示 2 个（echo + demo_post_document）= 71（全量注册断言基线）。
         // 新增工具装配类后此处会先于权限断言提醒维护注册清单。
-        assertTrue(registryWithAllTools().all().size() >= 63,
-                "注册工具数少于 M4-T07c 基线（63 个）——若调整了工具装配，请同步维护本测试的注册清单");
+        assertTrue(registryWithAllTools().all().size() >= 71,
+                "注册工具数少于 M4-T08 基线（71 个）——若调整了工具装配，请同步维护本测试的注册清单");
     }
 }
