@@ -6,6 +6,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import com.sjherp.domain.catalog.ProductRepository;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
+import com.sjherp.domain.common.event.DomainEventPublisher;
 import com.sjherp.domain.production.BillOfMaterialsRepository;
 import com.sjherp.domain.production.BillOfMaterialsService;
 import com.sjherp.domain.production.DemandPlanRepository;
@@ -16,11 +17,14 @@ import com.sjherp.domain.production.MrpRunRepository;
 import com.sjherp.domain.production.MrpService;
 import com.sjherp.domain.production.RoutingRepository;
 import com.sjherp.domain.production.RoutingService;
+import com.sjherp.domain.production.WorkOrderRepository;
+import com.sjherp.domain.production.WorkOrderService;
 import com.sjherp.infra.persistence.production.JdbcBillOfMaterialsRepository;
 import com.sjherp.infra.persistence.production.JdbcDemandPlanRepository;
 import com.sjherp.infra.persistence.production.JdbcMrpDemandSource;
 import com.sjherp.infra.persistence.production.JdbcMrpRunRepository;
 import com.sjherp.infra.persistence.production.JdbcRoutingRepository;
+import com.sjherp.infra.persistence.production.JdbcWorkOrderRepository;
 
 /**
  * 生产模块（BOM + 工艺路线 + 需求计划 + MRP）装配（M5-T01/T02）：仓储 MySQL 实现 + 领域服务。
@@ -134,5 +138,30 @@ public class ProductionInfraConfig {
             MrpService mrpService,
             MrpRunRepository mrpRunRepository) {
         return new TransactionalMrpService(mrpService, mrpRunRepository);
+    }
+
+    // ----------------------------------------------------------------- M5-T03 生产工单
+
+    @Bean
+    public WorkOrderRepository workOrderRepository(JdbcTemplate jdbcTemplate) {
+        return new JdbcWorkOrderRepository(jdbcTemplate);
+    }
+
+    @Bean
+    public WorkOrderService workOrderService(
+            WorkOrderRepository workOrderRepository,
+            MrpRunRepository mrpRunRepository,
+            BillOfMaterialsRepository billOfMaterialsRepository,
+            DocumentNumberGenerator documentNumberGenerator,
+            DomainEventPublisher domainEventPublisher) {
+        return new WorkOrderService(workOrderRepository, mrpRunRepository,
+                billOfMaterialsRepository, documentNumberGenerator, domainEventPublisher);
+    }
+
+    /** 工单服务事务包装：控制器注入本类而非领域服务本身。 */
+    @Bean
+    public TransactionalWorkOrderService transactionalWorkOrderService(
+            WorkOrderService workOrderService) {
+        return new TransactionalWorkOrderService(workOrderService);
     }
 }

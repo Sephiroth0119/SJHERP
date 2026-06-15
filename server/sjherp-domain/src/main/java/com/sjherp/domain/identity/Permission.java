@@ -211,6 +211,13 @@ public enum Permission {
      */
     PRODUCTION_MRP("production:mrp", "MRP 运行"),
 
+    /**
+     * 生产工单（M5-T03）：建单/下达/开工/完工/作废/冲销/查询
+     * （REST /api/production/work-orders）。
+     * 授 ADMIN/BOSS。
+     */
+    PRODUCTION_WO("production:wo", "生产工单"),
+
     // ------------------------------------------------- 流程缺口
 
     /** 缺口状态流转（GapController POST /api/gaps/{id}/status，开发侧操作） */

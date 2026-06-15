@@ -13,8 +13,10 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import com.sjherp.domain.production.BillOfMaterialsNotFoundException;
 import com.sjherp.domain.production.BomCycleException;
 import com.sjherp.domain.production.DemandPlanNotFoundException;
+import com.sjherp.domain.common.IllegalStateTransitionException;
 import com.sjherp.domain.production.MrpRunNotFoundException;
 import com.sjherp.domain.production.RoutingNotFoundException;
+import com.sjherp.domain.production.WorkOrderNotFoundException;
 
 /**
  * 生产模块 API 统一错误响应（仅作用于本包的控制器，不影响其他包既有处理器）。
@@ -46,6 +48,19 @@ public class ProductionExceptionHandler {
     @ExceptionHandler(MrpRunNotFoundException.class)
     public ResponseEntity<Map<String, String>> handleMrpRunNotFound(MrpRunNotFoundException e) {
         return error(HttpStatus.NOT_FOUND, e.getMessage());
+    }
+
+    /** 工单不存在 → 404 {"error": "..."} */
+    @ExceptionHandler(WorkOrderNotFoundException.class)
+    public ResponseEntity<Map<String, String>> handleWorkOrderNotFound(WorkOrderNotFoundException e) {
+        return error(HttpStatus.NOT_FOUND, e.getMessage());
+    }
+
+    /** 工单状态流转非法（如 EXECUTING→REVERSED 被拒）→ 409 {"error": "..."} */
+    @ExceptionHandler(IllegalStateTransitionException.class)
+    public ResponseEntity<Map<String, String>> handleIllegalStateTransition(
+            IllegalStateTransitionException e) {
+        return error(HttpStatus.CONFLICT, e.getMessage());
     }
 
     /** BOM 环形依赖（保存时检测到成环）→ 400 {"error": "..."} */
