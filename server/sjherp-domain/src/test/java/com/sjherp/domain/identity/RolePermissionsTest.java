@@ -55,6 +55,7 @@ class RolePermissionsTest {
                 Permission.PRODUCTION_PLAN,
                 Permission.PRODUCTION_MRP,
                 Permission.PRODUCTION_WO,
+                Permission.PRODUCTION_MATERIAL,
                 Permission.DATA_IMPORT,
                 Permission.GAP_TRIAGE), boss);
         assertFalse(boss.contains(Permission.DEMO_POST_DOCUMENT));
@@ -247,6 +248,13 @@ class RolePermissionsTest {
         assertFalse(RolePermissions.isGrantedCode(Set.of(Role.PURCHASER), "finance:report"));
         assertFalse(RolePermissions.isGrantedCode(Set.of(Role.SALES), "finance:report"));
         assertFalse(RolePermissions.isGrantedCode(Set.of(Role.WAREHOUSE), "finance:report"));
+        // 生产领料与退料（M5-T04）：ADMIN/BOSS 持有，其余角色拒绝
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.BOSS), "production:material"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.ADMIN), "production:material"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.ACCOUNTANT), "production:material"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.PURCHASER), "production:material"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.SALES), "production:material"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.WAREHOUSE), "production:material"));
     }
 
     @Test

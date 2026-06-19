@@ -10,10 +10,13 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import com.sjherp.domain.inventory.InsufficientStockException;
 import com.sjherp.domain.production.BillOfMaterialsNotFoundException;
 import com.sjherp.domain.production.BomCycleException;
 import com.sjherp.domain.production.DemandPlanNotFoundException;
 import com.sjherp.domain.common.IllegalStateTransitionException;
+import com.sjherp.domain.production.MaterialIssueNotFoundException;
+import com.sjherp.domain.production.MaterialReturnNotFoundException;
 import com.sjherp.domain.production.MrpRunNotFoundException;
 import com.sjherp.domain.production.RoutingNotFoundException;
 import com.sjherp.domain.production.WorkOrderNotFoundException;
@@ -67,6 +70,27 @@ public class ProductionExceptionHandler {
     @ExceptionHandler(BomCycleException.class)
     public ResponseEntity<Map<String, String>> handleBomCycle(BomCycleException e) {
         return error(HttpStatus.BAD_REQUEST, e.getMessage());
+    }
+
+    /** 领料单不存在 → 404 {"error": "..."} */
+    @ExceptionHandler(MaterialIssueNotFoundException.class)
+    public ResponseEntity<Map<String, String>> handleMaterialIssueNotFound(
+            MaterialIssueNotFoundException e) {
+        return error(HttpStatus.NOT_FOUND, e.getMessage());
+    }
+
+    /** 退料单不存在 → 404 {"error": "..."} */
+    @ExceptionHandler(MaterialReturnNotFoundException.class)
+    public ResponseEntity<Map<String, String>> handleMaterialReturnNotFound(
+            MaterialReturnNotFoundException e) {
+        return error(HttpStatus.NOT_FOUND, e.getMessage());
+    }
+
+    /** 库存不足（领料过账时）→ 409 {"error": "..."} */
+    @ExceptionHandler(InsufficientStockException.class)
+    public ResponseEntity<Map<String, String>> handleInsufficientStock(
+            InsufficientStockException e) {
+        return error(HttpStatus.CONFLICT, e.getMessage());
     }
 
     /** 业务规则拒绝（商品不存在/已停用、版本重复、数量非法等）→ 400 {"error": "..."} */

@@ -218,6 +218,14 @@ public enum Permission {
      */
     PRODUCTION_WO("production:wo", "生产工单"),
 
+    /**
+     * 生产领料与退料（M5-T04）：领料单建单/审核/过账 + 退料单建单/审核/过账 + 齐套检查
+     * （REST /api/production/material-issues、/material-returns、/kitting-check）。
+     * 三控制器类级 @PreAuthorize **全程受控**（含查询与齐套只读端点——生产执行动作 + 暴露库存缺口经营敏感数据）。
+     * 授 ADMIN/BOSS（本批不引入 PRODUCTION 角色）。
+     */
+    PRODUCTION_MATERIAL("production:material", "生产领料与退料"),
+
     // ------------------------------------------------- 流程缺口
 
     /** 缺口状态流转（GapController POST /api/gaps/{id}/status，开发侧操作） */
