@@ -30,6 +30,12 @@ public enum InventoryTxnType {
     /** 调拨出（按出库口径计成本） */
     TRANSFER_OUT(Direction.OUT, "调拨出"),
 
+    /** 生产领料（出库消耗，成本按移动加权计算） */
+    PRODUCTION_ISSUE(Direction.OUT, "生产领料"),
+
+    /** 生产退料（入库还原，按原领料成本入回） */
+    PRODUCTION_RETURN(Direction.IN, "生产退料"),
+
     /** 成本调整（数量不变只调金额，典型场景：到票价差、运费入成本） */
     COST_ADJUST(Direction.NEUTRAL, "成本调整");
 

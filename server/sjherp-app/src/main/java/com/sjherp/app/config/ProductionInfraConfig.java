@@ -7,10 +7,20 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import com.sjherp.domain.catalog.ProductRepository;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
 import com.sjherp.domain.common.event.DomainEventPublisher;
+import com.sjherp.app.production.KittingCheckAppService;
+import com.sjherp.app.production.MaterialIssueAppService;
+import com.sjherp.app.production.MaterialReturnAppService;
 import com.sjherp.domain.production.BillOfMaterialsRepository;
 import com.sjherp.domain.production.BillOfMaterialsService;
 import com.sjherp.domain.production.DemandPlanRepository;
 import com.sjherp.domain.production.DemandPlanService;
+import com.sjherp.domain.production.InventoryAvailabilityPort;
+import com.sjherp.domain.production.InventoryPostingPort;
+import com.sjherp.domain.production.KittingCheckService;
+import com.sjherp.domain.production.MaterialIssueRepository;
+import com.sjherp.domain.production.MaterialIssueService;
+import com.sjherp.domain.production.MaterialReturnRepository;
+import com.sjherp.domain.production.MaterialReturnService;
 import com.sjherp.domain.production.MrpDemandSource;
 import com.sjherp.domain.production.MrpInventorySource;
 import com.sjherp.domain.production.MrpRunRepository;
@@ -21,6 +31,8 @@ import com.sjherp.domain.production.WorkOrderRepository;
 import com.sjherp.domain.production.WorkOrderService;
 import com.sjherp.infra.persistence.production.JdbcBillOfMaterialsRepository;
 import com.sjherp.infra.persistence.production.JdbcDemandPlanRepository;
+import com.sjherp.infra.persistence.production.JdbcMaterialIssueRepository;
+import com.sjherp.infra.persistence.production.JdbcMaterialReturnRepository;
 import com.sjherp.infra.persistence.production.JdbcMrpDemandSource;
 import com.sjherp.infra.persistence.production.JdbcMrpRunRepository;
 import com.sjherp.infra.persistence.production.JdbcRoutingRepository;
@@ -163,5 +175,88 @@ public class ProductionInfraConfig {
     public TransactionalWorkOrderService transactionalWorkOrderService(
             WorkOrderService workOrderService) {
         return new TransactionalWorkOrderService(workOrderService);
+    }
+
+    // ----------------------------------------------------------------- M5-T04 JIT 领料/退料/齐套
+
+    @Bean
+    public MaterialIssueRepository materialIssueRepository(JdbcTemplate jdbcTemplate) {
+        return new JdbcMaterialIssueRepository(jdbcTemplate);
+    }
+
+    @Bean
+    public MaterialReturnRepository materialReturnRepository(JdbcTemplate jdbcTemplate) {
+        return new JdbcMaterialReturnRepository(jdbcTemplate);
+    }
+
+    /**
+     * 库存过账端口适配器（领料/退料 → 进销存域唯一入口）。
+     * 将 {@link TransactionalInventoryService} 适配为生产域的 {@link InventoryPostingPort}。
+     */
+    @Bean
+    public InventoryPostingPort materialIssueInventoryPostingAdapter(
+            TransactionalInventoryService transactionalInventoryService) {
+        return new MaterialIssueInventoryPostingAdapter(transactionalInventoryService);
+    }
+
+    /**
+     * 库存可用量查询端口适配器（齐套检查用，只读）。
+     * 将 {@link TransactionalInventoryService} 适配为生产域的 {@link InventoryAvailabilityPort}。
+     */
+    @Bean
+    public InventoryAvailabilityPort materialIssueAvailabilityAdapter(
+            TransactionalInventoryService transactionalInventoryService) {
+        return new MaterialIssueAvailabilityAdapter(transactionalInventoryService);
+    }
+
+    @Bean
+    public MaterialIssueService materialIssueService(
+            MaterialIssueRepository materialIssueRepository,
+            WorkOrderRepository workOrderRepository,
+            InventoryPostingPort materialIssueInventoryPostingAdapter,
+            DomainEventPublisher domainEventPublisher) {
+        return new MaterialIssueService(materialIssueRepository, workOrderRepository,
+                materialIssueInventoryPostingAdapter, domainEventPublisher);
+    }
+
+    @Bean
+    public MaterialReturnService materialReturnService(
+            MaterialReturnRepository materialReturnRepository,
+            MaterialIssueRepository materialIssueRepository,
+            InventoryPostingPort materialIssueInventoryPostingAdapter,
+            DomainEventPublisher domainEventPublisher) {
+        return new MaterialReturnService(materialReturnRepository, materialIssueRepository,
+                materialIssueInventoryPostingAdapter, domainEventPublisher);
+    }
+
+    @Bean
+    public KittingCheckService kittingCheckService(
+            BillOfMaterialsRepository billOfMaterialsRepository,
+            InventoryAvailabilityPort materialIssueAvailabilityAdapter) {
+        return new KittingCheckService(billOfMaterialsRepository, materialIssueAvailabilityAdapter);
+    }
+
+    /** 领料单应用服务：编排编号生成 + 领域委托，事务边界。 */
+    @Bean
+    public MaterialIssueAppService materialIssueAppService(
+            MaterialIssueService materialIssueService,
+            DocumentNumberGenerator documentNumberGenerator) {
+        return new MaterialIssueAppService(materialIssueService, documentNumberGenerator);
+    }
+
+    /** 退料单应用服务：编排编号生成 + 领域委托，事务边界。 */
+    @Bean
+    public MaterialReturnAppService materialReturnAppService(
+            MaterialReturnService materialReturnService,
+            DocumentNumberGenerator documentNumberGenerator) {
+        return new MaterialReturnAppService(materialReturnService, documentNumberGenerator);
+    }
+
+    /** 齐套检查应用服务：只读，加载工单后调 KittingCheckService 计算。 */
+    @Bean
+    public KittingCheckAppService kittingCheckAppService(
+            WorkOrderService workOrderService,
+            KittingCheckService kittingCheckService) {
+        return new KittingCheckAppService(workOrderService, kittingCheckService);
     }
 }
