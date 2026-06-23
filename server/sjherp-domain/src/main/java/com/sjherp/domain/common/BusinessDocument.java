@@ -169,6 +169,18 @@ public abstract class BusinessDocument {
     }
 
     /**
+     * 持久层重建专用：直接置入已落库的冲销关联字段，<b>不校验状态、不发布事件</b>。
+     *
+     * <p>仅供子类的 {@code restore(...)} 工厂调用。
+     * {@code reversalOfId} 为本单作为红字冲销单时的原单号；
+     * {@code reversedById} 为本单被冲销后的红字单号；任意一方传 null 则不覆盖（null 即"无关联"）。
+     */
+    protected final void restoreReversalLinks(String reversalOfId, String reversedById) {
+        this.reversalOfId = reversalOfId;
+        this.reversedById = reversedById;
+    }
+
+    /**
      * 流转前钩子：子类在此追加业务校验（如审核前明细不能为空、冲销前
      * 检查账期未关）。抛异常即否决本次流转。只可收紧规则、不可放宽流转表。
      */

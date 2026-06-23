@@ -45,6 +45,7 @@ public final class RolePermissions {
         // M5-T01 新增：PRODUCTION_BOM / PRODUCTION_ROUTING（生产主数据管理）
         // M5-T02 新增：PRODUCTION_PLAN / PRODUCTION_MRP（需求计划 + MRP 运行）
         // M5-T03 新增：PRODUCTION_WO（生产工单）
+        // M5-T04 新增：PRODUCTION_MATERIAL（生产领料与退料）
         grants.put(Role.BOSS, Collections.unmodifiableSet(EnumSet.of(
                 Permission.CATALOG_CREATE_PRODUCT,
                 Permission.PARTNER_CREATE_CUSTOMER,
@@ -74,6 +75,7 @@ public final class RolePermissions {
                 Permission.PRODUCTION_PLAN,
                 Permission.PRODUCTION_MRP,
                 Permission.PRODUCTION_WO,
+                Permission.PRODUCTION_MATERIAL,
                 Permission.DATA_IMPORT,
                 Permission.GAP_TRIAGE)));
 
