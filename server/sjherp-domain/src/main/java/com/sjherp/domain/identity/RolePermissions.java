@@ -76,6 +76,7 @@ public final class RolePermissions {
                 Permission.PRODUCTION_MRP,
                 Permission.PRODUCTION_WO,
                 Permission.PRODUCTION_MATERIAL,
+                Permission.PRODUCTION_REPORT,
                 Permission.DATA_IMPORT,
                 Permission.GAP_TRIAGE)));
 

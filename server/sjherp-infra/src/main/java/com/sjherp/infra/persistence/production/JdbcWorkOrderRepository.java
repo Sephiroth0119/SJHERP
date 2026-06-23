@@ -171,8 +171,9 @@ public class JdbcWorkOrderRepository implements WorkOrderRepository {
         // 持久化冲销链路标记（reversal_of_id/reversed_by_id），与全部兄弟单据范式一致
         // （评审 P1：原实现遗漏列致冲销关联静默丢失，违反可审计原则）。
         jdbc.update(
-                "UPDATE work_order SET status = ?, reversal_of_id = ?, reversed_by_id = ?, "
+                "UPDATE work_order SET completed_qty = ?, status = ?, reversal_of_id = ?, reversed_by_id = ?, "
                         + "updated_by = ?, updated_at = ? WHERE id = ?",
+                wo.getCompletedQty(),
                 wo.getStatus().name(),
                 wo.getReversalOfId(),
                 wo.getReversedById(),
