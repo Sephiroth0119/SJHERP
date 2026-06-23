@@ -42,7 +42,16 @@ public enum VoucherSourceType {
      * 来源单据号 {@code source_doc_no} 回填为被冲销的原凭证号，配合 {@code uk_voucher_source}
      * 物理唯一兜底——每张原凭证至多一张红冲凭证（拆解 §1.3，应用层幂等 + 物理唯一双保险）。
      */
-    VOUCHER_REVERSAL;
+    VOUCHER_REVERSAL,
+
+    /**
+     * 生产成本归集与结转（M5-T06）：月末成本结转单（PC- 单）过账时，对每个工单出料/工费归集 +
+     * 完工结转凭证。来源单据号 {@code source_doc_no} 回填为 "PC单号:工单号"（每工单一组，避
+     * {@code uk_voucher_source} 与同结转单其他工单冲突），物理唯一兜底每工单至多一组。
+     * 分录见 docs/生产成本核算规则.md §5（料归集 借5001/贷1403、工费归集 借5001/贷2211+5101
+     * 两段式、完工结转 借1405/贷5001）。
+     */
+    PRODUCTION_COST_SETTLEMENT;
 
     /** 中文标签（凭证摘要 / 审计 / 用户可见文案统一出口） */
     public String label() {
@@ -55,6 +64,7 @@ public enum VoucherSourceType {
             case PAYMENT_DISBURSEMENT -> "付款单";
             case PERIOD_CLOSING -> "期末结转";
             case VOUCHER_REVERSAL -> "凭证冲销";
+            case PRODUCTION_COST_SETTLEMENT -> "生产成本结转";
         };
     }
 }

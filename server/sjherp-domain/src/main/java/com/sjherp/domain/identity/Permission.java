@@ -233,6 +233,14 @@ public enum Permission {
      */
     PRODUCTION_REPORT("production:report", "报工与完工入库"),
 
+    /**
+     * 生产成本归集与结转（M5-T06，成本结转是会计动作）：月末成本结转单（PC-）建单/审核/过账
+     * （REST /api/production/cost-settlements，全程受控）。过账时按约当产量法分摊完工/在产工费，
+     * 经 CostAdjustCommand 追加完工工费到产成品库存并出 GL（料/工费归集 + 完工结转）。
+     * 授 ADMIN/BOSS/ACCOUNTANT（D8）。
+     */
+    PRODUCTION_COST("production:cost", "生产成本归集与结转"),
+
     // ------------------------------------------------- 流程缺口
 
     /** 缺口状态流转（GapController POST /api/gaps/{id}/status，开发侧操作） */

@@ -70,6 +70,17 @@ public class ConsistencyCheckDao {
                                       BigDecimal recordSettledSum) {
     }
 
+    /**
+     * 已完工工单工费结转覆盖行（M5-T06 规则11，D9，WARN 非阻塞）。
+     *
+     * <p>{@code workOrderDocNo} 为有完工产出（completed_qty>0）的工单号；
+     * {@code completedQty} 为工单累计完工量；{@code settlementLineCount} 为引用该工单的
+     * 已过账（COMPLETED）成本结转单行数（0 表示工费尚未结转）。
+     */
+    public record WorkOrderCostSettledRow(String workOrderDocNo, BigDecimal completedQty,
+                                          long settlementLineCount) {
+    }
+
     private static final RowMapper<InventoryLedgerRow> LEDGER_MAPPER = (rs, n) -> new InventoryLedgerRow(
             rs.getLong("warehouse_id"), rs.getLong("product_id"),
             nz(rs.getBigDecimal("txn_qty_sum")), nz(rs.getBigDecimal("txn_cost_sum")),
@@ -298,6 +309,34 @@ public class ConsistencyCheckDao {
                 + "FROM accounts_payable ap "
                 + "WHERE ap.tenant_id = 0 "
                 + "ORDER BY ap.id", SETTLEMENT_ROLLUP_MAPPER);
+    }
+
+    // ---------------------------------------------------------------
+    // 规则11（M5-T06，D9）：已完工工单的工费已结转（completed_qty>0 但无 COMPLETED 成本结转行 → WARN）
+    // ---------------------------------------------------------------
+
+    private static final RowMapper<WorkOrderCostSettledRow> WO_COST_SETTLED_MAPPER =
+            (rs, n) -> new WorkOrderCostSettledRow(
+                    rs.getString("doc_no"),
+                    nz(rs.getBigDecimal("completed_qty")),
+                    rs.getLong("settlement_line_count"));
+
+    /**
+     * 有完工产出（completed_qty>0）且状态 EXECUTING/COMPLETED 的工单，及其已过账成本结转行数。
+     * 结转行数=0 表示该工单完工工费尚未结转（规则11 WARN）。
+     */
+    @Transactional(readOnly = true)
+    public List<WorkOrderCostSettledRow> workOrderCostSettled() {
+        return jdbc.query("SELECT wo.doc_no AS doc_no, wo.completed_qty AS completed_qty, "
+                + "(SELECT COUNT(*) FROM production_cost_settlement_line pl "
+                + " JOIN production_cost_settlement ph ON ph.id = pl.settlement_id "
+                + "  AND ph.tenant_id = pl.tenant_id "
+                + " WHERE pl.tenant_id = 0 AND pl.work_order_doc_no = wo.doc_no "
+                + "   AND ph.status = 'COMPLETED') AS settlement_line_count "
+                + "FROM work_order wo "
+                + "WHERE wo.tenant_id = 0 AND wo.completed_qty > 0 "
+                + "  AND wo.status IN ('EXECUTING', 'COMPLETED') "
+                + "ORDER BY wo.id", WO_COST_SETTLED_MAPPER);
     }
 
     /** SUM/列可能为 NULL（无对应行），统一收敛为 0。 */
