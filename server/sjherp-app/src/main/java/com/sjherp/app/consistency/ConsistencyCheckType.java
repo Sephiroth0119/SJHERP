@@ -48,7 +48,14 @@ public enum ConsistencyCheckType {
      * 规则10（M4-T04c）：状态-余额一致——SETTLED⟺余额0、PARTIAL⟺0&lt;已核销&lt;amount、OPEN⟺已核销0。
      * 子账 status 与（amount−settled_amount）派生余额必须互洽，否则状态机被旁路写入。
      */
-    SETTLEMENT_STATUS("SETTLEMENT_STATUS", "核销状态-余额一致");
+    SETTLEMENT_STATUS("SETTLEMENT_STATUS", "核销状态-余额一致"),
+
+    /**
+     * 规则11（M5-T06，D9，WARN 非阻塞）：已完工工单的工费已结转——
+     * 有完工产出（completed_qty&gt;0）的 EXECUTING/COMPLETED 工单，应有对应的已过账成本结转行。
+     * 缺失 = 完工工费尚未月末结转（提醒，不阻塞关账，避免误卡）。
+     */
+    WORK_ORDER_COST_UNSETTLED("WORK_ORDER_COST_UNSETTLED", "完工工单工费结转");
 
     private final String code;
     private final String displayName;

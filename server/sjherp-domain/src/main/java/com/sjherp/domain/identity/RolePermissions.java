@@ -77,6 +77,7 @@ public final class RolePermissions {
                 Permission.PRODUCTION_WO,
                 Permission.PRODUCTION_MATERIAL,
                 Permission.PRODUCTION_REPORT,
+                Permission.PRODUCTION_COST,
                 Permission.DATA_IMPORT,
                 Permission.GAP_TRIAGE)));
 
@@ -106,7 +107,8 @@ public final class RolePermissions {
                 Permission.SALES_DELIVERY)));
 
         // ACCOUNTANT：采购发票/应付 + 销售发票/应收 + 总账财务（科目/账期/凭证）+ 核销与账龄（M4-T03）
-        // + 资金账户（M4-T04a）+ 会计报表（finance:report，M4-T06 资产负债表/利润表）；
+        // + 资金账户（M4-T04a）+ 会计报表（finance:report，M4-T06 资产负债表/利润表）
+        // + 生产成本归集与结转（production:cost，M5-T06，成本结转是会计动作 D8）；
         // 不含 finance:period_reopen（账期重开高敏，仅 ADMIN/BOSS）。其余 finance:* 留后续任务补充
         grants.put(Role.ACCOUNTANT, Collections.unmodifiableSet(EnumSet.of(
                 Permission.PURCHASE_INVOICE,
@@ -116,7 +118,8 @@ public final class RolePermissions {
                 Permission.FINANCE_VOUCHER,
                 Permission.FINANCE_SETTLEMENT,
                 Permission.FINANCE_PAYMENT_ACCOUNT,
-                Permission.FINANCE_REPORT)));
+                Permission.FINANCE_REPORT,
+                Permission.PRODUCTION_COST)));
 
         return Collections.unmodifiableMap(grants);
     }
