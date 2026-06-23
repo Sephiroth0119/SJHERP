@@ -36,6 +36,9 @@ public enum InventoryTxnType {
     /** 生产退料（入库还原，按原领料成本入回） */
     PRODUCTION_RETURN(Direction.IN, "生产退料"),
 
+    /** 完工入库（在产品→产成品，成本取已过账领料汇总 ÷ 完工量） */
+    PRODUCTION_IN(Direction.IN, "完工入库"),
+
     /** 成本调整（数量不变只调金额，典型场景：到票价差、运费入成本） */
     COST_ADJUST(Direction.NEUTRAL, "成本调整");
 

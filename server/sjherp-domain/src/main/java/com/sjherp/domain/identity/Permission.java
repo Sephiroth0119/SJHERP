@@ -226,6 +226,13 @@ public enum Permission {
      */
     PRODUCTION_MATERIAL("production:material", "生产领料与退料"),
 
+    /**
+     * 报工与完工入库（M5-T05）：报工单建单/审核/过账 + 完工入库
+     * （REST /api/production/reports，全程受控）。
+     * 授 ADMIN/BOSS。
+     */
+    PRODUCTION_REPORT("production:report", "报工与完工入库"),
+
     // ------------------------------------------------- 流程缺口
 
     /** 缺口状态流转（GapController POST /api/gaps/{id}/status，开发侧操作） */

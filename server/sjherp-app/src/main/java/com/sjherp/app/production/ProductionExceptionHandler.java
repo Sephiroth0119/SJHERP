@@ -18,6 +18,7 @@ import com.sjherp.domain.common.IllegalStateTransitionException;
 import com.sjherp.domain.production.MaterialIssueNotFoundException;
 import com.sjherp.domain.production.MaterialReturnNotFoundException;
 import com.sjherp.domain.production.MrpRunNotFoundException;
+import com.sjherp.domain.production.ProductionReportNotFoundException;
 import com.sjherp.domain.production.RoutingNotFoundException;
 import com.sjherp.domain.production.WorkOrderNotFoundException;
 
@@ -83,6 +84,13 @@ public class ProductionExceptionHandler {
     @ExceptionHandler(MaterialReturnNotFoundException.class)
     public ResponseEntity<Map<String, String>> handleMaterialReturnNotFound(
             MaterialReturnNotFoundException e) {
+        return error(HttpStatus.NOT_FOUND, e.getMessage());
+    }
+
+    /** 报工单不存在 → 404 {"error": "..."} */
+    @ExceptionHandler(ProductionReportNotFoundException.class)
+    public ResponseEntity<Map<String, String>> handleProductionReportNotFound(
+            ProductionReportNotFoundException e) {
         return error(HttpStatus.NOT_FOUND, e.getMessage());
     }
 

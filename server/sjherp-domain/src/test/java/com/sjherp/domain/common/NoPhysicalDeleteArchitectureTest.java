@@ -17,6 +17,9 @@ import com.sjherp.domain.collection.CollectionReceiptService;
 import com.sjherp.domain.gl.Voucher;
 import com.sjherp.domain.gl.VoucherRepository;
 import com.sjherp.domain.gl.VoucherService;
+import com.sjherp.domain.production.ProductionReport;
+import com.sjherp.domain.production.ProductionReportRepository;
+import com.sjherp.domain.production.ProductionReportService;
 import com.sjherp.domain.production.WorkOrder;
 import com.sjherp.domain.production.WorkOrderRepository;
 import com.sjherp.domain.production.WorkOrderService;
@@ -74,7 +77,7 @@ class NoPhysicalDeleteArchitectureTest {
             SalesOrder.class, SalesDelivery.class, SalesInvoice.class,
             CollectionReceipt.class, PaymentDisbursement.class,
             TransferDocument.class, StockCountDocument.class,
-            Voucher.class, WorkOrder.class);
+            Voucher.class, WorkOrder.class, ProductionReport.class);
 
     /** 对应领域服务（唯一写入口） */
     private static final List<Class<?>> SERVICES = List.of(
@@ -82,7 +85,7 @@ class NoPhysicalDeleteArchitectureTest {
             SalesOrderService.class, SalesDeliveryService.class, SalesInvoiceService.class,
             CollectionReceiptService.class, PaymentDisbursementService.class,
             TransferService.class, StockCountService.class,
-            VoucherService.class, WorkOrderService.class);
+            VoucherService.class, WorkOrderService.class, ProductionReportService.class);
 
     /** 对应仓储接口（持久层端口） */
     private static final List<Class<?>> REPOSITORIES = List.of(
@@ -90,7 +93,7 @@ class NoPhysicalDeleteArchitectureTest {
             SalesOrderRepository.class, SalesDeliveryRepository.class, SalesInvoiceRepository.class,
             CollectionReceiptRepository.class, PaymentDisbursementRepository.class,
             TransferRepository.class, StockCountRepository.class,
-            VoucherRepository.class, WorkOrderRepository.class);
+            VoucherRepository.class, WorkOrderRepository.class, ProductionReportRepository.class);
 
     // ----------------------------------------------------- ① 聚合无物删
 
