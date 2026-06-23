@@ -297,4 +297,8 @@ public class ProductionInfraConfig {
             DocumentNumberGenerator documentNumberGenerator) {
         return new ProductionReportAppService(productionReportService, documentNumberGenerator);
     }
+
+    // 注：M5-T06 生产成本归集与结转的 bean 拆到独立 {@link ProductionCostInfraConfig}，
+    // 因其依赖 GL 域（VoucherService/AccountingPeriodService）；放本配置会牵连仅 @Import
+    // 本配置的领料/报工集成测被迫提供 GL bean（评审 CI 修复）。
 }

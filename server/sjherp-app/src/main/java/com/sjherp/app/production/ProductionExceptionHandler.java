@@ -10,6 +10,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import com.sjherp.domain.gl.PeriodClosedException;
 import com.sjherp.domain.inventory.InsufficientStockException;
 import com.sjherp.domain.production.BillOfMaterialsNotFoundException;
 import com.sjherp.domain.production.BomCycleException;
@@ -18,6 +19,7 @@ import com.sjherp.domain.common.IllegalStateTransitionException;
 import com.sjherp.domain.production.MaterialIssueNotFoundException;
 import com.sjherp.domain.production.MaterialReturnNotFoundException;
 import com.sjherp.domain.production.MrpRunNotFoundException;
+import com.sjherp.domain.production.ProductionCostSettlementNotFoundException;
 import com.sjherp.domain.production.ProductionReportNotFoundException;
 import com.sjherp.domain.production.RoutingNotFoundException;
 import com.sjherp.domain.production.WorkOrderNotFoundException;
@@ -67,6 +69,17 @@ public class ProductionExceptionHandler {
         return error(HttpStatus.CONFLICT, e.getMessage());
     }
 
+    /** 关账期过账（成本结转单现金/成本侧凭证落在关账期）→ 409 {"error": "..."} */
+    @ExceptionHandler(PeriodClosedException.class)
+    public ResponseEntity<Map<String, String>> handlePeriodClosed(PeriodClosedException e) {
+        return error(HttpStatus.CONFLICT, e.getMessage());
+    }
+
+    // 注：不设宽泛的 IllegalStateException→409 处理器（评审 P2-2）——业务状态冲突已由
+    // IllegalStateTransitionException / PeriodClosedException（均 409）专门处理；裸 IllegalStateException
+    // 在本模块仅代表"不应发生"的不变式违例（如 id/inboundCost 重复回填），应落 500 而非可重试的 409，
+    // 且宽泛映射会隐式改变 BOM/工单/报工等既有端点契约。
+
     /** BOM 环形依赖（保存时检测到成环）→ 400 {"error": "..."} */
     @ExceptionHandler(BomCycleException.class)
     public ResponseEntity<Map<String, String>> handleBomCycle(BomCycleException e) {
@@ -91,6 +104,13 @@ public class ProductionExceptionHandler {
     @ExceptionHandler(ProductionReportNotFoundException.class)
     public ResponseEntity<Map<String, String>> handleProductionReportNotFound(
             ProductionReportNotFoundException e) {
+        return error(HttpStatus.NOT_FOUND, e.getMessage());
+    }
+
+    /** 成本结转单不存在 → 404 {"error": "..."} */
+    @ExceptionHandler(ProductionCostSettlementNotFoundException.class)
+    public ResponseEntity<Map<String, String>> handleProductionCostSettlementNotFound(
+            ProductionCostSettlementNotFoundException e) {
         return error(HttpStatus.NOT_FOUND, e.getMessage());
     }
 

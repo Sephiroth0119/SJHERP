@@ -18,6 +18,7 @@ import com.sjherp.app.consistency.ConsistencyCheckDao.PurchaseThreeWayRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.ReceivableMatchRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.SalesThreeWayRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.SettlementRollupRow;
+import com.sjherp.app.consistency.ConsistencyCheckDao.WorkOrderCostSettledRow;
 
 /**
  * 数据一致性校验服务（M3-T13 检查 Agent 核心引擎，<b>只读</b>）。
@@ -101,6 +102,10 @@ public class ConsistencyCheckService {
         }
         for (SettlementRollupRow row : dao.payableRollups()) {
             breaks.addAll(checkSettlementRollup(row));
+        }
+        // 规则11（M5-T06，D9）：已完工工单工费已结转（WARN 非阻塞）
+        for (WorkOrderCostSettledRow row : dao.workOrderCostSettled()) {
+            checkWorkOrderCostSettled(row).ifPresent(breaks::add);
         }
 
         return new ConsistencyReport(clock.instant(), breaks);
@@ -296,6 +301,21 @@ public class ConsistencyCheckService {
                             + "（" + key + "）"));
         }
         return result;
+    }
+
+    /**
+     * 规则11（M5-T06，D9，WARN）：已完工工单（completed_qty&gt;0）应有已过账成本结转行，
+     * 缺失则报 WARN（完工工费尚未月末结转，提醒非阻塞，避免误卡关账）。
+     */
+    static java.util.Optional<ConsistencyBreak> checkWorkOrderCostSettled(WorkOrderCostSettledRow row) {
+        if (row.settlementLineCount() == 0) {
+            return java.util.Optional.of(ConsistencyBreak.of(
+                    ConsistencyCheckType.WORK_ORDER_COST_UNSETTLED, row.workOrderDocNo(),
+                    row.completedQty(), BigDecimal.ZERO, ConsistencySeverity.WARN,
+                    "已完工工单工费尚未月末结转（完工量=" + nz(row.completedQty()).toPlainString()
+                            + "，无已过账成本结转记录）：" + row.workOrderDocNo()));
+        }
+        return java.util.Optional.empty();
     }
 
     private static String inventoryKey(long warehouseId, long productId) {
