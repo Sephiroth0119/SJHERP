@@ -10,6 +10,7 @@ import com.sjherp.domain.common.event.DomainEventPublisher;
 import com.sjherp.app.production.KittingCheckAppService;
 import com.sjherp.app.production.MaterialIssueAppService;
 import com.sjherp.app.production.MaterialReturnAppService;
+import com.sjherp.app.production.ProductionReportAppService;
 import com.sjherp.domain.production.BillOfMaterialsRepository;
 import com.sjherp.domain.production.BillOfMaterialsService;
 import com.sjherp.domain.production.DemandPlanRepository;
@@ -21,6 +22,8 @@ import com.sjherp.domain.production.MaterialIssueRepository;
 import com.sjherp.domain.production.MaterialIssueService;
 import com.sjherp.domain.production.MaterialReturnRepository;
 import com.sjherp.domain.production.MaterialReturnService;
+import com.sjherp.domain.production.ProductionReportRepository;
+import com.sjherp.domain.production.ProductionReportService;
 import com.sjherp.domain.production.MrpDemandSource;
 import com.sjherp.domain.production.MrpInventorySource;
 import com.sjherp.domain.production.MrpRunRepository;
@@ -35,6 +38,7 @@ import com.sjherp.infra.persistence.production.JdbcMaterialIssueRepository;
 import com.sjherp.infra.persistence.production.JdbcMaterialReturnRepository;
 import com.sjherp.infra.persistence.production.JdbcMrpDemandSource;
 import com.sjherp.infra.persistence.production.JdbcMrpRunRepository;
+import com.sjherp.infra.persistence.production.JdbcProductionReportRepository;
 import com.sjherp.infra.persistence.production.JdbcRoutingRepository;
 import com.sjherp.infra.persistence.production.JdbcWorkOrderRepository;
 
@@ -258,5 +262,39 @@ public class ProductionInfraConfig {
             WorkOrderService workOrderService,
             KittingCheckService kittingCheckService) {
         return new KittingCheckAppService(workOrderService, kittingCheckService);
+    }
+
+    // ----------------------------------------------------------------- M5-T05 报工与完工入库
+
+    @Bean
+    public ProductionReportRepository productionReportRepository(JdbcTemplate jdbcTemplate) {
+        return new JdbcProductionReportRepository(jdbcTemplate);
+    }
+
+    /**
+     * 报工单领域服务：复用 materialIssueInventoryPostingAdapter（同一 InventoryPostingPort 实现，
+     * 报工完工入库走 PRODUCTION_IN 类型，领料/退料走 PRODUCTION_ISSUE/PRODUCTION_RETURN，
+     * 端口适配器已支持所有 InventoryTxnType，无需另建适配器，D7）。
+     */
+    @Bean
+    public ProductionReportService productionReportService(
+            ProductionReportRepository productionReportRepository,
+            InventoryPostingPort materialIssueInventoryPostingAdapter,
+            WorkOrderRepository workOrderRepository,
+            MaterialIssueRepository materialIssueRepository,
+            DomainEventPublisher domainEventPublisher) {
+        return new ProductionReportService(productionReportRepository,
+                materialIssueInventoryPostingAdapter,
+                workOrderRepository,
+                materialIssueRepository,
+                domainEventPublisher);
+    }
+
+    /** 报工单应用服务：编排编号生成 + 领域委托，事务边界。 */
+    @Bean
+    public ProductionReportAppService productionReportAppService(
+            ProductionReportService productionReportService,
+            DocumentNumberGenerator documentNumberGenerator) {
+        return new ProductionReportAppService(productionReportService, documentNumberGenerator);
     }
 }
