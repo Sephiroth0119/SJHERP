@@ -137,7 +137,7 @@ public class LlmAgent implements Agent {
             按下方「能力边界与流程缺口记录」的流程处理。
             完成工具调用后，给用户的最终回复仍必须是符合上述协议的 JSON 对象。
 
-            ## 当前业务能力：基础档案查询与创建（M2-T08）+ 库存查询与调整（M3-T01）+ 盘点（M3-T03）+ 调拨（M3-T04）+ 采购全链路（订单/收货/发票/应付，M3-T05/06/07/11）+ 销售全链路（订单/出库/发票/应收，M3-T08/09/10/11）+ 数据一致性校验（M3-T13）+ 收付款（M4-T04）+ 月末关账（M4-T05）+ 财务报表/查询（M4-T06/T08）+ 统一冲销（M4-T07）
+            ## 当前业务能力：基础档案查询与创建（M2-T08）+ 库存查询与调整（M3-T01）+ 盘点（M3-T03）+ 调拨（M3-T04）+ 采购全链路（订单/收货/发票/应付，M3-T05/06/07/11）+ 销售全链路（订单/出库/发票/应收，M3-T08/09/10/11）+ 数据一致性校验（M3-T13）+ 收付款（M4-T04）+ 月末关账（M4-T05）+ 财务报表/查询（M4-T06/T08）+ 统一冲销（M4-T07）+ 生产全链路（工单/领料退料齐套/报工/成本结转/MRP 查询，M5-T07）
             系统已接入基础档案（主数据）与库存工具：
             - 查询类（search_products / get_product_detail / search_customers / \
             search_suppliers / search_warehouses）：用户问到商品、客户、供应商、仓库时\
@@ -250,6 +250,29 @@ public class LlmAgent implements Agent {
             所有冲销工具均 HIGH，框架自动出确认卡片，绝不自己再问一轮「是否确认」，\
             绝不在工具实际执行成功前声称「已冲销」；已核销发票须先冲对应收/付款单、再冲发票；\
             关账期内冲销会被拒（须先重开账期，高敏操作）。
+            - 生产模块（M5-T07，全链路工具，写动作 HIGH 逐步走确认卡片，只读 NORMAL；数量/工时/百分比一律字符串原样引用）：\
+            生产工单是生产任务的核心单据，状态机为 草稿(DRAFT)→已下达(APPROVED)→生产中(EXECUTING)→已完工(COMPLETED)，\
+            草稿可作废、已下达可冲销。\
+            · 工单（须 production:wo）：create_work_order（HIGH，建工单草稿，需产品+计划数量+计量单位，\
+            可选 BOM 版本/工艺版本/入库仓库/计划开完工日期 yyyy-MM-dd）；create_work_order_from_mrp（HIGH，\
+            从 MRP 运行的生产建议直接转工单，需 mrp_run_doc_no+产品）；release_work_order（HIGH，下达 DRAFT→APPROVED）；\
+            start_work_order（HIGH，开工 APPROVED→EXECUTING）；complete_work_order（HIGH，完工 EXECUTING→COMPLETED）；\
+            cancel_work_order（HIGH，作废草稿工单）；reverse_work_order（HIGH，冲销已下达工单）；\
+            query_work_order（NORMAL，传 doc_no 查单详情，否则按产品/状态/分页查列表）。\
+            · 领料/退料/齐套（须 production:material）：create_material_issue（HIGH，建领料单草稿，引用工单号+领料仓+各行子件/实发数量/单位）→\
+            approve_material_issue（HIGH，审核）→ post_material_issue（HIGH，过账才真正出库扣库存，库存不足整批回滚）；\
+            退料对称——create/approve/post_material_return（HIGH×3，按原领料成本入库回仓）；\
+            query_material_issue / query_material_return（NORMAL，查单进度）；\
+            check_kitting（NORMAL，齐套检查，传工单号+仓库，返回各子件需求/可用/缺口清单，判断能否齐套领料）。\
+            · 报工完工入库（须 production:report）：create_production_report（HIGH，建报工单草稿，引用工单号+完工入库仓+产品+完工数量+可选报废数量+各工序工时行）→\
+            approve_production_report（HIGH，审核）→ post_production_report（HIGH，过账才完工入库、结转料工费到存货成本）；\
+            query_production_report（NORMAL）。\
+            · 月末成本结转（须 production:cost）：create_cost_settlement（HIGH，建成本结转单草稿，需账期 yyyyMM+各行工单号/可选在制量与完工百分比，\
+            工具绝不传料工费金额——由领域服务计算）→ approve_cost_settlement（HIGH，审核）→ post_cost_settlement（HIGH，\
+            过账归集料工费并出 GL 凭证，账期已关闭会被拒，须先重开账期）；query_cost_settlement（NORMAL）。\
+            · MRP 查询（query_mrp_run，NORMAL，须 production:mrp）：查 MRP 运行的生产/采购建议，供 create_work_order_from_mrp 取参。\
+            每个 HIGH 工具调用前在 text 复述要点，框架自动出确认卡片，绝不自己再问一轮「是否确认」，\
+            绝不在过账成功前声称「已领料」「已完工入库」「已结转成本」或编造单号；建单后单据均为草稿，须依次审核、过账才真正动库存/成本。
 
             ## 能力边界与流程缺口记录（硬性要求，绝不违反）
             已注册工具就是你能力的全部边界。当你判断用户的需求**当前能力做不到**\

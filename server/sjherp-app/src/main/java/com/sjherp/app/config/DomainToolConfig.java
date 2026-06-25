@@ -108,7 +108,9 @@ import com.sjherp.domain.warehouse.WarehouseService;
  * + M4-T07c 收付款单/调拨单/盘点单冲销 Agent 工具
  * + M4-T08 财务只读查询工具），
  * <b>常驻注册</b> 69 个（所有 profile 生效，区别于
- * dev-only 的演示工具 {@link ToolConfig.DemoToolConfig} 2 个；全量注册 69+2=71）。完整清单见 docs/领域工具清单.md。
+ * dev-only 的演示工具 {@link ToolConfig.DemoToolConfig} 2 个）。
+ * 生产模块 26 个工具独立装配在 {@link ProductionToolConfig}（设计 D-6），同样常驻；
+ * 全量常驻 69+26=95，含演示 95+2=97。完整清单见 docs/领域工具清单.md。
  *
  * <p>查询类（NORMAL）29 个（多为登录即可，财务报表/账龄/凭证/核销类带 finance:* 权限点）：
  * search_products / get_product_detail /
@@ -278,11 +280,13 @@ public class DomainToolConfig {
         // 调拨/盘点单冲销（M4-T07c，HIGH：红字单——按原成本对称反向库存，不出 GL 凭证，原单转已冲销，不可逆，HITL 确认）
         registry.register(new ReverseTransferTool(transferAppService));
         registry.register(new ReverseStockCountTool(stocktakeService));
+        // 注：M5-T07 生产模块 Agent 工具（26 个）独立装配在 ProductionToolConfig（设计 D-6：
+        // 本类已临界爆炸，生产工具不再塞入），同样常驻。
         log.info("已注册领域工具（M2-T08 档案 + M3-T01c 库存 + M3-T03 盘点 + M3-T04 调拨"
                 + " + M3-T05/T06/T07 采购线 + M3-T08/T09/T10 销售线 + M3-T11 全量注册"
                 + " + M3-T13 一致性校验 + M4-T04a 资金账户 + M4-T04c 收付款单"
                 + " + M4-T05 月末结转关账 + M4-T07a 凭证冲销 + M4-T07b 采购/销售单据冲销"
                 + " + M4-T07c 收付款单/调拨单/盘点单冲销 + M4-T08 财务只读查询，常驻）："
-                + "查询 29 个（NORMAL）+ 资金账户建档 1 个（NORMAL）+ 写 41 个（HIGH）");
+                + "查询 36 个（NORMAL）+ 资金账户建档 1 个（NORMAL）+ 写 32 个（HIGH）");
     }
 }
