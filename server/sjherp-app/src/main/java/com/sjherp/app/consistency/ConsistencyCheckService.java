@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,6 +49,7 @@ public class ConsistencyCheckService {
     private final boolean allowNegativeStock;
     private final Clock clock;
 
+    @Autowired
     public ConsistencyCheckService(ConsistencyCheckDao dao,
                                    @Value("${sjherp.inventory.allow-negative-stock:false}")
                                    boolean allowNegativeStock) {
