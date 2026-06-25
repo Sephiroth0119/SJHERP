@@ -51,7 +51,7 @@ public class QueryMrpRunTool implements Tool {
                   "properties": {
                     "doc_no": { "type": "string",  "description": "MRP 运行单号（精确查询，MRP- 前缀）" },
                     "page":   { "type": "integer", "description": "页码（默认 1）" },
-                    "size":   { "type": "integer", "description": "每页条数（默认 10，最大 " + ArchiveToolSupport.MAX_ITEMS + "）" }
+                    "size":   { "type": "integer", "description": "每页条数（默认 10，最大 10）" }
                   }
                 }
                 """;
