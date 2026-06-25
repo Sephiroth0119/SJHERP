@@ -1,0 +1,77 @@
+package com.sjherp.app.tool.production;
+
+import java.util.Map;
+import java.util.Objects;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import com.sjherp.agent.tool.Tool;
+import com.sjherp.agent.tool.ToolContext;
+import com.sjherp.agent.tool.ToolResult;
+import com.sjherp.agent.tool.ToolRiskLevel;
+import com.sjherp.app.config.TransactionalWorkOrderService;
+import com.sjherp.app.tool.ArchiveToolSupport;
+import com.sjherp.domain.production.WorkOrder;
+
+/**
+ * 取消工单（DRAFT → CANCELLED，M5-T07，HIGH 确认）。
+ *
+ * <p>仅 DRAFT 状态的工单可取消；已下达/投产的工单需走冲销流程（reverse_work_order）。
+ */
+public class CancelWorkOrderTool implements Tool {
+
+    private static final Logger log = LoggerFactory.getLogger(CancelWorkOrderTool.class);
+
+    private final TransactionalWorkOrderService workOrderService;
+
+    public CancelWorkOrderTool(TransactionalWorkOrderService workOrderService) {
+        this.workOrderService = Objects.requireNonNull(workOrderService, "workOrderService");
+    }
+
+    @Override
+    public String name() { return "cancel_work_order"; }
+
+    @Override
+    public String description() {
+        return "取消草稿工单（DRAFT → CANCELLED）。"
+                + "仅草稿状态可取消；已下达/投产工单须走 reverse_work_order 冲销。"
+                + "必填：doc_no（工单单号）。";
+    }
+
+    @Override
+    public ToolRiskLevel riskLevel() { return ToolRiskLevel.HIGH; }
+
+    @Override
+    public String requiredPermission() { return "production:wo"; }
+
+    @Override
+    public String parameterSchema() {
+        return """
+                {
+                  "type": "object",
+                  "properties": {
+                    "doc_no": { "type": "string", "description": "工单单号（WO- 前缀）" }
+                  },
+                  "required": ["doc_no"]
+                }
+                """;
+    }
+
+    @Override
+    public ToolResult execute(Map<String, Object> arguments, ToolContext context) {
+        try {
+            String docNo = ArchiveToolSupport.str(arguments.get("doc_no"));
+            if (docNo == null) return ToolResult.fail("doc_no 不能为空");
+            String operator = ArchiveToolSupport.operator(context);
+
+            WorkOrder wo = workOrderService.cancel(docNo, operator);
+            log.info("工单取消成功：docNo={}, operator={}", docNo, operator);
+            return ToolResult.ok(CreateWorkOrderTool.toData(wo));
+        } catch (IllegalArgumentException e) {
+            return ToolResult.fail(e.getMessage());
+        } catch (Exception e) {
+            return ToolResult.fail("工单取消失败：" + e.getMessage());
+        }
+    }
+}
