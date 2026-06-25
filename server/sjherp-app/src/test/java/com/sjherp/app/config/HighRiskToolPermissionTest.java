@@ -20,6 +20,11 @@ import com.sjherp.app.gl.VoucherAppService;
 import com.sjherp.app.inventory.InventoryAdjustmentService;
 import com.sjherp.app.settlement.SettlementReadAppService;
 import com.sjherp.app.payment.PaymentDisbursementAppService;
+import com.sjherp.app.production.KittingCheckAppService;
+import com.sjherp.app.production.MaterialIssueAppService;
+import com.sjherp.app.production.MaterialReturnAppService;
+import com.sjherp.app.production.ProductionCostSettlementAppService;
+import com.sjherp.app.production.ProductionReportAppService;
 import com.sjherp.app.purchase.PurchaseInvoiceAppService;
 import com.sjherp.app.purchase.PurchaseOrderAppService;
 import com.sjherp.app.purchase.PurchaseReceiptAppService;
@@ -82,6 +87,15 @@ class HighRiskToolPermissionTest {
                 mock(AgingReportDao.class),
                 mock(FinancialStatementService.class),
                 mock(SettlementReadAppService.class));
+        // M5-T07 生产模块工具独立装配（设计 D-6：不塞 DomainToolConfig），同样常驻
+        new ProductionToolConfig(registry,
+                mock(TransactionalWorkOrderService.class),
+                mock(MaterialIssueAppService.class),
+                mock(MaterialReturnAppService.class),
+                mock(KittingCheckAppService.class),
+                mock(ProductionReportAppService.class),
+                mock(ProductionCostSettlementAppService.class),
+                mock(TransactionalMrpService.class));
         // dev-only：演示工具（EchoTool NORMAL + DemoHighRiskTool HIGH），一并纳入断言
         new ToolConfig.DemoToolConfig(registry);
         return registry;
@@ -119,9 +133,14 @@ class HighRiskToolPermissionTest {
         // + M4-T08 财务只读查询 8 NORMAL：query_receivable_aging / query_payable_aging /
         //   query_balance_sheet / query_income_statement / query_trial_balance /
         //   query_account_balance / query_receivable_settlements / query_payable_settlements）
-        // + 演示 2 个（echo + demo_post_document）= 71（全量注册断言基线）。
+        // + M5-T07 生产模块 26 个（工单 8 [query_work_order NORMAL + create/create_from_mrp/release/
+        //   start/complete/cancel/reverse_work_order 7 HIGH] + 领料 4 [query NORMAL + create/approve/
+        //   post 3 HIGH] + 退料 4 [query NORMAL + create/approve/post 3 HIGH] + check_kitting 1 NORMAL
+        //   + 报工 4 [query NORMAL + create/approve/post 3 HIGH] + 成本结转 4 [query NORMAL + create/
+        //   approve/post 3 HIGH] + query_mrp_run 1 NORMAL）
+        // + 演示 2 个（echo + demo_post_document）= 97（全量注册断言基线）。
         // 新增工具装配类后此处会先于权限断言提醒维护注册清单。
-        assertTrue(registryWithAllTools().all().size() >= 71,
-                "注册工具数少于 M4-T08 基线（71 个）——若调整了工具装配，请同步维护本测试的注册清单");
+        assertTrue(registryWithAllTools().all().size() >= 97,
+                "注册工具数少于 M5-T07 基线（97 个）——若调整了工具装配，请同步维护本测试的注册清单");
     }
 }
