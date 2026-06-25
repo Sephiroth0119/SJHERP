@@ -53,7 +53,7 @@ public class QueryCostSettlementTool implements Tool {
                     "period": { "type": "string",  "description": "账期 yyyyMM 过滤（可选，如 202606）" },
                     "status": { "type": "string",  "description": "状态过滤：DRAFT/APPROVED/EXECUTING/COMPLETED/CANCELLED/REVERSED" },
                     "page":   { "type": "integer", "description": "页码（默认 1）" },
-                    "size":   { "type": "integer", "description": "每页条数（默认 10，最大 " + ArchiveToolSupport.MAX_ITEMS + "）" }
+                    "size":   { "type": "integer", "description": "每页条数（默认 10，最大 10）" }
                   }
                 }
                 """;

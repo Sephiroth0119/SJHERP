@@ -8,6 +8,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sjherp.agent.tool.Tool;
 import com.sjherp.agent.tool.ToolRegistry;
 import com.sjherp.agent.tool.ToolRiskLevel;
@@ -142,5 +143,36 @@ class HighRiskToolPermissionTest {
         // 新增工具装配类后此处会先于权限断言提醒维护注册清单。
         assertTrue(registryWithAllTools().all().size() >= 97,
                 "注册工具数少于 M5-T07 基线（97 个）——若调整了工具装配，请同步维护本测试的注册清单");
+    }
+
+    /**
+     * 每个工具的 parameterSchema() 必须是合法 JSON 对象。
+     *
+     * <p>背景：OpenAiCompatibleLlmClient.buildRequestBody 把每个工具的 parameterSchema 解析为 JSON
+     * 塞进 tools 数组；任一工具 schema 非法 JSON 会令<b>整个</b> LLM 请求构建抛 LlmClientException，
+     * 导致每轮对话都返回「AI 服务暂时不可用」。Mockito 单测只验 riskLevel/permission/execute，
+     * 从不解析 schema 字符串，故此类 bug（如文本块内误写 Java 字符串拼接 {@code " + CONST + "}）
+     * 只在完整 LLM 调用时显现。本测试把「schema 可解析」固化为编译期外硬约束。
+     */
+    @Test
+    void 所有注册工具的parameterSchema必须是合法JSON() {
+        ObjectMapper mapper = new ObjectMapper();
+        for (Tool tool : registryWithAllTools().all()) {
+            String schema = tool.parameterSchema();
+            if (schema == null || schema.isBlank()) {
+                continue; // 无参工具允许空 schema
+            }
+            try {
+                var node = mapper.readTree(schema);
+                assertTrue(node.isObject(),
+                        "工具 " + tool.name() + "（" + tool.getClass().getSimpleName()
+                                + "）的 parameterSchema 必须是 JSON 对象，实际为 " + node.getNodeType());
+            } catch (Exception e) {
+                throw new AssertionError("工具 " + tool.name() + "（" + tool.getClass().getSimpleName()
+                        + "）的 parameterSchema 不是合法 JSON——会导致整个 LLM 请求构建失败、"
+                        + "每轮对话返回「AI 服务暂时不可用」。常见原因：文本块（\"\"\"...\"\"\"）内误写"
+                        + " Java 字符串拼接 \" + 常量 + \"（文本块不会插值）。原始异常：" + e.getMessage(), e);
+            }
+        }
     }
 }
