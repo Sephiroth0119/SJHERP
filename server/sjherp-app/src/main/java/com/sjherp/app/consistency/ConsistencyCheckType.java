@@ -55,7 +55,48 @@ public enum ConsistencyCheckType {
      * 有完工产出（completed_qty&gt;0）的 EXECUTING/COMPLETED 工单，应有对应的已过账成本结转行。
      * 缺失 = 完工工费尚未月末结转（提醒，不阻塞关账，避免误卡）。
      */
-    WORK_ORDER_COST_UNSETTLED("WORK_ORDER_COST_UNSETTLED", "完工工单工费结转");
+    WORK_ORDER_COST_UNSETTLED("WORK_ORDER_COST_UNSETTLED", "完工工单工费结转"),
+
+    /**
+     * 规则12（M5-T08，ERROR）：领料/退料成本勾稽——
+     * 每张 COMPLETED 领料单行 {@code issued_cost} ≡ −Σ(PRODUCTION_ISSUE 库存流水 total_cost，
+     * 按领料单号+行号匹配)；每张 COMPLETED 退料单行 {@code returned_cost} ≡ Σ(PRODUCTION_RETURN 流水 total_cost)。
+     * 领料/退料过账经库存唯一入口，回填成本必须与流水分毫不差（缺流水或不符 = 账实不一致）。
+     */
+    MATERIAL_ISSUE_COST("MATERIAL_ISSUE_COST", "领料退料成本勾稽"),
+
+    /**
+     * 规则13（M5-T08，ERROR）：完工入库成本勾稽——
+     * 每张 COMPLETED 报工单 {@code inbound_cost} ≡ Σ(PRODUCTION_IN 库存流水 total_cost，按报工单号匹配)。
+     * 完工入库经库存唯一入口，回填入库成本必须与流水一致。
+     */
+    PRODUCTION_INBOUND_COST("PRODUCTION_INBOUND_COST", "完工入库成本勾稽"),
+
+    /**
+     * 规则14（M5-T08，ERROR/WARN）：工单料费守恒（R1 硬边界）——
+     * 每工单 Σ完工入库料金额（PRODUCTION_IN inbound_cost）vs Σ领料净出库料金额
+     * （Σ COMPLETED 领料 issued_cost − Σ COMPLETED 退料 returned_cost）：
+     * diff=Σinbound−Σissued_net &gt; 0.01（1 分容差）→ ERROR（料虚增，R1 破，料凭空增值）；
+     * 0 &lt; diff ≤ 0.01 入库 round2×qty 舍入残差不报；
+     * Σinbound &lt; Σissued_net → WARN（差额 = 在产 WIP 料，正常未完工）；diff=0 = 守恒。
+     * 这是 M5 生产链里程碑出口的核心 ERROR 级勾稽（此前料虚增可静默逃逸关账闸门）。
+     */
+    WORK_ORDER_MATERIAL_CONSERVATION("WORK_ORDER_MATERIAL_CONSERVATION", "工单料费守恒"),
+
+    /**
+     * 规则15（M5-T08，ERROR）：工单完工量勾稽——
+     * {@code work_order.completed_qty} ≡ Σ(该工单已过账 COMPLETED 报工 completed_qty)。
+     * recordCompletion 累加回写若被旁路（直插库/漏写），工单完工量与报工汇总即对不上。
+     */
+    WORK_ORDER_COMPLETED_QTY("WORK_ORDER_COMPLETED_QTY", "工单完工量勾稽"),
+
+    /**
+     * 规则16（M5-T08，ERROR）：成本结转工费追加勾稽——
+     * 每张 COMPLETED 成本结转单行的完工工费增量（completed_cost − material_cost − already_transferred，
+     * 截 0 下限）≡ Σ(COST_ADJUST 库存流水 total_cost，按结转单号+行号匹配)。
+     * 工费经库存唯一入口 CostAdjust 追加到产成品，结转行口径必须与流水一致（双锚点探测网，R-T06-8）。
+     */
+    COST_SETTLEMENT_ADJUST("COST_SETTLEMENT_ADJUST", "成本结转工费勾稽");
 
     private final String code;
     private final String displayName;

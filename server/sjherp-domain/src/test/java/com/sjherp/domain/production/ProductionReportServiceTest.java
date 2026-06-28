@@ -117,6 +117,30 @@ class ProductionReportServiceTest {
         }
     }
 
+    static class FakeMaterialReturnRepository implements MaterialReturnRepository {
+        /** 预设：COMPLETED 退料单（按原领料单号关联，用于净额汇总） */
+        final List<MaterialReturn> completedReturns = new ArrayList<>();
+
+        @Override
+        public void save(MaterialReturn mr) {}
+
+        @Override
+        public Optional<MaterialReturn> findByDocNo(String docNo) {
+            return completedReturns.stream().filter(m -> m.getDocNo().equals(docNo)).findFirst();
+        }
+
+        @Override
+        public PageResult<MaterialReturn> search(MaterialReturnQuery query) {
+            // 按原领料单号 + 状态过滤（与 Jdbc 实现口径一致）
+            List<MaterialReturn> matched = completedReturns.stream()
+                    .filter(m -> query.materialIssueDocNo() == null
+                            || m.getMaterialIssueDocNo().equals(query.materialIssueDocNo()))
+                    .filter(m -> query.status() == null || m.getStatus() == query.status())
+                    .toList();
+            return new PageResult<>(matched, matched.size(), query.page(), query.size());
+        }
+    }
+
     /**
      * Fake 库存过账端口：
      * - InboundCommand → totalCost = quantity × unitCost（正数，完工入库）
@@ -170,6 +194,7 @@ class ProductionReportServiceTest {
     private FakeProductionReportRepository prRepo;
     private FakeWorkOrderRepository woRepo;
     private FakeMaterialIssueRepository issueRepo;
+    private FakeMaterialReturnRepository returnRepo;
     private FakeInventoryPostingPort inventoryPort;
     private ProductionReportService service;
     private final DomainEventPublisher eventPublisher = event -> {};
@@ -179,8 +204,9 @@ class ProductionReportServiceTest {
         prRepo = new FakeProductionReportRepository();
         woRepo = new FakeWorkOrderRepository();
         issueRepo = new FakeMaterialIssueRepository();
+        returnRepo = new FakeMaterialReturnRepository();
         inventoryPort = new FakeInventoryPostingPort();
-        service = new ProductionReportService(prRepo, inventoryPort, woRepo, issueRepo, eventPublisher);
+        service = new ProductionReportService(prRepo, inventoryPort, woRepo, issueRepo, returnRepo, eventPublisher);
     }
 
     // ---------------------------------------------------------------- 辅助：创建开工工单
@@ -197,7 +223,7 @@ class ProductionReportServiceTest {
         return wo;
     }
 
-    /** 构建一个已过账的领料单，模拟工单已领料成本（供 sumIssuedCostForWorkOrder 汇总用）。 */
+    /** 构建一个已过账的领料单，模拟工单已领料成本（供 sumNetIssuedCostForWorkOrder 净额汇总用）。 */
     private void addCompletedIssue(String woDocNo, BigDecimal issuedCostPerLine) {
         // 用 restore 直接构建 COMPLETED 状态的领料单（含 issuedCost 已填的行）
         MaterialIssueLine line = MaterialIssueLine.restore(
@@ -209,6 +235,17 @@ class ProductionReportServiceTest {
                 DocumentStatus.COMPLETED, null, null,
                 List.of(line), "op", "op");
         issueRepo.completedIssues.add(mi);
+    }
+
+    /** 构建一个已过账的退料单（按原领料单号关联），供净额汇总（修复1 P2-A 方案①）测试用。 */
+    private void addCompletedReturn(String materialIssueDocNo, BigDecimal returnedCost) {
+        MaterialReturnLine line = MaterialReturnLine.restore(
+                1L, 1, 200L, new BigDecimal("2"), 1L, returnedCost, 1);
+        MaterialReturn mr = MaterialReturn.restore(
+                "MR-00" + (returnRepo.completedReturns.size() + 1),
+                materialIssueDocNo, 1L, null,
+                DocumentStatus.COMPLETED, List.of(line), "op");
+        returnRepo.completedReturns.add(mr);
     }
 
     // ---------------------------------------------------------------- 建单校验
@@ -342,7 +379,7 @@ class ProductionReportServiceTest {
 
         assertThatThrownBy(() -> service.post("PR-001", "op"))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("issuedCost");
+                .hasMessageContaining("无可结转的新增领料成本");
     }
 
     @Test
@@ -405,6 +442,75 @@ class ProductionReportServiceTest {
         // pr2 仍停在 APPROVED，工单 completedQty 不前进（仍为 pr1 的 3）
         assertThat(prRepo.store.get("PR-002").getStatus()).isEqualTo(DocumentStatus.APPROVED);
         assertThat(woRepo.store.get("WO-001").getCompletedQty()).isEqualByComparingTo("3");
+    }
+
+    // ---------------------------------------------------------------- 修复1（P2-A 方案①）：净领料口径
+
+    @Test
+    void post_报工前退料_净额减退料_增量按净额结转() {
+        // 用户裁定 P2-A 方案①：净额 = Σ领料 − Σ退料。
+        // 领料 300（MI-001）→ 退料 100（关联 MI-001）→ 净领料 200 → 完工入库料应 = 200（非毛额 300）。
+        buildExecutingWorkOrder("WO-001");
+        addCompletedIssue("WO-001", new BigDecimal("300.00"));
+        addCompletedReturn("MI-001", new BigDecimal("100.00"));
+
+        List<ProductionReportLineInput> lines = List.of(
+                new ProductionReportLineInput(1, "焊接", null, new BigDecimal("2"), null, 1L));
+        service.create("PR-001", "WO-001", 1L, PRODUCT_ID,
+                new BigDecimal("5"), null, 1L, null, lines, "op");
+        service.approve("PR-001", "op");
+
+        ProductionReport posted = service.post("PR-001", "op");
+
+        // 净额 200，increment=200-0=200，unitCost=200/5=40，totalCost=5*40=200
+        assertThat(posted.getInboundCost()).isEqualByComparingTo("200.00");
+    }
+
+    @Test
+    void post_报工后退料致净额低于已入库_增量非正_拒绝过账() {
+        // 修复1 + D3 扩展：先报工结转 300（净额=毛额=300），再退料 100 使净额降到 200，
+        // 后续报工增量 = 200 − 300 = −100 ≤ 0 → 拒绝过账（防 Σ完工入库料 > Σ净领料）。
+        buildExecutingWorkOrder("WO-001");
+        addCompletedIssue("WO-001", new BigDecimal("300.00"));
+
+        List<ProductionReportLineInput> lines = List.of(
+                new ProductionReportLineInput(1, "焊接", null, new BigDecimal("2"), null, 1L));
+        service.create("PR-001", "WO-001", 1L, PRODUCT_ID,
+                new BigDecimal("3"), null, 1L, null, lines, "op");
+        service.approve("PR-001", "op");
+        ProductionReport pr1 = service.post("PR-001", "op");
+        assertThat(pr1.getInboundCost()).isEqualByComparingTo("300.00");
+
+        // 报工后退料 100：净领料降至 200，已入库 300
+        addCompletedReturn("MI-001", new BigDecimal("100.00"));
+        service.create("PR-002", "WO-001", 1L, PRODUCT_ID,
+                new BigDecimal("4"), null, 1L, null, lines, "op");
+        service.approve("PR-002", "op");
+
+        assertThatThrownBy(() -> service.post("PR-002", "op"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("新增领料成本");
+        // pr2 停在 APPROVED，工单 completedQty 仍为 pr1 的 3
+        assertThat(prRepo.store.get("PR-002").getStatus()).isEqualTo(DocumentStatus.APPROVED);
+        assertThat(woRepo.store.get("WO-001").getCompletedQty()).isEqualByComparingTo("3");
+    }
+
+    @Test
+    void post_无退料时净额等于毛额_回归不破() {
+        // 回归：无任何退料单时，净额 == 毛领料额，行为与修复前一致。
+        buildExecutingWorkOrder("WO-001");
+        addCompletedIssue("WO-001", new BigDecimal("150.00"));  // 无退料
+
+        List<ProductionReportLineInput> lines = List.of(
+                new ProductionReportLineInput(1, "焊接", null, new BigDecimal("2"), null, 1L));
+        service.create("PR-001", "WO-001", 1L, PRODUCT_ID,
+                new BigDecimal("5"), null, 1L, null, lines, "op");
+        service.approve("PR-001", "op");
+
+        ProductionReport posted = service.post("PR-001", "op");
+
+        // 净额=毛额=150，unitCost=150/5=30，totalCost=5*30=150
+        assertThat(posted.getInboundCost()).isEqualByComparingTo("150.00");
     }
 
     // ---------------------------------------------------------------- 作废
