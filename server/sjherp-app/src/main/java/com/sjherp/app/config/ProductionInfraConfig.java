@@ -282,11 +282,13 @@ public class ProductionInfraConfig {
             InventoryPostingPort materialIssueInventoryPostingAdapter,
             WorkOrderRepository workOrderRepository,
             MaterialIssueRepository materialIssueRepository,
+            MaterialReturnRepository materialReturnRepository,
             DomainEventPublisher domainEventPublisher) {
         return new ProductionReportService(productionReportRepository,
                 materialIssueInventoryPostingAdapter,
                 workOrderRepository,
                 materialIssueRepository,
+                materialReturnRepository,
                 domainEventPublisher);
     }
 

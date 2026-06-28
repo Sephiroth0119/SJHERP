@@ -23,7 +23,7 @@ import com.sjherp.domain.inventory.StockMovementResult;
  * <p>过账编排（§3 设计真源）：
  * <ol>
  *   <li>加载报工单，校验关联工单存在且 EXECUTING</li>
- *   <li>计算单位成本 = Σ(工单所有已过账领料单 issuedCost) / completedQty；为零则拒绝（D3）</li>
+ *   <li>计算单位成本 = 工单净领料成本增量(Σ领料 issuedCost − Σ退料 returnedCost − 前序已结转) / completedQty；为零则拒绝（D3）</li>
  *   <li>pr.startExecution → InboundCommand(PRODUCTION_IN) → 库存唯一入口 → assignInboundCost</li>
  *   <li>workOrder.recordCompletion + save 工单</li>
  *   <li>pr.complete → save 报工单</li>
@@ -41,17 +41,20 @@ public class ProductionReportService {
     private final InventoryPostingPort inventory;
     private final WorkOrderRepository workOrderRepository;
     private final MaterialIssueRepository issueRepository;
+    private final MaterialReturnRepository returnRepository;
     private final DomainEventPublisher eventPublisher;
 
     public ProductionReportService(ProductionReportRepository repository,
                                     InventoryPostingPort inventory,
                                     WorkOrderRepository workOrderRepository,
                                     MaterialIssueRepository issueRepository,
+                                    MaterialReturnRepository returnRepository,
                                     DomainEventPublisher eventPublisher) {
         this.repository = Objects.requireNonNull(repository, "repository 不能为空");
         this.inventory = Objects.requireNonNull(inventory, "inventory 不能为空");
         this.workOrderRepository = Objects.requireNonNull(workOrderRepository, "workOrderRepository 不能为空");
         this.issueRepository = Objects.requireNonNull(issueRepository, "issueRepository 不能为空");
+        this.returnRepository = Objects.requireNonNull(returnRepository, "returnRepository 不能为空");
         this.eventPublisher = Objects.requireNonNull(eventPublisher, "eventPublisher 不能为空");
     }
 
@@ -142,7 +145,7 @@ public class ProductionReportService {
      * <p>过账编排（§3）：
      * <ol>
      *   <li>校验关联工单存在且 EXECUTING</li>
-     *   <li>unitCost = Σ 工单已过账领料单 issuedCost / completedQty；为零拒绝（D3）</li>
+     *   <li>unitCost = 工单净领料成本增量（Σ领料 issuedCost − Σ退料 returnedCost − 前序已结转）/ completedQty；为零拒绝（D3）</li>
      *   <li>pr.startExecution → PRODUCTION_IN 入库 → assignInboundCost</li>
      *   <li>workOrder.recordCompletion + save 工单</li>
      *   <li>pr.complete + save 报工单</li>
@@ -166,15 +169,16 @@ public class ProductionReportService {
         }
 
         // 2. 计算完工入库单位成本。
-        //    本次应结转料费 = 工单全部已过账领料 issuedCost 之和 − 前序报工已结转料费（inbound_cost 累计）。
-        //    这样 Σ完工入库金额 ≡ Σ领料出库金额（料的进出守恒，设计真源 R1），分批完工不重复计入同一批料费（评审 P0）。
-        BigDecimal totalIssuedCost = sumIssuedCostForWorkOrder(pr.getWorkOrderDocNo());
+        //    本次应结转料费 = 工单全部已过账领料净额（Σ领料 issuedCost − Σ退料 returnedCost）− 前序报工已结转料费（inbound_cost 累计）。
+        //    净额口径（M5-T08 修复1 / 用户裁定 P2-A 方案①）：退料冲减料基，使「报工后退料」路径下
+        //    Σ完工入库料 ≡ Σ净领料 恒成立（料的进出守恒，设计真源 R1）；分批完工不重复计入同一批料费（评审 P0）。
+        BigDecimal netIssuedCost = sumNetIssuedCostForWorkOrder(pr.getWorkOrderDocNo());
         BigDecimal alreadyInboundCost = repository.sumInboundCostByWorkOrder(pr.getWorkOrderDocNo());
-        BigDecimal incrementalCost = totalIssuedCost.subtract(alreadyInboundCost);
+        BigDecimal incrementalCost = netIssuedCost.subtract(alreadyInboundCost);
         if (incrementalCost.compareTo(BigDecimal.ZERO) <= 0) {
             throw new IllegalArgumentException("工单[" + pr.getWorkOrderDocNo()
-                    + "] 无可结转的新增领料成本（已过账领料 issuedCost 合计=" + totalIssuedCost.toPlainString()
-                    + "，前序报工已结转=" + alreadyInboundCost.toPlainString()
+                    + "] 无可结转的新增领料成本（已过账净领料成本=" + netIssuedCost.toPlainString()
+                    + "[Σ领料−Σ退料]，前序报工已结转=" + alreadyInboundCost.toPlainString()
                     + "），拒绝零成本完工入库（D3 / 防重复入账 R1）");
         }
         BigDecimal unitCost = incrementalCost.divide(
@@ -227,25 +231,51 @@ public class ProductionReportService {
     }
 
     /**
-     * 汇总该工单所有已过账领料单的 issuedCost 合计（料费汇总口径：取 COMPLETED 状态领料单各行 issuedCost 之和）。
+     * 汇总该工单的<b>净领料成本</b>（M5-T08 修复1 / 用户裁定 P2-A 方案①）：
+     * <pre>净额 = Σ(COMPLETED 领料单各行 issuedCost) − Σ(关联 COMPLETED 退料单 returnedCost)</pre>
+     *
+     * <p>退料经 {@code material_issue_doc_no} 关联领料单，领料单才有 {@code work_order_doc_no}；
+     * 故先取该工单所有 COMPLETED 领料单（同时收集其单号），再按各领料单号查其 COMPLETED 退料单累计退回成本。
+     * 净额口径确保 R1「Σ完工入库料成本 ≡ Σ领料净出库成本」在「报工后退料」路径下恒成立
+     * （仅累加毛领料时，退料路径会使 Σ完工入库料 &gt; Σ净领料，违 R1）。
      */
-    private BigDecimal sumIssuedCostForWorkOrder(String workOrderDocNo) {
-        // 取该工单关联的所有 COMPLETED 领料单，累计各行 issuedCost
+    private BigDecimal sumNetIssuedCostForWorkOrder(String workOrderDocNo) {
+        // ① 取该工单关联的所有 COMPLETED 领料单，累计各行 issuedCost（毛额），并收集领料单号供退料汇总
         // 使用 search 按工单号查全量（大工单领料单不会太多，小企业场景）
         int page = 1;  // MaterialIssueQuery 页码从 1 起
-        BigDecimal total = BigDecimal.ZERO;
+        BigDecimal grossIssued = BigDecimal.ZERO;
+        List<String> issueDocNos = new ArrayList<>();
         while (true) {
             var result = issueRepository.search(new MaterialIssueQuery(workOrderDocNo,
                     DocumentStatus.COMPLETED, page, 200));
             for (MaterialIssue mi : result.items()) {
-                total = total.add(mi.totalIssuedCost());
+                grossIssued = grossIssued.add(mi.totalIssuedCost());
+                issueDocNos.add(mi.getDocNo());
             }
             if (result.items().size() < 200) {
                 break;
             }
             page++;
         }
-        return total.setScale(CostingStrategy.AMOUNT_SCALE, CostingStrategy.ROUNDING);
+        // ② 按各领料单号累计其 COMPLETED 退料单 returnedCost（退料按原领料成本退回，T04）
+        BigDecimal totalReturned = BigDecimal.ZERO;
+        for (String issueDocNo : issueDocNos) {
+            int rPage = 1;  // MaterialReturnQuery 页码从 1 起
+            while (true) {
+                var rResult = returnRepository.search(new MaterialReturnQuery(issueDocNo,
+                        DocumentStatus.COMPLETED, rPage, 200));
+                for (MaterialReturn mr : rResult.items()) {
+                    totalReturned = totalReturned.add(mr.totalReturnedCost());
+                }
+                if (rResult.items().size() < 200) {
+                    break;
+                }
+                rPage++;
+            }
+        }
+        // 净额 = 毛领料 − 退料（R1：Σ完工入库料 ≡ Σ净领料）
+        return grossIssued.subtract(totalReturned)
+                .setScale(CostingStrategy.AMOUNT_SCALE, CostingStrategy.ROUNDING);
     }
 
     /** 幂等键：PRODUCTION_REPORT:docNo:行号 */
