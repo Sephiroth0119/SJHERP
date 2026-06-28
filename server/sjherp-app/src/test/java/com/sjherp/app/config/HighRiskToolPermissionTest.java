@@ -8,6 +8,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sjherp.agent.tool.Tool;
 import com.sjherp.agent.tool.ToolRegistry;
 import com.sjherp.agent.tool.ToolRiskLevel;
@@ -20,6 +21,11 @@ import com.sjherp.app.gl.VoucherAppService;
 import com.sjherp.app.inventory.InventoryAdjustmentService;
 import com.sjherp.app.settlement.SettlementReadAppService;
 import com.sjherp.app.payment.PaymentDisbursementAppService;
+import com.sjherp.app.production.KittingCheckAppService;
+import com.sjherp.app.production.MaterialIssueAppService;
+import com.sjherp.app.production.MaterialReturnAppService;
+import com.sjherp.app.production.ProductionCostSettlementAppService;
+import com.sjherp.app.production.ProductionReportAppService;
 import com.sjherp.app.purchase.PurchaseInvoiceAppService;
 import com.sjherp.app.purchase.PurchaseOrderAppService;
 import com.sjherp.app.purchase.PurchaseReceiptAppService;
@@ -82,6 +88,15 @@ class HighRiskToolPermissionTest {
                 mock(AgingReportDao.class),
                 mock(FinancialStatementService.class),
                 mock(SettlementReadAppService.class));
+        // M5-T07 生产模块工具独立装配（设计 D-6：不塞 DomainToolConfig），同样常驻
+        new ProductionToolConfig(registry,
+                mock(TransactionalWorkOrderService.class),
+                mock(MaterialIssueAppService.class),
+                mock(MaterialReturnAppService.class),
+                mock(KittingCheckAppService.class),
+                mock(ProductionReportAppService.class),
+                mock(ProductionCostSettlementAppService.class),
+                mock(TransactionalMrpService.class));
         // dev-only：演示工具（EchoTool NORMAL + DemoHighRiskTool HIGH），一并纳入断言
         new ToolConfig.DemoToolConfig(registry);
         return registry;
@@ -119,9 +134,45 @@ class HighRiskToolPermissionTest {
         // + M4-T08 财务只读查询 8 NORMAL：query_receivable_aging / query_payable_aging /
         //   query_balance_sheet / query_income_statement / query_trial_balance /
         //   query_account_balance / query_receivable_settlements / query_payable_settlements）
-        // + 演示 2 个（echo + demo_post_document）= 71（全量注册断言基线）。
+        // + M5-T07 生产模块 26 个（工单 8 [query_work_order NORMAL + create/create_from_mrp/release/
+        //   start/complete/cancel/reverse_work_order 7 HIGH] + 领料 4 [query NORMAL + create/approve/
+        //   post 3 HIGH] + 退料 4 [query NORMAL + create/approve/post 3 HIGH] + check_kitting 1 NORMAL
+        //   + 报工 4 [query NORMAL + create/approve/post 3 HIGH] + 成本结转 4 [query NORMAL + create/
+        //   approve/post 3 HIGH] + query_mrp_run 1 NORMAL）
+        // + 演示 2 个（echo + demo_post_document）= 97（全量注册断言基线）。
         // 新增工具装配类后此处会先于权限断言提醒维护注册清单。
-        assertTrue(registryWithAllTools().all().size() >= 71,
-                "注册工具数少于 M4-T08 基线（71 个）——若调整了工具装配，请同步维护本测试的注册清单");
+        assertTrue(registryWithAllTools().all().size() >= 97,
+                "注册工具数少于 M5-T07 基线（97 个）——若调整了工具装配，请同步维护本测试的注册清单");
+    }
+
+    /**
+     * 每个工具的 parameterSchema() 必须是合法 JSON 对象。
+     *
+     * <p>背景：OpenAiCompatibleLlmClient.buildRequestBody 把每个工具的 parameterSchema 解析为 JSON
+     * 塞进 tools 数组；任一工具 schema 非法 JSON 会令<b>整个</b> LLM 请求构建抛 LlmClientException，
+     * 导致每轮对话都返回「AI 服务暂时不可用」。Mockito 单测只验 riskLevel/permission/execute，
+     * 从不解析 schema 字符串，故此类 bug（如文本块内误写 Java 字符串拼接 {@code " + CONST + "}）
+     * 只在完整 LLM 调用时显现。本测试把「schema 可解析」固化为编译期外硬约束。
+     */
+    @Test
+    void 所有注册工具的parameterSchema必须是合法JSON() {
+        ObjectMapper mapper = new ObjectMapper();
+        for (Tool tool : registryWithAllTools().all()) {
+            String schema = tool.parameterSchema();
+            if (schema == null || schema.isBlank()) {
+                continue; // 无参工具允许空 schema
+            }
+            try {
+                var node = mapper.readTree(schema);
+                assertTrue(node.isObject(),
+                        "工具 " + tool.name() + "（" + tool.getClass().getSimpleName()
+                                + "）的 parameterSchema 必须是 JSON 对象，实际为 " + node.getNodeType());
+            } catch (Exception e) {
+                throw new AssertionError("工具 " + tool.name() + "（" + tool.getClass().getSimpleName()
+                        + "）的 parameterSchema 不是合法 JSON——会导致整个 LLM 请求构建失败、"
+                        + "每轮对话返回「AI 服务暂时不可用」。常见原因：文本块（\"\"\"...\"\"\"）内误写"
+                        + " Java 字符串拼接 \" + 常量 + \"（文本块不会插值）。原始异常：" + e.getMessage(), e);
+            }
+        }
     }
 }

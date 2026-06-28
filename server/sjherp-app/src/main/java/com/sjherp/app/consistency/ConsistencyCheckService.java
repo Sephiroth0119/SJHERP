@@ -6,18 +6,26 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.sjherp.app.consistency.ConsistencyCheckDao.BalanceRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.CogsMatchRow;
+import com.sjherp.app.consistency.ConsistencyCheckDao.CostSettlementAdjustRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.InventoryLedgerRow;
+import com.sjherp.app.consistency.ConsistencyCheckDao.MaterialIssueCostRow;
+import com.sjherp.app.consistency.ConsistencyCheckDao.MaterialReturnCostRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.PayableMatchRow;
+import com.sjherp.app.consistency.ConsistencyCheckDao.ProductionInboundCostRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.PurchaseThreeWayRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.ReceivableMatchRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.SalesThreeWayRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.SettlementRollupRow;
+import com.sjherp.app.consistency.ConsistencyCheckDao.WorkOrderCompletedQtyRow;
+import com.sjherp.app.consistency.ConsistencyCheckDao.WorkOrderCostSettledRow;
+import com.sjherp.app.consistency.ConsistencyCheckDao.WorkOrderMaterialRow;
 
 /**
  * 数据一致性校验服务（M3-T13 检查 Agent 核心引擎，<b>只读</b>）。
@@ -43,10 +51,18 @@ import com.sjherp.app.consistency.ConsistencyCheckDao.SettlementRollupRow;
 @Service
 public class ConsistencyCheckService {
 
+    /**
+     * 规则14 料费守恒的舍入残差容差（1 分）。增量料费模型使 Σ完工入库料收敛到 Σ净领料，
+     * 仅差最后一张报工自身「单位成本 round2 × completedQty」的舍入残差（≤ ~0.0000005×qty 量级），
+     * 0.01 容差足以吸收；超过 1 分方判真料虚增（R1 破坏）。
+     */
+    private static final BigDecimal ONE_CENT = new BigDecimal("0.01");
+
     private final ConsistencyCheckDao dao;
     private final boolean allowNegativeStock;
     private final Clock clock;
 
+    @Autowired
     public ConsistencyCheckService(ConsistencyCheckDao dao,
                                    @Value("${sjherp.inventory.allow-negative-stock:false}")
                                    boolean allowNegativeStock) {
@@ -101,6 +117,33 @@ public class ConsistencyCheckService {
         }
         for (SettlementRollupRow row : dao.payableRollups()) {
             breaks.addAll(checkSettlementRollup(row));
+        }
+        // 规则11（M5-T06，D9）：已完工工单工费已结转（WARN 非阻塞）
+        for (WorkOrderCostSettledRow row : dao.workOrderCostSettled()) {
+            checkWorkOrderCostSettled(row).ifPresent(breaks::add);
+        }
+        // 规则12（M5-T08）：领料/退料成本勾稽（领料 + 退料两侧，ERROR）
+        for (MaterialIssueCostRow row : dao.materialIssueCostMatches()) {
+            checkMaterialIssueCost(row).ifPresent(breaks::add);
+        }
+        for (MaterialReturnCostRow row : dao.materialReturnCostMatches()) {
+            checkMaterialReturnCost(row).ifPresent(breaks::add);
+        }
+        // 规则13（M5-T08）：完工入库成本勾稽（ERROR）
+        for (ProductionInboundCostRow row : dao.productionInboundCostMatches()) {
+            checkProductionInboundCost(row).ifPresent(breaks::add);
+        }
+        // 规则14（M5-T08）：工单料费守恒 R1（料虚增 ERROR / WIP 差额 WARN）
+        for (WorkOrderMaterialRow row : dao.workOrderMaterialConservation()) {
+            checkWorkOrderMaterialConservation(row).ifPresent(breaks::add);
+        }
+        // 规则15（M5-T08）：工单完工量勾稽（ERROR）
+        for (WorkOrderCompletedQtyRow row : dao.workOrderCompletedQty()) {
+            checkWorkOrderCompletedQty(row).ifPresent(breaks::add);
+        }
+        // 规则16（M5-T08）：成本结转工费追加勾稽（ERROR）
+        for (CostSettlementAdjustRow row : dao.costSettlementAdjustMatches()) {
+            checkCostSettlementAdjust(row).ifPresent(breaks::add);
         }
 
         return new ConsistencyReport(clock.instant(), breaks);
@@ -296,6 +339,157 @@ public class ConsistencyCheckService {
                             + "（" + key + "）"));
         }
         return result;
+    }
+
+    /**
+     * 规则11（M5-T06，D9，WARN）：已完工工单（completed_qty&gt;0）应有已过账成本结转行，
+     * 缺失则报 WARN（完工工费尚未月末结转，提醒非阻塞，避免误卡关账）。
+     */
+    static java.util.Optional<ConsistencyBreak> checkWorkOrderCostSettled(WorkOrderCostSettledRow row) {
+        if (row.settlementLineCount() == 0) {
+            return java.util.Optional.of(ConsistencyBreak.of(
+                    ConsistencyCheckType.WORK_ORDER_COST_UNSETTLED, row.workOrderDocNo(),
+                    row.completedQty(), BigDecimal.ZERO, ConsistencySeverity.WARN,
+                    "已完工工单工费尚未月末结转（完工量=" + nz(row.completedQty()).toPlainString()
+                            + "，无已过账成本结转记录）：" + row.workOrderDocNo()));
+        }
+        return java.util.Optional.empty();
+    }
+
+    /**
+     * 规则12 领料侧（ERROR）：COMPLETED 领料单行 issued_cost = −Σ PRODUCTION_ISSUE 流水金额。
+     * 无对应出库流水（issueTxnCostSum 为 null）或不符均报 ERROR。
+     */
+    static java.util.Optional<ConsistencyBreak> checkMaterialIssueCost(MaterialIssueCostRow row) {
+        String key = row.docNo() + "#" + row.lineNo();
+        BigDecimal issued = nz(row.issuedCost());
+        BigDecimal txnSum = row.issueTxnCostSum();
+        if (txnSum == null) {
+            return java.util.Optional.of(ConsistencyBreak.of(ConsistencyCheckType.MATERIAL_ISSUE_COST,
+                    key, issued, null, ConsistencySeverity.ERROR,
+                    "领料行有 issued_cost 但无对应 PRODUCTION_ISSUE 出库流水：" + key));
+        }
+        if (issued.compareTo(txnSum) != 0) {
+            return java.util.Optional.of(ConsistencyBreak.of(ConsistencyCheckType.MATERIAL_ISSUE_COST,
+                    key, issued, txnSum, ConsistencySeverity.ERROR,
+                    "领料行 issued_cost 与 PRODUCTION_ISSUE 出库流水金额不符：" + key));
+        }
+        return java.util.Optional.empty();
+    }
+
+    /**
+     * 规则12 退料侧（ERROR）：COMPLETED 退料单行 returned_cost = Σ PRODUCTION_RETURN 流水金额（入库为正）。
+     * 无对应入库流水（returnTxnCostSum 为 null）或不符均报 ERROR。
+     */
+    static java.util.Optional<ConsistencyBreak> checkMaterialReturnCost(MaterialReturnCostRow row) {
+        String key = row.docNo() + "#" + row.lineNo();
+        BigDecimal returned = nz(row.returnedCost());
+        BigDecimal txnSum = row.returnTxnCostSum();
+        if (txnSum == null) {
+            return java.util.Optional.of(ConsistencyBreak.of(ConsistencyCheckType.MATERIAL_ISSUE_COST,
+                    key, returned, null, ConsistencySeverity.ERROR,
+                    "退料行有 returned_cost 但无对应 PRODUCTION_RETURN 入库流水：" + key));
+        }
+        if (returned.compareTo(txnSum) != 0) {
+            return java.util.Optional.of(ConsistencyBreak.of(ConsistencyCheckType.MATERIAL_ISSUE_COST,
+                    key, returned, txnSum, ConsistencySeverity.ERROR,
+                    "退料行 returned_cost 与 PRODUCTION_RETURN 入库流水金额不符：" + key));
+        }
+        return java.util.Optional.empty();
+    }
+
+    /**
+     * 规则13（ERROR）：COMPLETED 报工单 inbound_cost = Σ PRODUCTION_IN 流水金额。
+     * 无对应入库流水（productionInCostSum 为 null）或不符均报 ERROR。
+     */
+    static java.util.Optional<ConsistencyBreak> checkProductionInboundCost(ProductionInboundCostRow row) {
+        String key = row.docNo();
+        BigDecimal inbound = nz(row.inboundCost());
+        BigDecimal txnSum = row.productionInCostSum();
+        if (txnSum == null) {
+            return java.util.Optional.of(ConsistencyBreak.of(ConsistencyCheckType.PRODUCTION_INBOUND_COST,
+                    key, inbound, null, ConsistencySeverity.ERROR,
+                    "报工单有 inbound_cost 但无对应 PRODUCTION_IN 入库流水：" + key));
+        }
+        if (inbound.compareTo(txnSum) != 0) {
+            return java.util.Optional.of(ConsistencyBreak.of(ConsistencyCheckType.PRODUCTION_INBOUND_COST,
+                    key, inbound, txnSum, ConsistencySeverity.ERROR,
+                    "报工单 inbound_cost 与 PRODUCTION_IN 入库流水金额不符：" + key));
+        }
+        return java.util.Optional.empty();
+    }
+
+    /**
+     * 规则14（ERROR/WARN）：工单料费守恒（R1）——Σ完工入库料金额 vs Σ净领料（领料−退料）：
+     * <ul>
+     *   <li>diff = Σinbound − Σissued_net &gt; 0.01 → ERROR（料虚增，R1 破坏，料凭空增值，须红冲纠错）；</li>
+     *   <li>0 &lt; diff ≤ 0.01 → 入库单位成本 round2×qty 的舍入残差，<b>不报</b>（非真虚增）；</li>
+     *   <li>Σinbound &lt; Σissued_net → WARN（差额 = 在产 WIP 料，正常未完工，不阻塞关账）；</li>
+     *   <li>diff = 0 → 守恒，不报。</li>
+     * </ul>
+     * <p>容差仅加在 ERROR 侧（料虚增判定）：避免 ≤1 分舍入残差被误判为料虚增而 ERROR 阻塞月末关账闸门
+     * （评审 P2-2）。WARN 侧（在产 WIP）不受影响。
+     */
+    static java.util.Optional<ConsistencyBreak> checkWorkOrderMaterialConservation(WorkOrderMaterialRow row) {
+        String key = row.workOrderDocNo();
+        BigDecimal inbound = nz(row.inboundSum());
+        BigDecimal issuedNet = nz(row.issuedSum()).subtract(nz(row.returnedSum()));
+        BigDecimal diff = inbound.subtract(issuedNet);
+        // 料虚增：仅当超出 1 分容差才 ERROR（0 < diff ≤ 0.01 为舍入残差，不报）
+        if (diff.compareTo(ONE_CENT) > 0) {
+            return java.util.Optional.of(ConsistencyBreak.of(
+                    ConsistencyCheckType.WORK_ORDER_MATERIAL_CONSERVATION, key, issuedNet, inbound,
+                    ConsistencySeverity.ERROR,
+                    "工单料费守恒破坏（R1）：Σ完工入库料金额 " + inbound.toPlainString()
+                            + " 超过 Σ净领料金额 " + issuedNet.toPlainString() + "（料虚增）：" + key));
+        }
+        if (diff.signum() < 0) {
+            return java.util.Optional.of(ConsistencyBreak.of(
+                    ConsistencyCheckType.WORK_ORDER_MATERIAL_CONSERVATION, key, issuedNet, inbound,
+                    ConsistencySeverity.WARN,
+                    "工单尚有在产料未完工：Σ净领料金额 " + issuedNet.toPlainString()
+                            + " − Σ完工入库料金额 " + inbound.toPlainString() + " = 在产 WIP 料："
+                            + issuedNet.subtract(inbound).toPlainString() + "（" + key + "）"));
+        }
+        return java.util.Optional.empty();
+    }
+
+    /**
+     * 规则15（ERROR）：工单 completed_qty = Σ该工单已过账 COMPLETED 报工 completed_qty，不符报 ERROR。
+     */
+    static java.util.Optional<ConsistencyBreak> checkWorkOrderCompletedQty(WorkOrderCompletedQtyRow row) {
+        BigDecimal expected = nz(row.completedQty());
+        BigDecimal reportSum = nz(row.reportCompletedQtySum());
+        if (expected.compareTo(reportSum) != 0) {
+            return java.util.Optional.of(ConsistencyBreak.of(
+                    ConsistencyCheckType.WORK_ORDER_COMPLETED_QTY, row.workOrderDocNo(),
+                    expected, reportSum, ConsistencySeverity.ERROR,
+                    "工单完工量与报工汇总不符：工单 completed_qty=" + expected.toPlainString()
+                            + "，Σ报工 completed_qty=" + reportSum.toPlainString() + "（"
+                            + row.workOrderDocNo() + "）"));
+        }
+        return java.util.Optional.empty();
+    }
+
+    /**
+     * 规则16（ERROR）：成本结转行工费增量 = Σ COST_ADJUST 流水金额。
+     * 增量原值 = completed_cost − material_cost − already_transferred，过账仅在增量 &gt; 0 时出 COST_ADJUST 流水，
+     * 故比对前对增量截 0 下限（增量 ≤0 时应无流水 Σ=0）。截后值与流水 Σ 不符报 ERROR。
+     */
+    static java.util.Optional<ConsistencyBreak> checkCostSettlementAdjust(CostSettlementAdjustRow row) {
+        String key = row.docNo() + "#" + row.lineNo();
+        BigDecimal raw = nz(row.expectedIncrement());
+        BigDecimal expected = raw.signum() > 0 ? raw : BigDecimal.ZERO;
+        BigDecimal adjustSum = nz(row.costAdjustSum());
+        if (expected.compareTo(adjustSum) != 0) {
+            return java.util.Optional.of(ConsistencyBreak.of(
+                    ConsistencyCheckType.COST_SETTLEMENT_ADJUST, key, expected, adjustSum,
+                    ConsistencySeverity.ERROR,
+                    "成本结转工费增量与 COST_ADJUST 流水金额不符：应追加工费 " + expected.toPlainString()
+                            + "，Σ COST_ADJUST 流水 " + adjustSum.toPlainString()
+                            + "（工单 " + row.workOrderDocNo() + "，" + key + "）"));
+        }
+        return java.util.Optional.empty();
     }
 
     private static String inventoryKey(long warehouseId, long productId) {

@@ -237,6 +237,20 @@ public class WorkOrder extends BusinessDocument implements AuditTarget {
     }
 
     /**
+     * 累加完工数量（T05 报工过账时调用，每张报工单完工入库后回写一次）。
+     *
+     * @param qty      本次完工入库数量（必须 > 0）
+     * @param operator 操作人（审计用，预留扩展）
+     */
+    public void recordCompletion(BigDecimal qty, String operator) {
+        Objects.requireNonNull(qty, "完工数量不能为空");
+        if (qty.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("完工数量必须大于 0，实际: " + qty.toPlainString());
+        }
+        this.completedQty = this.completedQty.add(qty);
+    }
+
+    /**
      * 冲销（仅 APPROVED → REVERSED，本批不动库存、不出凭证）。
      * EXECUTING/COMPLETED 状态的冲销因有 T04/T05 实物副作用，待后续任务放开，本批否决。
      *
