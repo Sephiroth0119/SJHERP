@@ -437,7 +437,9 @@ public class ConsistencyCheckDao {
                 + "mil.issued_cost AS issued_cost, "
                 + "(SELECT -SUM(it.total_cost) FROM inventory_transaction it "
                 + " WHERE it.tenant_id = 0 AND it.txn_type = 'PRODUCTION_ISSUE' "
-                + "   AND it.src_doc_no = mi.doc_no AND it.src_line_no = mil.line_no) AS issue_txn_cost_sum "
+                // src_doc_no（inventory_transaction，utf8mb4_0900_ai_ci）vs doc_no（生产表，utf8mb4_unicode_ci）
+                // 跨列比较须显式 COLLATE 统一，否则 MySQL error 1267 Illegal mix of collations（CI integration-db 教训）
+                + "   AND it.src_doc_no = mi.doc_no COLLATE utf8mb4_unicode_ci AND it.src_line_no = mil.line_no) AS issue_txn_cost_sum "
                 + "FROM material_issue mi "
                 + "JOIN material_issue_line mil ON mil.material_issue_id = mi.id "
                 + "WHERE mi.tenant_id = 0 AND mi.status = 'COMPLETED' "
@@ -454,7 +456,7 @@ public class ConsistencyCheckDao {
                 + "mrl.returned_cost AS returned_cost, "
                 + "(SELECT SUM(it.total_cost) FROM inventory_transaction it "
                 + " WHERE it.tenant_id = 0 AND it.txn_type = 'PRODUCTION_RETURN' "
-                + "   AND it.src_doc_no = mr.doc_no AND it.src_line_no = mrl.line_no) AS return_txn_cost_sum "
+                + "   AND it.src_doc_no = mr.doc_no COLLATE utf8mb4_unicode_ci AND it.src_line_no = mrl.line_no) AS return_txn_cost_sum "
                 + "FROM material_return mr "
                 + "JOIN material_return_line mrl ON mrl.material_return_id = mr.id "
                 + "WHERE mr.tenant_id = 0 AND mr.status = 'COMPLETED' "
@@ -470,7 +472,7 @@ public class ConsistencyCheckDao {
         return jdbc.query("SELECT pr.doc_no AS doc_no, pr.inbound_cost AS inbound_cost, "
                 + "(SELECT SUM(it.total_cost) FROM inventory_transaction it "
                 + " WHERE it.tenant_id = 0 AND it.txn_type = 'PRODUCTION_IN' "
-                + "   AND it.src_doc_no = pr.doc_no) AS production_in_cost_sum "
+                + "   AND it.src_doc_no = pr.doc_no COLLATE utf8mb4_unicode_ci) AS production_in_cost_sum "
                 + "FROM production_report pr "
                 + "WHERE pr.tenant_id = 0 AND pr.status = 'COMPLETED' "
                 + "ORDER BY pr.id", PRODUCTION_INBOUND_COST_MAPPER);
@@ -526,7 +528,7 @@ public class ConsistencyCheckDao {
                 + "(pl.completed_cost - pl.material_cost - pl.already_transferred) AS expected_increment, "
                 + "(SELECT COALESCE(SUM(it.total_cost), 0) FROM inventory_transaction it "
                 + " WHERE it.tenant_id = 0 AND it.txn_type = 'COST_ADJUST' "
-                + "   AND it.src_doc_no = ph.doc_no AND it.src_line_no = pl.line_no) AS cost_adjust_sum "
+                + "   AND it.src_doc_no = ph.doc_no COLLATE utf8mb4_unicode_ci AND it.src_line_no = pl.line_no) AS cost_adjust_sum "
                 + "FROM production_cost_settlement ph "
                 + "JOIN production_cost_settlement_line pl ON pl.settlement_id = ph.id "
                 + "WHERE ph.tenant_id = 0 AND ph.status = 'COMPLETED' "
