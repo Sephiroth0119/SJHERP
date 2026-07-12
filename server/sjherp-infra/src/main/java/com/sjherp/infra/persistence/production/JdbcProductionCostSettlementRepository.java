@@ -75,7 +75,8 @@ public class JdbcProductionCostSettlementRepository implements ProductionCostSet
                                                       String excludeSettlementDocNo) {
         // 累计已过账（COMPLETED）结转行的料/工/费/完工成本，排除当前结转单自身（过账时本单已 COMPLETED）
         return jdbc.queryForObject(
-                "SELECT COALESCE(SUM(l.material_cost), 0)  AS m, "
+                "SELECT COALESCE(SUM(l.raw_material_cost), 0) AS raw_m, "
+                        + "COALESCE(SUM(l.goods_material_cost), 0) AS goods_m, "
                         + "COALESCE(SUM(l.labor_cost), 0)     AS la, "
                         + "COALESCE(SUM(l.overhead_cost), 0)  AS o, "
                         + "COALESCE(SUM(l.completed_cost), 0) AS c "
@@ -85,8 +86,8 @@ public class JdbcProductionCostSettlementRepository implements ProductionCostSet
                         + "WHERE l.tenant_id = ? AND l.work_order_doc_no = ? "
                         + "AND h.status = ? AND h.doc_no <> ?",
                 (rs, rn) -> new PriorCumulative(
-                        rs.getBigDecimal("m"), rs.getBigDecimal("la"),
-                        rs.getBigDecimal("o"), rs.getBigDecimal("c")),
+                        rs.getBigDecimal("raw_m"), rs.getBigDecimal("goods_m"),
+                        rs.getBigDecimal("la"), rs.getBigDecimal("o"), rs.getBigDecimal("c")),
                 TENANT_ID, workOrderDocNo, DocumentStatus.COMPLETED.name(), excludeSettlementDocNo);
     }
 
@@ -146,26 +147,28 @@ public class JdbcProductionCostSettlementRepository implements ProductionCostSet
                 PreparedStatement ps = con.prepareStatement(
                         "INSERT INTO production_cost_settlement_line "
                                 + "(tenant_id, settlement_id, line_no, work_order_doc_no, "
-                                + "material_cost, labor_cost, overhead_cost, completed_qty, "
+                                + "material_cost, raw_material_cost, goods_material_cost, labor_cost, overhead_cost, completed_qty, "
                                 + "completed_cost, wip_qty, wip_completion_pct, wip_cost, "
                                 + "already_transferred, cost_adjust_idem_key, voucher_doc_no) "
-                                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         Statement.RETURN_GENERATED_KEYS);
                 ps.setLong(1, TENANT_ID);
                 ps.setLong(2, headId);
                 ps.setInt(3, line.getLineNo());
                 ps.setString(4, line.getWorkOrderDocNo());
                 ps.setBigDecimal(5, line.getMaterialCost());
-                ps.setBigDecimal(6, line.getLaborCost());
-                ps.setBigDecimal(7, line.getOverheadCost());
-                ps.setBigDecimal(8, line.getCompletedQty());
-                ps.setBigDecimal(9, line.getCompletedCost());
-                ps.setBigDecimal(10, line.getWipQty());
-                ps.setBigDecimal(11, line.getWipCompletionPct());
-                ps.setBigDecimal(12, line.getWipCost());
-                ps.setBigDecimal(13, line.getAlreadyTransferred());
-                ps.setString(14, line.getCostAdjustIdemKey());
-                ps.setString(15, line.getVoucherDocNo());
+                ps.setBigDecimal(6, line.getRawMaterialCost());
+                ps.setBigDecimal(7, line.getGoodsMaterialCost());
+                ps.setBigDecimal(8, line.getLaborCost());
+                ps.setBigDecimal(9, line.getOverheadCost());
+                ps.setBigDecimal(10, line.getCompletedQty());
+                ps.setBigDecimal(11, line.getCompletedCost());
+                ps.setBigDecimal(12, line.getWipQty());
+                ps.setBigDecimal(13, line.getWipCompletionPct());
+                ps.setBigDecimal(14, line.getWipCost());
+                ps.setBigDecimal(15, line.getAlreadyTransferred());
+                ps.setString(16, line.getCostAdjustIdemKey());
+                ps.setString(17, line.getVoucherDocNo());
                 return ps;
             }, keyHolder);
             if (line.getId() == null) {
@@ -232,7 +235,8 @@ public class JdbcProductionCostSettlementRepository implements ProductionCostSet
 
     private List<ProductionCostSettlementLine> loadLines(long headId) {
         return jdbc.query(
-                "SELECT id, line_no, work_order_doc_no, material_cost, labor_cost, overhead_cost, "
+                "SELECT id, line_no, work_order_doc_no, material_cost, raw_material_cost, goods_material_cost, "
+                        + "labor_cost, overhead_cost, "
                         + "completed_qty, completed_cost, wip_qty, wip_completion_pct, wip_cost, "
                         + "already_transferred, cost_adjust_idem_key, voucher_doc_no "
                         + "FROM production_cost_settlement_line "
@@ -241,6 +245,8 @@ public class JdbcProductionCostSettlementRepository implements ProductionCostSet
                         rs.getLong("id"),
                         rs.getInt("line_no"),
                         rs.getString("work_order_doc_no"),
+                        rs.getBigDecimal("raw_material_cost"),
+                        rs.getBigDecimal("goods_material_cost"),
                         rs.getBigDecimal("material_cost"),
                         rs.getBigDecimal("labor_cost"),
                         rs.getBigDecimal("overhead_cost"),

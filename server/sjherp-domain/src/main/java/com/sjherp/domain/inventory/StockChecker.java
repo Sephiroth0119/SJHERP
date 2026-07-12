@@ -18,4 +18,13 @@ public interface StockChecker {
 
     /** 该商品是否在任一仓库存在非零库存余额 */
     boolean productHasStock(long productId);
+
+    /**
+     * 该商品是否曾产生库存流水。
+     *
+     * <p>存货类别一旦参与库存业务即不可修改，避免用当前主数据重解释历史业务和凭证科目。
+     */
+    default boolean productHasTransactions(long productId) {
+        return false;
+    }
 }

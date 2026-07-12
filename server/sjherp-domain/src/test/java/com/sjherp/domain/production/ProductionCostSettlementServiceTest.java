@@ -18,6 +18,7 @@ import com.sjherp.domain.common.ArchiveStatus;
 import com.sjherp.domain.common.DocumentStatus;
 import com.sjherp.domain.common.PageResult;
 import com.sjherp.domain.common.event.DomainEventPublisher;
+import com.sjherp.domain.catalog.InventoryCategory;
 import com.sjherp.domain.inventory.CostAdjustCommand;
 import com.sjherp.domain.inventory.InventoryTxnType;
 import com.sjherp.domain.inventory.StockMovementCommand;
@@ -67,21 +68,23 @@ class ProductionCostSettlementServiceTest {
 
         @Override
         public PriorCumulative priorCumulativeByWorkOrder(String woDocNo, String excludeDocNo) {
-            BigDecimal m = BigDecimal.ZERO, la = BigDecimal.ZERO, o = BigDecimal.ZERO, c = BigDecimal.ZERO;
+            BigDecimal raw = BigDecimal.ZERO, goods = BigDecimal.ZERO;
+            BigDecimal la = BigDecimal.ZERO, o = BigDecimal.ZERO, c = BigDecimal.ZERO;
             for (ProductionCostSettlement s : store.values()) {
                 if (s.getStatus() != DocumentStatus.COMPLETED || s.getDocNo().equals(excludeDocNo)) {
                     continue;
                 }
                 for (ProductionCostSettlementLine l : s.getLines()) {
                     if (l.getWorkOrderDocNo().equals(woDocNo)) {
-                        m = m.add(l.getMaterialCost());
+                        raw = raw.add(l.getRawMaterialCost());
+                        goods = goods.add(l.getGoodsMaterialCost());
                         la = la.add(l.getLaborCost());
                         o = o.add(l.getOverheadCost());
                         c = c.add(l.getCompletedCost());
                     }
                 }
             }
-            return new PriorCumulative(m, la, o, c);
+            return new PriorCumulative(raw, goods, la, o, c);
         }
     }
 
@@ -111,6 +114,22 @@ class ProductionCostSettlementServiceTest {
         @Override public PageResult<MaterialIssue> search(MaterialIssueQuery q) {
             List<MaterialIssue> matched = completedIssues.stream()
                     .filter(m -> q.workOrderDocNo() == null || m.getWorkOrderDocNo().equals(q.workOrderDocNo()))
+                    .filter(m -> q.status() == null || m.getStatus() == q.status())
+                    .toList();
+            return new PageResult<>(matched, matched.size(), q.page(), q.size());
+        }
+    }
+
+    static class FakeMaterialReturnRepository implements MaterialReturnRepository {
+        final List<MaterialReturn> completedReturns = new ArrayList<>();
+        @Override public void save(MaterialReturn materialReturn) {}
+        @Override public Optional<MaterialReturn> findByDocNo(String docNo) {
+            return completedReturns.stream().filter(m -> m.getDocNo().equals(docNo)).findFirst();
+        }
+        @Override public PageResult<MaterialReturn> search(MaterialReturnQuery q) {
+            List<MaterialReturn> matched = completedReturns.stream()
+                    .filter(m -> q.materialIssueDocNo() == null
+                            || m.getMaterialIssueDocNo().equals(q.materialIssueDocNo()))
                     .filter(m -> q.status() == null || m.getStatus() == q.status())
                     .toList();
             return new PageResult<>(matched, matched.size(), q.page(), q.size());
@@ -186,10 +205,12 @@ class ProductionCostSettlementServiceTest {
     private FakeSettlementRepository repo;
     private FakeWorkOrderRepository woRepo;
     private FakeMaterialIssueRepository issueRepo;
+    private FakeMaterialReturnRepository returnRepo;
     private FakeProductionReportRepository reportRepo;
     private FakeRoutingRepository routingRepo;
     private FakeCostParamRepository paramRepo;
     private FakeInventoryPostingPort inventory;
+    private final Map<Long, InventoryCategory> inventoryCategories = new HashMap<>();
     private ProductionCostSettlementService service;
     private final DomainEventPublisher publisher = e -> {};
 
@@ -198,13 +219,15 @@ class ProductionCostSettlementServiceTest {
         repo = new FakeSettlementRepository();
         woRepo = new FakeWorkOrderRepository();
         issueRepo = new FakeMaterialIssueRepository();
+        returnRepo = new FakeMaterialReturnRepository();
         reportRepo = new FakeProductionReportRepository();
         routingRepo = new FakeRoutingRepository();
         paramRepo = new FakeCostParamRepository();
         inventory = new FakeInventoryPostingPort();
         // 系统默认人工费率 20、制造费用率 5（账期无参数行时兜底）
-        service = new ProductionCostSettlementService(repo, woRepo, issueRepo, reportRepo, routingRepo,
-                paramRepo, inventory, publisher, new BigDecimal("20"), new BigDecimal("5"));
+        service = new ProductionCostSettlementService(repo, woRepo, issueRepo, returnRepo, reportRepo, routingRepo,
+                paramRepo, inventory, productId -> inventoryCategories.getOrDefault(productId,
+                        InventoryCategory.MERCHANDISE), publisher, new BigDecimal("20"), new BigDecimal("5"));
     }
 
     // ---------------------------------------------------------------- 辅助
@@ -225,15 +248,30 @@ class ProductionCostSettlementServiceTest {
         return wo;
     }
 
-    private void addCompletedIssue(String woDocNo, BigDecimal issuedCost) {
+    private String addCompletedIssue(String woDocNo, BigDecimal issuedCost) {
+        return addCompletedIssue(woDocNo, 200L, issuedCost);
+    }
+
+    private String addCompletedIssue(String woDocNo, long productId, BigDecimal issuedCost) {
         MaterialIssueLine line = MaterialIssueLine.restore(
-                1L, 1, 200L, new BigDecimal("5"), new BigDecimal("5"), 1L, issuedCost);
+                1L, 1, productId, new BigDecimal("5"), new BigDecimal("5"), 1L, issuedCost);
         MaterialIssue mi = MaterialIssue.restore(
                 issueRepo.completedIssues.size() + 10L,
                 "MI-" + (issueRepo.completedIssues.size() + 1),
                 woDocNo, WAREHOUSE_ID, null, DocumentStatus.COMPLETED, null, null,
                 List.of(line), "op", "op");
         issueRepo.completedIssues.add(mi);
+        return mi.getDocNo();
+    }
+
+    private void addCompletedReturn(String materialIssueDocNo, long productId, BigDecimal returnedCost) {
+        MaterialReturnLine line = MaterialReturnLine.restore(
+                1L, 1, productId, new BigDecimal("1"), 1L, returnedCost, 1);
+        MaterialReturn materialReturn = MaterialReturn.restore(
+                returnRepo.completedReturns.size() + 20L,
+                "MR-" + (returnRepo.completedReturns.size() + 1), materialIssueDocNo, WAREHOUSE_ID,
+                null, DocumentStatus.COMPLETED, null, null, List.of(line), "op", "op");
+        returnRepo.completedReturns.add(materialReturn);
     }
 
     /** 加一张 COMPLETED 报工单（含若干工时行），用于工费归集。 */
@@ -269,6 +307,26 @@ class ProductionCostSettlementServiceTest {
         // 全部完工（在产 0）→ 完工工费 = 250；完工成本 = 料 300 + 工费 250 = 550
         assertThat(line.getCompletedCost()).isEqualByComparingTo("550.00");
         assertThat(line.getWipCost()).isEqualByComparingTo("0.00");
+    }
+
+    @Test
+    void create_净领料扣除退料并按存货分类拆分材料成本() {
+        buildWorkOrder("WO-NET", new BigDecimal("10"), DocumentStatus.EXECUTING);
+        String rawIssue = addCompletedIssue("WO-NET", 200L, new BigDecimal("100.00"));
+        String goodsIssue = addCompletedIssue("WO-NET", 201L, new BigDecimal("80.00"));
+        inventoryCategories.put(200L, InventoryCategory.RAW_MATERIAL);
+        inventoryCategories.put(201L, InventoryCategory.MERCHANDISE);
+        addCompletedReturn(rawIssue, 200L, new BigDecimal("20.00"));
+        addCompletedReturn(goodsIssue, 201L, new BigDecimal("30.00"));
+
+        ProductionCostSettlement settlement = service.create("PC-NET", PERIOD, null,
+                List.of(new ProductionCostSettlementLineInput("WO-NET", BigDecimal.ZERO, BigDecimal.ZERO)), "op");
+
+        ProductionCostSettlementLine line = settlement.getLines().get(0);
+        assertThat(line.getRawMaterialCost()).isEqualByComparingTo("80.00");
+        assertThat(line.getGoodsMaterialCost()).isEqualByComparingTo("50.00");
+        assertThat(line.getMaterialCost()).isEqualByComparingTo("130.00");
+        assertThat(line.getCompletedCost()).isEqualByComparingTo("130.00");
     }
 
     @Test

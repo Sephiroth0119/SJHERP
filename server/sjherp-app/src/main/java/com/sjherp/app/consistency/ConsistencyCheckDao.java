@@ -135,6 +135,11 @@ public class ConsistencyCheckDao {
                                           BigDecimal expectedIncrement, BigDecimal costAdjustSum) {
     }
 
+    /** 工单生产库存累计成本（PRODUCTION_IN+COST_ADJUST）与生产成本凭证1405净借方。 */
+    public record ProductionInventoryGlRow(String workOrderDocNo, BigDecimal productionInventoryCost,
+                                           BigDecimal glInventoryDebit) {
+    }
+
     private static final RowMapper<InventoryLedgerRow> LEDGER_MAPPER = (rs, n) -> new InventoryLedgerRow(
             rs.getLong("warehouse_id"), rs.getLong("product_id"),
             nz(rs.getBigDecimal("txn_qty_sum")), nz(rs.getBigDecimal("txn_cost_sum")),
@@ -427,6 +432,12 @@ public class ConsistencyCheckDao {
                     rs.getString("doc_no"), rs.getInt("line_no"), rs.getString("work_order_doc_no"),
                     nz(rs.getBigDecimal("expected_increment")), nz(rs.getBigDecimal("cost_adjust_sum")));
 
+    private static final RowMapper<ProductionInventoryGlRow> PRODUCTION_INVENTORY_GL_MAPPER =
+            (rs, n) -> new ProductionInventoryGlRow(
+                    rs.getString("work_order_doc_no"),
+                    nz(rs.getBigDecimal("production_inventory_cost")),
+                    nz(rs.getBigDecimal("gl_inventory_debit")));
+
     /**
      * 规则12 领料侧：每张 COMPLETED 领料单行 issued_cost 与该行 PRODUCTION_ISSUE 流水 −Σtotal_cost。
      * 出库流水 total_cost 为负，SQL 取 −SUM 转正口径与 issued_cost 对齐；无流水时子查询返回 NULL（缺流水 ERROR）。
@@ -536,6 +547,52 @@ public class ConsistencyCheckDao {
     }
 
     /** SUM/列可能为 NULL（无对应行），统一收敛为 0。 */
+    /**
+     * 规则17：工单生产库存成本 = 已过账报工 PRODUCTION_IN + 已过账结转 COST_ADJUST；
+     * 总账侧取同一工单生产成本结算凭证的 1405 净借方（借减贷，包含凭证红冲）。
+     */
+    @Transactional(readOnly = true)
+    public List<ProductionInventoryGlRow> productionInventoryGlMatches() {
+        return jdbc.query("SELECT x.work_order_doc_no AS work_order_doc_no, "
+                + "(SELECT COALESCE(SUM(it.total_cost), 0) FROM inventory_transaction it "
+                + " JOIN production_report pr ON pr.tenant_id = 0 "
+                + "  AND it.src_doc_no = pr.doc_no COLLATE utf8mb4_unicode_ci "
+                + " WHERE it.tenant_id = 0 AND it.txn_type = 'PRODUCTION_IN' "
+                + "   AND pr.status = 'COMPLETED' AND pr.work_order_doc_no = x.work_order_doc_no) "
+                + "+ (SELECT COALESCE(SUM(it.total_cost), 0) FROM inventory_transaction it "
+                + " JOIN production_cost_settlement ph ON ph.tenant_id = 0 "
+                + "  AND it.src_doc_no = ph.doc_no COLLATE utf8mb4_unicode_ci "
+                + " JOIN production_cost_settlement_line pl ON pl.tenant_id = ph.tenant_id "
+                + "  AND pl.settlement_id = ph.id AND it.src_line_no = pl.line_no "
+                + " WHERE it.tenant_id = 0 AND it.txn_type = 'COST_ADJUST' "
+                + "   AND ph.status = 'COMPLETED' AND pl.work_order_doc_no = x.work_order_doc_no) "
+                + " AS production_inventory_cost, "
+                + "(SELECT COALESCE(SUM(vl.debit - vl.credit), 0) "
+                + " FROM production_cost_settlement ph "
+                + " JOIN production_cost_settlement_line pl ON pl.tenant_id = ph.tenant_id "
+                + "  AND pl.settlement_id = ph.id "
+                + " JOIN voucher origin_v ON origin_v.tenant_id = 0 "
+                + "  AND origin_v.source_type = 'PRODUCTION_COST_SETTLEMENT' "
+                + "  AND origin_v.source_doc_no COLLATE utf8mb4_unicode_ci "
+                + "      = CONCAT(ph.doc_no, ':', pl.work_order_doc_no) "
+                + " JOIN voucher related_v ON related_v.tenant_id = origin_v.tenant_id "
+                + "  AND (related_v.id = origin_v.id OR related_v.reversal_of_id = origin_v.doc_no COLLATE utf8mb4_unicode_ci) "
+                + " JOIN voucher_line vl ON vl.tenant_id = related_v.tenant_id AND vl.voucher_id = related_v.id "
+                + " WHERE ph.tenant_id = 0 AND ph.status = 'COMPLETED' "
+                + "   AND pl.work_order_doc_no = x.work_order_doc_no "
+                + "   AND related_v.status IN ('APPROVED', 'REVERSED') AND vl.account_code = '1405') "
+                + " AS gl_inventory_debit "
+                + "FROM (SELECT wo.doc_no AS work_order_doc_no FROM work_order wo WHERE wo.tenant_id = 0 "
+                + " UNION SELECT pr.work_order_doc_no FROM production_report pr "
+                + " WHERE pr.tenant_id = 0 AND pr.status = 'COMPLETED' "
+                + " UNION SELECT pl.work_order_doc_no FROM production_cost_settlement_line pl "
+                + " JOIN production_cost_settlement ph ON ph.id = pl.settlement_id "
+                + "  AND ph.tenant_id = pl.tenant_id "
+                + " WHERE pl.tenant_id = 0 AND ph.status = 'COMPLETED') x "
+                + "ORDER BY x.work_order_doc_no", PRODUCTION_INVENTORY_GL_MAPPER);
+    }
+
+    /** 将 SQL 聚合中的 NULL 统一收敛为零。 */
     private static BigDecimal nz(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value;
     }

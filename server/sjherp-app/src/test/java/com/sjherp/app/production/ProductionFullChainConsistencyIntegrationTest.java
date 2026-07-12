@@ -197,6 +197,7 @@ class ProductionFullChainConsistencyIntegrationTest {
                 + "(tenant_id, period, default_labor_rate, overhead_rate, created_by, created_at, "
                 + "updated_by, updated_at) VALUES (0, ?, 20, 5, ?, UTC_TIMESTAMP(6), ?, UTC_TIMESTAMP(6))",
                 period, OPERATOR, OPERATOR);
+        seedProducts(unitId, componentId, finishedId, suffix);
 
         // 1. PURCHASE_IN 预置子件库存：100 件 @10.00
         txTemplate.executeWithoutResult(s ->
@@ -338,6 +339,7 @@ class ProductionFullChainConsistencyIntegrationTest {
         long unitId = nextId();
         String suffix = Long.toString(System.nanoTime(), 36);
         LocalDate bizDate = LocalDate.now(ZoneOffset.UTC);
+        seedProducts(unitId, componentId, finishedId, suffix);
 
         // 1. PURCHASE_IN 预置子件库存：100 件 @10.00（单位成本 10）
         txTemplate.executeWithoutResult(s ->
@@ -393,5 +395,19 @@ class ProductionFullChainConsistencyIntegrationTest {
                 .toList();
         assertThat(wo14Errors).as("退料-after-完工 病态路径应被规则14 捕获 1 条料虚增 ERROR，实际: %s",
                 report.breaks()).hasSize(1);
+    }
+
+    private static void seedProducts(long unitId, long componentId, long finishedId, String suffix) {
+        jdbc.update("INSERT INTO unit (id, tenant_id, name, unit_precision, created_by, created_at, updated_by, updated_at) "
+                        + "VALUES (?, 0, ?, 6, ?, UTC_TIMESTAMP(6), ?, UTC_TIMESTAMP(6))",
+                unitId, "件-" + suffix, OPERATOR, OPERATOR);
+        jdbc.update("INSERT INTO product (id, tenant_id, code, name, category_id, inventory_category, base_unit_id, "
+                        + "status, created_by, created_at, updated_by, updated_at) "
+                        + "VALUES (?, 0, ?, ?, NULL, 'RAW_MATERIAL', ?, 'ENABLED', ?, UTC_TIMESTAMP(6), ?, UTC_TIMESTAMP(6))",
+                componentId, "RAW-" + suffix, "原材料-" + suffix, unitId, OPERATOR, OPERATOR);
+        jdbc.update("INSERT INTO product (id, tenant_id, code, name, category_id, inventory_category, base_unit_id, "
+                        + "status, created_by, created_at, updated_by, updated_at) "
+                        + "VALUES (?, 0, ?, ?, NULL, 'FINISHED_GOOD', ?, 'ENABLED', ?, UTC_TIMESTAMP(6), ?, UTC_TIMESTAMP(6))",
+                finishedId, "FG-" + suffix, "产成品-" + suffix, unitId, OPERATOR, OPERATOR);
     }
 }

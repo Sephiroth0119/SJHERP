@@ -16,6 +16,7 @@ import com.sjherp.agent.tool.ToolRiskLevel;
 import com.sjherp.app.tool.ArchiveToolSupport;
 import com.sjherp.domain.catalog.Product;
 import com.sjherp.domain.catalog.ProductCommand;
+import com.sjherp.domain.catalog.InventoryCategory;
 import com.sjherp.domain.catalog.ProductService;
 import com.sjherp.domain.catalog.Unit;
 import com.sjherp.domain.catalog.UnitService;
@@ -49,7 +50,8 @@ public class CreateProductTool implements Tool {
 
     @Override
     public String description() {
-        return "创建商品档案：名称与基本单位必填（基本单位传单位名称，如\"个\"\"箱\"\"千克\"），"
+        return "创建商品档案：名称、基本单位和存货分类必填（基本单位传单位名称，如\"个\"\"箱\"\"千克\"；"
+                + "存货分类传 RAW_MATERIAL/SEMI_FINISHED/FINISHED_GOOD/MERCHANDISE），"
                 + "规格/条码/备注可选，编码自动生成（SKU-年月-序号）。"
                 + "调用前先在回复正文中向用户复述要创建的商品要点；系统会自动请求用户确认后才真正执行。"
                 + "若基本单位在系统中不存在，本工具会报错并列出已有单位——此时引导用户改用已有单位，"
@@ -62,10 +64,11 @@ public class CreateProductTool implements Tool {
                 {"type":"object","properties":{\
                 "name":{"type":"string","description":"商品名称（必填，200 字以内）"},\
                 "base_unit":{"type":"string","description":"基本单位名称（必填，如\\"个\\"\\"箱\\"，须是系统中已存在的计量单位）"},\
+                "inventory_category":{"type":"string","enum":["RAW_MATERIAL","SEMI_FINISHED","FINISHED_GOOD","MERCHANDISE"],"description":"存货分类（必填）"},\
                 "spec":{"type":"string","description":"规格型号，可选（如\\"500ml\\"）"},\
                 "barcode":{"type":"string","description":"条码，可选"},\
                 "remark":{"type":"string","description":"备注，可选"}},\
-                "required":["name","base_unit"],"additionalProperties":false}""";
+                "required":["name","base_unit","inventory_category"],"additionalProperties":false}""";
     }
 
     @Override
@@ -96,16 +99,18 @@ public class CreateProductTool implements Tool {
                     + "当前聊天中没有创建单位的工具，不要替用户编造单位。");
         }
 
-        ProductCommand command = new ProductCommand(
-                null, // 编码自动生成
-                ArchiveToolSupport.str(arguments.get("name")),
-                ArchiveToolSupport.str(arguments.get("spec")),
-                null, // 类目可后续在界面归类
-                unit.get().getId(),
-                ArchiveToolSupport.str(arguments.get("barcode")),
-                ArchiveToolSupport.str(arguments.get("remark")),
-                null);
         try {
+            InventoryCategory inventoryCategory = parseInventoryCategory(arguments.get("inventory_category"));
+            ProductCommand command = new ProductCommand(
+                    null, // 编码自动生成
+                    ArchiveToolSupport.str(arguments.get("name")),
+                    ArchiveToolSupport.str(arguments.get("spec")),
+                    null, // 类目可后续在界面归类
+                    unit.get().getId(),
+                    ArchiveToolSupport.str(arguments.get("barcode")),
+                    ArchiveToolSupport.str(arguments.get("remark")),
+                    null,
+                    inventoryCategory);
             Product product = productService.create(command, ArchiveToolSupport.operator(context));
             log.info("Agent 创建商品（code={}, name={}, operator={}, sessionId={}）",
                     product.getCode(), product.getName(),
@@ -115,11 +120,21 @@ public class CreateProductTool implements Tool {
             data.put("code", product.getCode());
             data.put("name", product.getName());
             data.put("baseUnit", unit.get().getName());
+            data.put("inventoryCategory", product.getInventoryCategory().name());
             data.put("status", ArchiveToolSupport.statusLabel(product.getStatus()));
             return ToolResult.ok(data);
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException | NullPointerException e) {
             // 领域校验拒绝（名称超长、编码冲突等）——宁可拒绝，不可破坏模型
             return ToolResult.fail("商品创建被拒绝: " + e.getMessage());
+        }
+    }
+
+    private static InventoryCategory parseInventoryCategory(Object value) {
+        String text = ArchiveToolSupport.str(value);
+        try {
+            return InventoryCategory.valueOf(text);
+        } catch (IllegalArgumentException | NullPointerException e) {
+            throw new IllegalArgumentException("存货类别无效: " + text);
         }
     }
 }

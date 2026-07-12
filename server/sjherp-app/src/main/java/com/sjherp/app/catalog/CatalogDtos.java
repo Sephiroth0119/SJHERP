@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 import com.sjherp.domain.catalog.Category;
+import com.sjherp.domain.catalog.InventoryCategory;
 import com.sjherp.domain.catalog.Product;
 import com.sjherp.domain.catalog.ProductCommand;
 import com.sjherp.domain.catalog.Unit;
@@ -36,6 +37,7 @@ public final class CatalogDtos {
             @NotBlank(message = "商品名称不能为空") @Size(max = 200, message = "商品名称不能超过 200 个字符") String name,
             @Size(max = 200, message = "规格不能超过 200 个字符") String spec,
             Long categoryId,
+            @NotNull(message = "存货分类不能为空") InventoryCategory inventoryCategory,
             @NotNull(message = "基本单位不能为空") Long baseUnitId,
             @Size(max = 64, message = "条码不能超过 64 个字符") String barcode,
             @Size(max = 500, message = "备注不能超过 500 个字符") String remark,
@@ -46,7 +48,8 @@ public final class CatalogDtos {
                     : unitConversions.stream()
                             .map(item -> new UnitConversion(item.unitId(), item.rate()))
                             .toList();
-            return new ProductCommand(code, name, spec, categoryId, baseUnitId, barcode, remark, conversions);
+            return new ProductCommand(code, name, spec, categoryId, baseUnitId, barcode, remark, conversions,
+                    inventoryCategory);
         }
     }
 
@@ -60,6 +63,7 @@ public final class CatalogDtos {
     }
 
     public record ProductResponse(long id, String code, String name, String spec, Long categoryId,
+                           String inventoryCategory,
                            long baseUnitId, String barcode, String status, String remark,
                            List<ConversionItem> unitConversions,
                            String createdBy, String createdAt, String updatedBy, String updatedAt) {
@@ -71,6 +75,7 @@ public final class CatalogDtos {
                     product.getName(),
                     product.getSpec(),
                     product.getCategoryId(),
+                    product.getInventoryCategory().name(),
                     product.getBaseUnitId(),
                     product.getBarcode(),
                     product.getStatus().name(),

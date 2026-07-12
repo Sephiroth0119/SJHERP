@@ -19,6 +19,7 @@ import com.sjherp.app.consistency.ConsistencyCheckDao.MaterialIssueCostRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.MaterialReturnCostRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.PayableMatchRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.ProductionInboundCostRow;
+import com.sjherp.app.consistency.ConsistencyCheckDao.ProductionInventoryGlRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.PurchaseThreeWayRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.ReceivableMatchRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.SalesThreeWayRow;
@@ -144,6 +145,10 @@ public class ConsistencyCheckService {
         // 规则16（M5-T08）：成本结转工费追加勾稽（ERROR）
         for (CostSettlementAdjustRow row : dao.costSettlementAdjustMatches()) {
             checkCostSettlementAdjust(row).ifPresent(breaks::add);
+        }
+        // 规则17：生产入库 + 工费追加入库成本与生产成本结算凭证 1405 净借方勾稽（ERROR）
+        for (ProductionInventoryGlRow row : dao.productionInventoryGlMatches()) {
+            checkProductionInventoryGl(row).ifPresent(breaks::add);
         }
 
         return new ConsistencyReport(clock.instant(), breaks);
@@ -488,6 +493,21 @@ public class ConsistencyCheckService {
                     "成本结转工费增量与 COST_ADJUST 流水金额不符：应追加工费 " + expected.toPlainString()
                             + "，Σ COST_ADJUST 流水 " + adjustSum.toPlainString()
                             + "（工单 " + row.workOrderDocNo() + "，" + key + "）"));
+        }
+        return java.util.Optional.empty();
+    }
+
+    /** 规则17（ERROR）：工单生产库存成本与生产成本结算凭证 1405 净借方相等，1 分内为舍入容差。 */
+    static java.util.Optional<ConsistencyBreak> checkProductionInventoryGl(ProductionInventoryGlRow row) {
+        BigDecimal inventoryCost = nz(row.productionInventoryCost());
+        BigDecimal glDebit = nz(row.glInventoryDebit());
+        if (inventoryCost.subtract(glDebit).abs().compareTo(ONE_CENT) > 0) {
+            return java.util.Optional.of(ConsistencyBreak.of(
+                    ConsistencyCheckType.PRODUCTION_INVENTORY_GL, row.workOrderDocNo(),
+                    inventoryCost, glDebit, ConsistencySeverity.ERROR,
+                    "工单生产存货成本与生产成本结算凭证1405净借方不符：库存="
+                            + inventoryCost.toPlainString() + "，总账=" + glDebit.toPlainString()
+                            + "，工单=" + row.workOrderDocNo()));
         }
         return java.util.Optional.empty();
     }

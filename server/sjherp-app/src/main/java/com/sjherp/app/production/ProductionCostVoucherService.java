@@ -92,7 +92,9 @@ public class ProductionCostVoucherService {
             // 本期增量 = 本期累计 − 前期已过账累计（排除本单自身，与库存 CostAdjust 增量同口径）
             PriorCumulative prior = settlementRepository.priorCumulativeByWorkOrder(
                     line.getWorkOrderDocNo(), settlement.getDocNo());
-            BigDecimal materialInc = inc(line.getMaterialCost(), prior.materialCost());
+            BigDecimal rawMaterialInc = inc(line.getRawMaterialCost(), prior.rawMaterialCost());
+            BigDecimal goodsMaterialInc = inc(line.getGoodsMaterialCost(), prior.goodsMaterialCost());
+            BigDecimal materialInc = rawMaterialInc.add(goodsMaterialInc).setScale(SCALE, ROUNDING);
             BigDecimal laborInc = inc(line.getLaborCost(), prior.laborCost());
             BigDecimal overheadInc = inc(line.getOverheadCost(), prior.overheadCost());
             BigDecimal completedInc = inc(line.getCompletedCost(), prior.completedCost());
@@ -112,10 +114,14 @@ public class ProductionCostVoucherService {
             String summary = VoucherSourceType.PRODUCTION_COST_SETTLEMENT.label()
                     + " " + settlement.getDocNo() + " 工单" + line.getWorkOrderDocNo();
             List<VoucherLineInput> voucherLines = new ArrayList<>();
-            // ① 料归集：借 5001 / 贷 1403
-            if (materialInc.signum() > 0) {
-                voucherLines.add(debit(ACC_PRODUCTION, materialInc, summary + " 料归集"));
-                voucherLines.add(credit(ACC_RAW_MATERIAL, materialInc, summary + " 料归集"));
+            // ① 料归集：借 5001 / 贷 1403（原材料）或 1405（商品类材料）
+            if (rawMaterialInc.signum() > 0) {
+                voucherLines.add(debit(ACC_PRODUCTION, rawMaterialInc, summary + " 原材料归集"));
+                voucherLines.add(credit(ACC_RAW_MATERIAL, rawMaterialInc, summary + " 原材料归集"));
+            }
+            if (goodsMaterialInc.signum() > 0) {
+                voucherLines.add(debit(ACC_PRODUCTION, goodsMaterialInc, summary + " 商品类材料归集"));
+                voucherLines.add(credit(ACC_FINISHED_GOODS, goodsMaterialInc, summary + " 商品类材料归集"));
             }
             // ② 工费归集（人工）：借 5001 / 贷 2211
             if (laborInc.signum() > 0) {

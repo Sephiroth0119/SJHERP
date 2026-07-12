@@ -205,6 +205,7 @@ class ProductionCostSettlementFlowIntegrationTest {
                 + "(tenant_id, period, default_labor_rate, overhead_rate, created_by, created_at, "
                 + "updated_by, updated_at) VALUES (0, ?, 20, 5, ?, UTC_TIMESTAMP(6), ?, UTC_TIMESTAMP(6))",
                 period, OPERATOR, OPERATOR);
+        seedProducts(unitId, componentId, finishedId, suffix);
 
         // 1. PURCHASE_IN 预置子件库存：100 件 @10.00，金额 1000.00
         txTemplate.executeWithoutResult(s ->
@@ -363,5 +364,19 @@ class ProductionCostSettlementFlowIntegrationTest {
                         + "AND vl.account_code = ?",
                 BigDecimal.class, period, accountCode);
         return net == null ? BigDecimal.ZERO : net;
+    }
+
+    private void seedProducts(long unitId, long componentId, long finishedId, String suffix) {
+        jdbc.update("INSERT INTO unit (id, tenant_id, name, unit_precision, created_by, created_at, updated_by, updated_at) "
+                        + "VALUES (?, 0, ?, 6, ?, UTC_TIMESTAMP(6), ?, UTC_TIMESTAMP(6))",
+                unitId, "件-" + suffix, OPERATOR, OPERATOR);
+        jdbc.update("INSERT INTO product (id, tenant_id, code, name, category_id, inventory_category, base_unit_id, "
+                        + "status, created_by, created_at, updated_by, updated_at) "
+                        + "VALUES (?, 0, ?, ?, NULL, 'RAW_MATERIAL', ?, 'ENABLED', ?, UTC_TIMESTAMP(6), ?, UTC_TIMESTAMP(6))",
+                componentId, "RAW-" + suffix, "原材料-" + suffix, unitId, OPERATOR, OPERATOR);
+        jdbc.update("INSERT INTO product (id, tenant_id, code, name, category_id, inventory_category, base_unit_id, "
+                        + "status, created_by, created_at, updated_by, updated_at) "
+                        + "VALUES (?, 0, ?, ?, NULL, 'FINISHED_GOOD', ?, 'ENABLED', ?, UTC_TIMESTAMP(6), ?, UTC_TIMESTAMP(6))",
+                finishedId, "FG-" + suffix, "产成品-" + suffix, unitId, OPERATOR, OPERATOR);
     }
 }

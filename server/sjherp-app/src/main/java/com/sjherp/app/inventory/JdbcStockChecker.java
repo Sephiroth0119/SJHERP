@@ -41,6 +41,13 @@ public class JdbcStockChecker implements StockChecker {
                 + " AND (quantity <> 0 OR cost_amount <> 0))", productId);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public boolean productHasTransactions(long productId) {
+        return exists("SELECT EXISTS(SELECT 1 FROM inventory_transaction"
+                + " WHERE tenant_id = 0 AND product_id = ?)", productId);
+    }
+
     private boolean exists(String sql, long id) {
         Boolean result = jdbc.queryForObject(sql, Boolean.class, id);
         return Boolean.TRUE.equals(result);
