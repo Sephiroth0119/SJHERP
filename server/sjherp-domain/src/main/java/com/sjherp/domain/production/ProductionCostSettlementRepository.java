@@ -43,7 +43,11 @@ public interface ProductionCostSettlementRepository {
      * @param overheadCost  累计制造费用
      * @param completedCost 累计完工应负担成本
      */
-    record PriorCumulative(BigDecimal materialCost, BigDecimal laborCost,
-                           BigDecimal overheadCost, BigDecimal completedCost) {
+    record PriorCumulative(BigDecimal rawMaterialCost, BigDecimal goodsMaterialCost,
+                           BigDecimal laborCost, BigDecimal overheadCost, BigDecimal completedCost) {
+        public BigDecimal materialCost() {
+            return (rawMaterialCost == null ? BigDecimal.ZERO : rawMaterialCost)
+                    .add(goodsMaterialCost == null ? BigDecimal.ZERO : goodsMaterialCost);
+        }
     }
 }

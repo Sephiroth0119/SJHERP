@@ -11,10 +11,12 @@ import com.sjherp.app.production.ProductionCostSettlementAppService;
 import com.sjherp.app.production.ProductionCostVoucherService;
 import com.sjherp.domain.common.event.DomainEventPublisher;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
+import com.sjherp.domain.catalog.ProductRepository;
 import com.sjherp.domain.gl.AccountingPeriodService;
 import com.sjherp.domain.gl.VoucherService;
 import com.sjherp.domain.production.InventoryPostingPort;
 import com.sjherp.domain.production.MaterialIssueRepository;
+import com.sjherp.domain.production.MaterialReturnRepository;
 import com.sjherp.domain.production.ProductionCostParamRepository;
 import com.sjherp.domain.production.ProductionCostSettlementRepository;
 import com.sjherp.domain.production.ProductionCostSettlementService;
@@ -63,16 +65,21 @@ public class ProductionCostInfraConfig {
             ProductionCostSettlementRepository productionCostSettlementRepository,
             WorkOrderRepository workOrderRepository,
             MaterialIssueRepository materialIssueRepository,
+            MaterialReturnRepository materialReturnRepository,
             ProductionReportRepository productionReportRepository,
             RoutingRepository routingRepository,
             ProductionCostParamRepository productionCostParamRepository,
             InventoryPostingPort materialIssueInventoryPostingAdapter,
+            ProductRepository productRepository,
             DomainEventPublisher domainEventPublisher,
             @Value("${sjherp.production.default-labor-rate:0}") BigDecimal defaultLaborRate,
             @Value("${sjherp.production.overhead-rate:0}") BigDecimal overheadRate) {
         return new ProductionCostSettlementService(productionCostSettlementRepository,
-                workOrderRepository, materialIssueRepository, productionReportRepository,
+                workOrderRepository, materialIssueRepository, materialReturnRepository, productionReportRepository,
                 routingRepository, productionCostParamRepository, materialIssueInventoryPostingAdapter,
+                productId -> productRepository.findById(productId)
+                        .orElseThrow(() -> new IllegalArgumentException("商品不存在: " + productId))
+                        .getInventoryCategory(),
                 domainEventPublisher, defaultLaborRate, overheadRate);
     }
 

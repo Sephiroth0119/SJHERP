@@ -12,6 +12,7 @@ import com.sjherp.domain.common.DocumentStatus;
 import com.sjherp.domain.common.PageResult;
 import com.sjherp.domain.common.audit.Audited;
 import com.sjherp.domain.common.event.DomainEventPublisher;
+import com.sjherp.domain.catalog.InventoryCategory;
 import com.sjherp.domain.inventory.CostAdjustCommand;
 import com.sjherp.domain.inventory.CostingStrategy;
 import com.sjherp.domain.inventory.StockMovementCommand;
@@ -47,10 +48,12 @@ public class ProductionCostSettlementService {
     private final ProductionCostSettlementRepository repository;
     private final WorkOrderRepository workOrderRepository;
     private final MaterialIssueRepository issueRepository;
+    private final MaterialReturnRepository returnRepository;
     private final ProductionReportRepository reportRepository;
     private final RoutingRepository routingRepository;
     private final ProductionCostParamRepository costParamRepository;
     private final InventoryPostingPort inventory;
+    private final InventoryCategoryResolver inventoryCategoryResolver;
     private final DomainEventPublisher eventPublisher;
 
     /** 系统级默认人工费率/制造费用率（账期无 production_cost_param 行时兜底） */
@@ -60,20 +63,25 @@ public class ProductionCostSettlementService {
     public ProductionCostSettlementService(ProductionCostSettlementRepository repository,
                                            WorkOrderRepository workOrderRepository,
                                            MaterialIssueRepository issueRepository,
+                                           MaterialReturnRepository returnRepository,
                                            ProductionReportRepository reportRepository,
                                            RoutingRepository routingRepository,
                                            ProductionCostParamRepository costParamRepository,
                                            InventoryPostingPort inventory,
+                                           InventoryCategoryResolver inventoryCategoryResolver,
                                            DomainEventPublisher eventPublisher,
                                            BigDecimal systemDefaultLaborRate,
                                            BigDecimal systemDefaultOverheadRate) {
         this.repository = Objects.requireNonNull(repository, "repository 不能为空");
         this.workOrderRepository = Objects.requireNonNull(workOrderRepository, "workOrderRepository 不能为空");
         this.issueRepository = Objects.requireNonNull(issueRepository, "issueRepository 不能为空");
+        this.returnRepository = Objects.requireNonNull(returnRepository, "returnRepository 不能为空");
         this.reportRepository = Objects.requireNonNull(reportRepository, "reportRepository 不能为空");
         this.routingRepository = Objects.requireNonNull(routingRepository, "routingRepository 不能为空");
         this.costParamRepository = Objects.requireNonNull(costParamRepository, "costParamRepository 不能为空");
         this.inventory = Objects.requireNonNull(inventory, "inventory 不能为空");
+        this.inventoryCategoryResolver = Objects.requireNonNull(inventoryCategoryResolver,
+                "inventoryCategoryResolver 不能为空");
         this.eventPublisher = Objects.requireNonNull(eventPublisher, "eventPublisher 不能为空");
         this.systemDefaultLaborRate = systemDefaultLaborRate != null ? systemDefaultLaborRate : BigDecimal.ZERO;
         this.systemDefaultOverheadRate = systemDefaultOverheadRate != null ? systemDefaultOverheadRate : BigDecimal.ZERO;
@@ -136,7 +144,8 @@ public class ProductionCostSettlementService {
         validateWip(woDocNo, wipQty, wipPct);
 
         // 三要素归集
-        BigDecimal materialCost = sumIssuedCostForWorkOrder(woDocNo);
+        MaterialCost material = sumNetMaterialCostForWorkOrder(woDocNo);
+        BigDecimal materialCost = material.total();
         LaborOverhead lo = sumLaborOverheadForWorkOrder(woDocNo, param);
         BigDecimal laborCost = lo.labor();
         BigDecimal overheadCost = lo.overhead();
@@ -155,7 +164,8 @@ public class ProductionCostSettlementService {
         // 前期已结转完工工费锚点（防分批跨月重复，R-T06-7）
         BigDecimal alreadyTransferred = repository.sumTransferredLaborOverheadByWorkOrder(woDocNo);
 
-        return ProductionCostSettlementLine.create(lineNo, woDocNo, materialCost, laborCost,
+        return ProductionCostSettlementLine.create(lineNo, woDocNo,
+                material.rawMaterial(), material.goodsMaterial(), laborCost,
                 overheadCost, completedQty, completedCost, wipQty, wipPct, wipCost, alreadyTransferred);
     }
 
@@ -332,21 +342,92 @@ public class ProductionCostSettlementService {
     /**
      * 汇总该工单所有 COMPLETED 领料单各行 issuedCost 之和（料费口径同 T05）。
      */
-    private BigDecimal sumIssuedCostForWorkOrder(String workOrderDocNo) {
+    private MaterialCost sumNetMaterialCostForWorkOrder(String workOrderDocNo) {
         int page = 1;
-        BigDecimal total = BigDecimal.ZERO;
+        BigDecimal rawMaterial = BigDecimal.ZERO;
+        BigDecimal goodsMaterial = BigDecimal.ZERO;
         while (true) {
             var result = issueRepository.search(new MaterialIssueQuery(workOrderDocNo,
                     DocumentStatus.COMPLETED, page, 200));
             for (MaterialIssue mi : result.items()) {
-                total = total.add(mi.totalIssuedCost());
+                for (MaterialIssueLine line : mi.getLines()) {
+                    BigDecimal cost = completedCost(line.getIssuedCost(), "领料", mi.getDocNo(), line.getLineNo());
+                    if (isRawMaterial(line.getProductId())) {
+                        rawMaterial = rawMaterial.add(cost);
+                    } else {
+                        goodsMaterial = goodsMaterial.add(cost);
+                    }
+                }
+                MaterialCost returned = sumReturnedCostForIssue(mi.getDocNo());
+                rawMaterial = rawMaterial.subtract(returned.rawMaterial());
+                goodsMaterial = goodsMaterial.subtract(returned.goodsMaterial());
             }
             if (result.items().size() < 200) {
                 break;
             }
             page++;
         }
-        return total.setScale(CostingStrategy.AMOUNT_SCALE, CostingStrategy.ROUNDING);
+        rawMaterial = scaleAmount(rawMaterial);
+        goodsMaterial = scaleAmount(goodsMaterial);
+        if (rawMaterial.signum() < 0 || goodsMaterial.signum() < 0) {
+            throw new IllegalStateException("工单[" + workOrderDocNo + "] 净领料成本不能为负: 原材料="
+                    + rawMaterial.toPlainString() + ", 商品类=" + goodsMaterial.toPlainString());
+        }
+        return new MaterialCost(rawMaterial, goodsMaterial);
+    }
+
+    /** 按原领料单汇总全部已过账退料，按商品分类返回正数成本，调用方统一相减。 */
+    private MaterialCost sumReturnedCostForIssue(String materialIssueDocNo) {
+        int page = 1;
+        BigDecimal rawMaterial = BigDecimal.ZERO;
+        BigDecimal goodsMaterial = BigDecimal.ZERO;
+        while (true) {
+            var result = returnRepository.search(new MaterialReturnQuery(materialIssueDocNo,
+                    DocumentStatus.COMPLETED, page, 200));
+            for (MaterialReturn materialReturn : result.items()) {
+                for (MaterialReturnLine line : materialReturn.getLines()) {
+                    BigDecimal cost = completedCost(line.getReturnedCost(), "退料", materialReturn.getDocNo(),
+                            line.getLineNo());
+                    if (isRawMaterial(line.getProductId())) {
+                        rawMaterial = rawMaterial.add(cost);
+                    } else {
+                        goodsMaterial = goodsMaterial.add(cost);
+                    }
+                }
+            }
+            if (result.items().size() < 200) {
+                break;
+            }
+            page++;
+        }
+        return new MaterialCost(scaleAmount(rawMaterial), scaleAmount(goodsMaterial));
+    }
+
+    private boolean isRawMaterial(long productId) {
+        InventoryCategory category = Objects.requireNonNull(inventoryCategoryResolver.resolve(productId),
+                "商品存货分类不能为空: " + productId);
+        return category == InventoryCategory.RAW_MATERIAL;
+    }
+
+    private static BigDecimal completedCost(BigDecimal cost, String documentType, String docNo, int lineNo) {
+        if (cost == null) {
+            throw new IllegalStateException(documentType + "单已过账但成本未回填: " + docNo + " 行" + lineNo);
+        }
+        if (cost.signum() < 0) {
+            throw new IllegalStateException(documentType + "单成本不能为负: " + docNo + " 行" + lineNo);
+        }
+        return scaleAmount(cost);
+    }
+
+    private static BigDecimal scaleAmount(BigDecimal amount) {
+        return amount.setScale(CostingStrategy.AMOUNT_SCALE, CostingStrategy.ROUNDING);
+    }
+
+    private record MaterialCost(BigDecimal rawMaterial, BigDecimal goodsMaterial) {
+        private BigDecimal total() {
+            return rawMaterial.add(goodsMaterial)
+                    .setScale(CostingStrategy.AMOUNT_SCALE, CostingStrategy.ROUNDING);
+        }
     }
 
     /**

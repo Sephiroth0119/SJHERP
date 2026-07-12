@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import com.sjherp.domain.catalog.Category;
 import com.sjherp.domain.catalog.CategoryService;
+import com.sjherp.domain.catalog.InventoryCategory;
 import com.sjherp.domain.catalog.Product;
 import com.sjherp.domain.catalog.ProductQuery;
 import com.sjherp.domain.catalog.Unit;
@@ -70,7 +71,8 @@ class CatalogRepositoriesIntegrationTest extends MySqlContainerTestBase {
         String code = "P" + uniqueSuffix();
         Product product = new Product(code, "测试商品", "500ml", null, baseUnit.getId(),
                 "6901234567890", "集成测试数据",
-                List.of(new UnitConversion(boxUnit.getId(), new BigDecimal("12"))), "tester");
+                List.of(new UnitConversion(boxUnit.getId(), new BigDecimal("12"))),
+                InventoryCategory.RAW_MATERIAL, "tester");
         productRepository.save(product);
 
         assertThat(product.getId()).isNotNull();
@@ -78,6 +80,7 @@ class CatalogRepositoriesIntegrationTest extends MySqlContainerTestBase {
         assertThat(found).isPresent();
         assertThat(found.get().getCode()).isEqualTo(code);
         assertThat(found.get().getBaseUnitId()).isEqualTo(baseUnit.getId());
+        assertThat(found.get().getInventoryCategory()).isEqualTo(InventoryCategory.RAW_MATERIAL);
         assertThat(found.get().getUnitConversions()).hasSize(1);
         assertThat(found.get().getUnitConversions().get(0).unitId()).isEqualTo(boxUnit.getId());
         // DECIMAL 读回 scale 可能不同，按数值比较
@@ -88,5 +91,6 @@ class CatalogRepositoriesIntegrationTest extends MySqlContainerTestBase {
         PageResult<Product> page = productRepository.search(new ProductQuery(code, null, 1, 20));
         assertThat(page.total()).isEqualTo(1);
         assertThat(page.items().get(0).getCode()).isEqualTo(code);
+        assertThat(page.items().get(0).getInventoryCategory()).isEqualTo(InventoryCategory.RAW_MATERIAL);
     }
 }

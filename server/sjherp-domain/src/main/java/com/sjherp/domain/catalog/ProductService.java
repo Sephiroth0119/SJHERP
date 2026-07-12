@@ -63,7 +63,7 @@ public class ProductService {
 
         Product product = new Product(code, command.name(), command.spec(), command.categoryId(),
                 command.baseUnitId(), command.barcode(), command.remark(),
-                command.unitConversions(), operator);
+                command.unitConversions(), requireInventoryCategory(command), operator);
         productRepository.save(product);
         return product;
     }
@@ -82,10 +82,16 @@ public class ProductService {
         if (!code.equals(product.getCode()) && productRepository.existsByCode(code)) {
             throw new IllegalArgumentException("商品编码已存在: " + code);
         }
+        InventoryCategory inventoryCategory = requireInventoryCategory(command);
+        if (product.getInventoryCategory() != inventoryCategory
+                && stockChecker != null && stockChecker.productHasTransactions(id)) {
+            throw new IllegalArgumentException("商品已有库存流水，禁止修改存货分类: "
+                    + product.getInventoryCategory() + " → " + inventoryCategory);
+        }
 
         product.update(code, command.name(), command.spec(), command.categoryId(),
                 command.baseUnitId(), command.barcode(), command.remark(),
-                command.unitConversions(), operator);
+                command.unitConversions(), inventoryCategory, operator);
         productRepository.save(product);
         return product;
     }
@@ -148,5 +154,9 @@ public class ProductService {
                         .orElseThrow(() -> CatalogNotFoundException.unit(conversion.unitId()));
             }
         }
+    }
+
+    private static InventoryCategory requireInventoryCategory(ProductCommand command) {
+        return Objects.requireNonNull(command.inventoryCategory(), "存货分类不能为空");
     }
 }

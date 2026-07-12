@@ -21,6 +21,7 @@ import com.sjherp.app.dataimport.ImportDtos.RowFailure;
 import com.sjherp.app.inventory.InventoryAdjustmentService;
 import com.sjherp.domain.catalog.Product;
 import com.sjherp.domain.catalog.ProductCommand;
+import com.sjherp.domain.catalog.InventoryCategory;
 import com.sjherp.domain.catalog.ProductService;
 import com.sjherp.domain.catalog.Unit;
 import com.sjherp.domain.catalog.UnitService;
@@ -120,7 +121,7 @@ public class ImportService {
                 String remark = ExcelWorkbookReader.col(row, ImportColumns.PRODUCT_REMARK);
 
                 ProductCommand cmd = new ProductCommand(code, name, spec, null,
-                        unit.getId(), barcode, remark, List.of());
+                        unit.getId(), barcode, remark, List.of(), InventoryCategory.MERCHANDISE);
                 productService.create(cmd, operator);
 
             } catch (IllegalArgumentException e) {

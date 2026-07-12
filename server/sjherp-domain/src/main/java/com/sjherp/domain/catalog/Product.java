@@ -42,6 +42,13 @@ public final class Product implements AuditTarget {
     /** 所属类目 id，可空（小企业允许先建商品后归类） */
     private Long categoryId;
 
+    /**
+     * 存货分类。科目映射不由档案自由输入，而由应用层会计策略唯一维护。
+     *
+     * <p>商品一旦产生库存流水，类别不得再变更，见 {@link ProductService}。
+     */
+    private InventoryCategory inventoryCategory;
+
     /** 基本单位 id（库存与成本核算的计量基准，必填） */
     private long baseUnitId;
 
@@ -64,10 +71,19 @@ public final class Product implements AuditTarget {
     /** 新建商品，初始状态为启用（id 由仓储落库后回填） */
     public Product(String code, String name, String spec, Long categoryId, long baseUnitId,
                    String barcode, String remark, List<UnitConversion> unitConversions, String operator) {
+        this(code, name, spec, categoryId, baseUnitId, barcode, remark, unitConversions,
+                InventoryCategory.MERCHANDISE, operator);
+    }
+
+    /** 新建商品，存货分类由商品档案明确指定。 */
+    public Product(String code, String name, String spec, Long categoryId, long baseUnitId,
+                   String barcode, String remark, List<UnitConversion> unitConversions,
+                   InventoryCategory inventoryCategory, String operator) {
         this.code = validateCode(code);
         this.name = validateName(name);
         this.spec = validateOptional(spec, SPEC_MAX_LENGTH, "规格");
         this.categoryId = categoryId;
+        this.inventoryCategory = Objects.requireNonNull(inventoryCategory, "存货分类不能为空");
         this.baseUnitId = baseUnitId;
         this.barcode = validateOptional(barcode, BARCODE_MAX_LENGTH, "条码");
         this.remark = validateOptional(remark, REMARK_MAX_LENGTH, "备注");
@@ -79,7 +95,8 @@ public final class Product implements AuditTarget {
         this.updatedAt = this.createdAt;
     }
 
-    private Product(Long id, String code, String name, String spec, Long categoryId, long baseUnitId,
+    private Product(Long id, String code, String name, String spec, Long categoryId,
+                    InventoryCategory inventoryCategory, long baseUnitId,
                     String barcode, ArchiveStatus status, String remark, List<UnitConversion> unitConversions,
                     String createdBy, Instant createdAt, String updatedBy, Instant updatedAt) {
         this.id = id;
@@ -87,6 +104,7 @@ public final class Product implements AuditTarget {
         this.name = name;
         this.spec = spec;
         this.categoryId = categoryId;
+        this.inventoryCategory = Objects.requireNonNull(inventoryCategory, "存货分类不能为空");
         this.baseUnitId = baseUnitId;
         this.barcode = barcode;
         this.status = status;
@@ -100,11 +118,27 @@ public final class Product implements AuditTarget {
 
     /** 持久层重建工厂（不重跑业务校验，库中数据以入库时校验为准） */
     public static Product restore(long id, String code, String name, String spec, Long categoryId,
+                                  InventoryCategory inventoryCategory,
                                   long baseUnitId, String barcode, ArchiveStatus status, String remark,
                                   List<UnitConversion> unitConversions,
                                   String createdBy, Instant createdAt, String updatedBy, Instant updatedAt) {
-        return new Product(id, code, name, spec, categoryId, baseUnitId, barcode, status, remark,
+        return new Product(id, code, name, spec, categoryId, inventoryCategory, baseUnitId, barcode, status, remark,
                 unitConversions, createdBy, createdAt, updatedBy, updatedAt);
+    }
+
+    /**
+     * 旧持久化/测试夹具兼容回读入口。
+     *
+     * <p>真实 JDBC 回读必须使用带分类的重载；旧调用点没有分类信息时按 V31 的升级默认值
+     * {@link InventoryCategory#MERCHANDISE} 恢复，避免将旧业务解释为原材料。
+     */
+    public static Product restore(long id, String code, String name, String spec, Long categoryId,
+                                  long baseUnitId, String barcode, ArchiveStatus status, String remark,
+                                  List<UnitConversion> unitConversions,
+                                  String createdBy, Instant createdAt, String updatedBy, Instant updatedAt) {
+        return restore(id, code, name, spec, categoryId, InventoryCategory.MERCHANDISE,
+                baseUnitId, barcode, status, remark, unitConversions,
+                createdBy, createdAt, updatedBy, updatedAt);
     }
 
     /**
@@ -113,10 +147,19 @@ public final class Product implements AuditTarget {
      */
     public void update(String code, String name, String spec, Long categoryId, long baseUnitId,
                        String barcode, String remark, List<UnitConversion> unitConversions, String operator) {
+        update(code, name, spec, categoryId, baseUnitId, barcode, remark, unitConversions,
+                inventoryCategory, operator);
+    }
+
+    /** 更新商品基础信息与存货分类；分类变更的历史流水守门由 {@link ProductService} 完成。 */
+    public void update(String code, String name, String spec, Long categoryId, long baseUnitId,
+                       String barcode, String remark, List<UnitConversion> unitConversions,
+                       InventoryCategory inventoryCategory, String operator) {
         this.code = validateCode(code);
         this.name = validateName(name);
         this.spec = validateOptional(spec, SPEC_MAX_LENGTH, "规格");
         this.categoryId = categoryId;
+        this.inventoryCategory = Objects.requireNonNull(inventoryCategory, "存货分类不能为空");
         this.baseUnitId = baseUnitId;
         this.barcode = validateOptional(barcode, BARCODE_MAX_LENGTH, "条码");
         this.remark = validateOptional(remark, REMARK_MAX_LENGTH, "备注");
@@ -237,6 +280,10 @@ public final class Product implements AuditTarget {
         return categoryId;
     }
 
+    public InventoryCategory getInventoryCategory() {
+        return inventoryCategory;
+    }
+
     public long getBaseUnitId() {
         return baseUnitId;
     }
@@ -292,6 +339,7 @@ public final class Product implements AuditTarget {
                 + ", 规格=" + AuditTarget.text(spec) + ", 条码=" + AuditTarget.text(barcode)
                 + ", 基本单位id=" + baseUnitId
                 + ", 类目id=" + (categoryId == null ? "-" : categoryId)
+                + ", 存货分类=" + inventoryCategory
                 + ", 换算数=" + unitConversions.size() + ", 状态=" + status.label();
     }
 }

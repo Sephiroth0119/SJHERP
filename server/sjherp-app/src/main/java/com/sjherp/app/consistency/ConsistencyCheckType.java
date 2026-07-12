@@ -96,7 +96,10 @@ public enum ConsistencyCheckType {
      * 截 0 下限）≡ Σ(COST_ADJUST 库存流水 total_cost，按结转单号+行号匹配)。
      * 工费经库存唯一入口 CostAdjust 追加到产成品，结转行口径必须与流水一致（双锚点探测网，R-T06-8）。
      */
-    COST_SETTLEMENT_ADJUST("COST_SETTLEMENT_ADJUST", "成本结转工费勾稽");
+    COST_SETTLEMENT_ADJUST("COST_SETTLEMENT_ADJUST", "成本结转工费勾稽"),
+
+    /** 规则17：生产存货成本与生产成本结算凭证 1405 净借方勾稽，超过 1 分即 ERROR。 */
+    PRODUCTION_INVENTORY_GL("PRODUCTION_INVENTORY_GL", "生产存货与总账1405勾稽");
 
     private final String code;
     private final String displayName;

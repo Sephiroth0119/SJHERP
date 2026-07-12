@@ -39,6 +39,12 @@ public final class ProductionCostSettlementLine {
     /** 本期料成本（Σ COMPLETED 领料 issuedCost，T05 口径，2 位） */
     private final BigDecimal materialCost;
 
+    /** 本期原材料成本净额（COMPLETED 领料 − COMPLETED 退料，1403 对应口径）。 */
+    private final BigDecimal rawMaterialCost;
+
+    /** 本期商品类材料成本净额（COMPLETED 领料 − COMPLETED 退料，1405 对应口径）。 */
+    private final BigDecimal goodsMaterialCost;
+
     /** 本期人工成本（Σ 报工 reportedHours × 工序 costRate / 默认人工费率，2 位） */
     private final BigDecimal laborCost;
 
@@ -70,6 +76,7 @@ public final class ProductionCostSettlementLine {
     private String voucherDocNo;
 
     private ProductionCostSettlementLine(Long id, int lineNo, String workOrderDocNo,
+                                         BigDecimal rawMaterialCost, BigDecimal goodsMaterialCost,
                                          BigDecimal materialCost, BigDecimal laborCost,
                                          BigDecimal overheadCost, BigDecimal completedQty,
                                          BigDecimal completedCost, BigDecimal wipQty,
@@ -79,7 +86,16 @@ public final class ProductionCostSettlementLine {
         this.id = id;
         this.lineNo = lineNo;
         this.workOrderDocNo = Objects.requireNonNull(workOrderDocNo, "工单号不能为空");
+        this.rawMaterialCost = scale(rawMaterialCost);
+        this.goodsMaterialCost = scale(goodsMaterialCost);
         this.materialCost = scale(materialCost);
+        BigDecimal classifiedMaterialCost = this.rawMaterialCost.add(this.goodsMaterialCost)
+                .setScale(CostingStrategy.AMOUNT_SCALE, CostingStrategy.ROUNDING);
+        if (this.materialCost.compareTo(classifiedMaterialCost) != 0) {
+            throw new IllegalArgumentException("材料成本分类汇总不等于材料成本: material="
+                    + this.materialCost.toPlainString() + ", raw=" + this.rawMaterialCost.toPlainString()
+                    + ", goods=" + this.goodsMaterialCost.toPlainString());
+        }
         this.laborCost = scale(laborCost);
         this.overheadCost = scale(overheadCost);
         this.completedQty = Objects.requireNonNull(completedQty, "完工数量不能为空");
@@ -104,9 +120,28 @@ public final class ProductionCostSettlementLine {
         if (lineNo < 1) {
             throw new IllegalArgumentException("成本结转单行号必须 >= 1: " + lineNo);
         }
-        return new ProductionCostSettlementLine(null, lineNo, workOrderDocNo, materialCost,
-                laborCost, overheadCost, completedQty, completedCost, wipQty, wipCompletionPct,
+        return new ProductionCostSettlementLine(null, lineNo, workOrderDocNo, materialCost, BigDecimal.ZERO,
+                materialCost, laborCost, overheadCost, completedQty, completedCost, wipQty, wipCompletionPct,
                 wipCost, alreadyTransferred, null, null);
+    }
+
+    /**
+     * 分类材料成本建单工厂。材料总额由两类净额派生，避免后续凭证拆分与成本总额出现两套口径。
+     */
+    public static ProductionCostSettlementLine create(int lineNo, String workOrderDocNo,
+                                                      BigDecimal rawMaterialCost, BigDecimal goodsMaterialCost,
+                                                      BigDecimal laborCost, BigDecimal overheadCost,
+                                                      BigDecimal completedQty, BigDecimal completedCost,
+                                                      BigDecimal wipQty, BigDecimal wipCompletionPct,
+                                                      BigDecimal wipCost, BigDecimal alreadyTransferred) {
+        if (lineNo < 1) {
+            throw new IllegalArgumentException("成本结转单行号必须 >= 1: " + lineNo);
+        }
+        BigDecimal materialCost = scale(rawMaterialCost).add(scale(goodsMaterialCost))
+                .setScale(CostingStrategy.AMOUNT_SCALE, CostingStrategy.ROUNDING);
+        return new ProductionCostSettlementLine(null, lineNo, workOrderDocNo,
+                rawMaterialCost, goodsMaterialCost, materialCost, laborCost, overheadCost,
+                completedQty, completedCost, wipQty, wipCompletionPct, wipCost, alreadyTransferred, null, null);
     }
 
     /** 持久层重建工厂（不重跑业务校验）。 */
@@ -117,8 +152,23 @@ public final class ProductionCostSettlementLine {
                                                        BigDecimal wipCompletionPct, BigDecimal wipCost,
                                                        BigDecimal alreadyTransferred,
                                                        String costAdjustIdemKey, String voucherDocNo) {
-        return new ProductionCostSettlementLine(id, lineNo, workOrderDocNo, materialCost, laborCost,
-                overheadCost, completedQty, completedCost, wipQty, wipCompletionPct, wipCost,
+        return new ProductionCostSettlementLine(id, lineNo, workOrderDocNo, materialCost, BigDecimal.ZERO,
+                materialCost, laborCost, overheadCost, completedQty, completedCost, wipQty, wipCompletionPct, wipCost,
+                alreadyTransferred, costAdjustIdemKey, voucherDocNo);
+    }
+
+    /** 持久化层重建工厂，保留分类材料成本与总额一致性校验。 */
+    public static ProductionCostSettlementLine restore(long id, int lineNo, String workOrderDocNo,
+                                                       BigDecimal rawMaterialCost, BigDecimal goodsMaterialCost,
+                                                       BigDecimal materialCost, BigDecimal laborCost,
+                                                       BigDecimal overheadCost, BigDecimal completedQty,
+                                                       BigDecimal completedCost, BigDecimal wipQty,
+                                                       BigDecimal wipCompletionPct, BigDecimal wipCost,
+                                                       BigDecimal alreadyTransferred,
+                                                       String costAdjustIdemKey, String voucherDocNo) {
+        return new ProductionCostSettlementLine(id, lineNo, workOrderDocNo,
+                rawMaterialCost, goodsMaterialCost, materialCost, laborCost, overheadCost,
+                completedQty, completedCost, wipQty, wipCompletionPct, wipCost,
                 alreadyTransferred, costAdjustIdemKey, voucherDocNo);
     }
 
@@ -167,6 +217,8 @@ public final class ProductionCostSettlementLine {
     public int getLineNo() { return lineNo; }
     public String getWorkOrderDocNo() { return workOrderDocNo; }
     public BigDecimal getMaterialCost() { return materialCost; }
+    public BigDecimal getRawMaterialCost() { return rawMaterialCost; }
+    public BigDecimal getGoodsMaterialCost() { return goodsMaterialCost; }
     public BigDecimal getLaborCost() { return laborCost; }
     public BigDecimal getOverheadCost() { return overheadCost; }
     public BigDecimal getCompletedQty() { return completedQty; }

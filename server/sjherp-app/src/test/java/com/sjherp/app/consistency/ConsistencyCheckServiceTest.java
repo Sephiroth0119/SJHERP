@@ -21,6 +21,7 @@ import com.sjherp.app.consistency.ConsistencyCheckDao.MaterialIssueCostRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.MaterialReturnCostRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.PayableMatchRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.ProductionInboundCostRow;
+import com.sjherp.app.consistency.ConsistencyCheckDao.ProductionInventoryGlRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.PurchaseThreeWayRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.ReceivableMatchRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.SalesThreeWayRow;
@@ -525,5 +526,31 @@ class ConsistencyCheckServiceTest {
         assertThat(b).isPresent();
         assertThat(b.get().severity()).isEqualTo(ConsistencySeverity.ERROR);
         assertThat(b.get().expected()).isEqualTo("0");
+    }
+
+    // ===================== 规则17：生产存货与总账 1405 勾稽 =====================
+
+    @Test
+    void 生产存货与1405净借方相等_不报() {
+        Optional<ConsistencyBreak> b = ConsistencyCheckService.checkProductionInventoryGl(
+                new ProductionInventoryGlRow("WO-1", new BigDecimal("123.45"), new BigDecimal("123.45")));
+        assertThat(b).isEmpty();
+    }
+
+    @Test
+    void 生产存货与1405仅差一分_不报() {
+        Optional<ConsistencyBreak> b = ConsistencyCheckService.checkProductionInventoryGl(
+                new ProductionInventoryGlRow("WO-1", new BigDecimal("123.45"), new BigDecimal("123.46")));
+        assertThat(b).isEmpty();
+    }
+
+    @Test
+    void 生产存货与1405超过一分差异_报ERROR() {
+        Optional<ConsistencyBreak> b = ConsistencyCheckService.checkProductionInventoryGl(
+                new ProductionInventoryGlRow("WO-1", new BigDecimal("123.45"), new BigDecimal("123.47")));
+        assertThat(b).isPresent();
+        assertThat(b.get().checkType()).isEqualTo(ConsistencyCheckType.PRODUCTION_INVENTORY_GL);
+        assertThat(b.get().severity()).isEqualTo(ConsistencySeverity.ERROR);
+        assertThat(b.get().key()).isEqualTo("WO-1");
     }
 }

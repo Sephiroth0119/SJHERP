@@ -20,6 +20,7 @@ import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.sjherp.domain.catalog.Product;
+import com.sjherp.domain.catalog.InventoryCategory;
 import com.sjherp.domain.catalog.ProductQuery;
 import com.sjherp.domain.catalog.ProductRepository;
 import com.sjherp.domain.catalog.UnitConversion;
@@ -37,11 +38,12 @@ import com.sjherp.domain.common.PageResult;
 public class JdbcProductRepository implements ProductRepository {
 
     private static final String SELECT_COLUMNS =
-            "SELECT id, code, name, spec, category_id, base_unit_id, barcode, status, remark, "
+            "SELECT id, code, name, spec, category_id, inventory_category, base_unit_id, barcode, status, remark, "
                     + "created_by, created_at, updated_by, updated_at FROM product ";
 
     /** 商品行中间载体（换算表单独查询后再 restore 成聚合） */
     private record ProductRow(long id, String code, String name, String spec, Long categoryId,
+                              InventoryCategory inventoryCategory,
                               long baseUnitId, String barcode, ArchiveStatus status, String remark,
                               String createdBy, Instant createdAt, String updatedBy, Instant updatedAt) {
     }
@@ -52,6 +54,7 @@ public class JdbcProductRepository implements ProductRepository {
             rs.getString("name"),
             rs.getString("spec"),
             rs.getObject("category_id", Long.class),
+            InventoryCategory.valueOf(rs.getString("inventory_category")),
             rs.getLong("base_unit_id"),
             rs.getString("barcode"),
             ArchiveStatus.valueOf(rs.getString("status")),
@@ -86,8 +89,8 @@ public class JdbcProductRepository implements ProductRepository {
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbc.update(con -> {
             PreparedStatement ps = con.prepareStatement(
-                    "INSERT INTO product (code, name, spec, category_id, base_unit_id, barcode, status, remark, "
-                            + "created_by, created_at, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO product (code, name, spec, category_id, inventory_category, base_unit_id, barcode, status, remark, "
+                            + "created_by, created_at, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     Statement.RETURN_GENERATED_KEYS);
             ps.setString(1, product.getCode());
             ps.setString(2, product.getName());
@@ -97,14 +100,15 @@ public class JdbcProductRepository implements ProductRepository {
             } else {
                 ps.setLong(4, product.getCategoryId());
             }
-            ps.setLong(5, product.getBaseUnitId());
-            ps.setString(6, product.getBarcode());
-            ps.setString(7, product.getStatus().name());
-            ps.setString(8, product.getRemark());
-            ps.setString(9, product.getCreatedBy());
-            ps.setObject(10, toDb(product.getCreatedAt()));
-            ps.setString(11, product.getUpdatedBy());
-            ps.setObject(12, toDb(product.getUpdatedAt()));
+            ps.setString(5, product.getInventoryCategory().name());
+            ps.setLong(6, product.getBaseUnitId());
+            ps.setString(7, product.getBarcode());
+            ps.setString(8, product.getStatus().name());
+            ps.setString(9, product.getRemark());
+            ps.setString(10, product.getCreatedBy());
+            ps.setObject(11, toDb(product.getCreatedAt()));
+            ps.setString(12, product.getUpdatedBy());
+            ps.setObject(13, toDb(product.getUpdatedAt()));
             return ps;
         }, keyHolder);
         product.assignId(Objects.requireNonNull(keyHolder.getKey(), "未取得自增主键").longValue());
@@ -112,10 +116,10 @@ public class JdbcProductRepository implements ProductRepository {
 
     private void updateProduct(Product product) {
         // 创建审计字段（created_by/created_at）落库后不可变，更新不触碰
-        jdbc.update("UPDATE product SET code = ?, name = ?, spec = ?, category_id = ?, base_unit_id = ?, "
+        jdbc.update("UPDATE product SET code = ?, name = ?, spec = ?, category_id = ?, inventory_category = ?, base_unit_id = ?, "
                         + "barcode = ?, status = ?, remark = ?, updated_by = ?, updated_at = ? WHERE id = ?",
                 product.getCode(), product.getName(), product.getSpec(), product.getCategoryId(),
-                product.getBaseUnitId(), product.getBarcode(), product.getStatus().name(),
+                product.getInventoryCategory().name(), product.getBaseUnitId(), product.getBarcode(), product.getStatus().name(),
                 product.getRemark(), product.getUpdatedBy(), toDb(product.getUpdatedAt()),
                 product.getId());
     }
@@ -231,7 +235,7 @@ public class JdbcProductRepository implements ProductRepository {
     }
 
     private static Product restore(ProductRow row, List<UnitConversion> conversions) {
-        return Product.restore(row.id(), row.code(), row.name(), row.spec(), row.categoryId(),
+        return Product.restore(row.id(), row.code(), row.name(), row.spec(), row.categoryId(), row.inventoryCategory(),
                 row.baseUnitId(), row.barcode(), row.status(), row.remark(), conversions,
                 row.createdBy(), row.createdAt(), row.updatedBy(), row.updatedAt());
     }

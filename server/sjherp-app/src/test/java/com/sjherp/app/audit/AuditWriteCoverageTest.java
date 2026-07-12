@@ -118,7 +118,8 @@ class AuditWriteCoverageTest {
 
         ProductService service = proxied(new ProductService(productRepository, categoryRepository,
                 unitRepository, numberGenerator("SKU-202606-0001")));
-        service.create(new ProductCommand(null, "可乐", null, null, 1L, null, null, null), OPERATOR);
+        service.create(new ProductCommand(null, "可乐", null, null, 1L, null, null, null,
+                com.sjherp.domain.catalog.InventoryCategory.MERCHANDISE), OPERATOR);
 
         assertAudit("product.create", "product");
     }
