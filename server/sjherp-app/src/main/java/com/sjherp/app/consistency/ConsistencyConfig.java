@@ -1,7 +1,14 @@
 package com.sjherp.app.consistency;
 
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.EnableScheduling;
+
+import com.sjherp.domain.consistency.ConsistencyCheckRunRepository;
+import com.sjherp.domain.notification.SystemNotificationRepository;
+import com.sjherp.infra.persistence.consistency.JdbcConsistencyCheckRunRepository;
+import com.sjherp.infra.persistence.notification.JdbcSystemNotificationRepository;
 
 /**
  * 数据一致性校验单元装配（M3-T13 检查 Agent）。
@@ -17,8 +24,21 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * <p><b>不在此注册 Agent 工具</b>：{@code run_consistency_check} 的 registry.register 由
  * {@code DomainToolConfig}（共享文件，集成阶段统一改）完成，本类不碰 ToolRegistry（CLAUDE.md：
  * 工具注册集中一处）。
+ *
+ * <p>Explicitly registers the consistency-run and system-notification JDBC adapters because
+ * application component scanning is limited to {@code com.sjherp.app}.
  */
 @Configuration
 @EnableScheduling
 public class ConsistencyConfig {
+
+    @Bean
+    ConsistencyCheckRunRepository consistencyCheckRunRepository(JdbcTemplate jdbc) {
+        return new JdbcConsistencyCheckRunRepository(jdbc);
+    }
+
+    @Bean
+    SystemNotificationRepository systemNotificationRepository(JdbcTemplate jdbc) {
+        return new JdbcSystemNotificationRepository(jdbc);
+    }
 }
