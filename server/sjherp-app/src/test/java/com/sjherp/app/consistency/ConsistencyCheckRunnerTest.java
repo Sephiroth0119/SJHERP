@@ -119,24 +119,25 @@ class ConsistencyCheckRunnerTest {
     }
 
     @Test
-    void deterministicFailurePersistsSafeFailedRunThenRethrows() {
+    void manualDeterministicFailurePersistsSafeFailedRunThenRethrowsOriginal() {
         when(numberGenerator.generate(any())).thenReturn("CHK-202607-0005");
         IllegalStateException failure = new IllegalStateException("database password");
         ConsistencyRule sqlFailure = rule("SQL", 1, Kind.SQL_ASSERTION, context -> {
             throw failure;
         });
 
-        assertThatThrownBy(() -> runner(registry(sqlFailure)).runScheduled())
+        assertThatThrownBy(() -> runner(registry(sqlFailure)).runManual("admin"))
                 .isSameAs(failure);
         ArgumentCaptor<ConsistencyCheckRun> saved = ArgumentCaptor.forClass(ConsistencyCheckRun.class);
         verify(persistence).persist(saved.capture());
+        assertThat(saved.getValue().triggerType()).isEqualTo(TriggerType.MANUAL_API);
         assertThat(saved.getValue().failureType()).isEqualTo("IllegalStateException");
         assertThat(saved.getValue().auditSummary()).doesNotContain("database password");
         assertThat(saved.getValue().findings()).isEmpty();
     }
 
     @Test
-    void failedSummaryPersistenceCannotReplaceOriginalDeterministicFailure() {
+    void agentFailedSummaryPersistenceCannotReplaceOriginalDeterministicFailure() {
         when(numberGenerator.generate(any())).thenReturn("CHK-202607-0006");
         IllegalStateException original = new IllegalStateException("deterministic secret");
         IllegalArgumentException persistenceFailure = new IllegalArgumentException("storage secret");
@@ -145,9 +146,29 @@ class ConsistencyCheckRunnerTest {
         });
         org.mockito.Mockito.doThrow(persistenceFailure).when(persistence).persist(any());
 
-        Throwable thrown = catchThrowable(() -> runner(registry(sqlFailure)).runScheduled());
+        Throwable thrown = catchThrowable(() -> runner(registry(sqlFailure)).runAgent("7"));
 
         assertThat(thrown).isSameAs(original);
+    }
+
+    @Test
+    void scheduledDeterministicFailureReturnsPersistedSafeFailedOutcome() {
+        when(numberGenerator.generate(any())).thenReturn("CHK-202607-0009");
+        ConsistencyRule sqlFailure = rule("SQL", 1, Kind.SQL_ASSERTION, context -> {
+            throw new IllegalStateException("scheduled database password");
+        });
+
+        ConsistencyCheckRun run = runner(registry(sqlFailure)).runScheduled();
+
+        assertThat(run.runNo()).isEqualTo("CHK-202607-0009");
+        assertThat(run.triggerType()).isEqualTo(TriggerType.SCHEDULED);
+        assertThat(run.status()).isEqualTo(ConsistencyCheckRun.Status.FAILED);
+        assertThat(run.totalCount()).isZero();
+        assertThat(run.errorCount()).isZero();
+        assertThat(run.warnCount()).isZero();
+        assertThat(run.infoCount()).isZero();
+        assertThat(run.auditSummary()).doesNotContain("scheduled database password");
+        verify(persistence).persist(run);
     }
 
     @Test

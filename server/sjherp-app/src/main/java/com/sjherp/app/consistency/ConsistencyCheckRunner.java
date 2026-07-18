@@ -82,8 +82,12 @@ public class ConsistencyCheckRunner {
                 }
             }
         } catch (RuntimeException deterministicFailure) {
-            persistFailedRunWithoutReplacingOriginal(runNo, triggerType, checkedRequestedBy,
+            ConsistencyCheckRun failed = persistFailedRunWithoutReplacingOriginal(
+                    runNo, triggerType, checkedRequestedBy,
                     startedAt, deterministicFailure);
+            if (triggerType == TriggerType.SCHEDULED) {
+                return failed;
+            }
             throw deterministicFailure;
         }
 
@@ -133,20 +137,27 @@ public class ConsistencyCheckRunner {
         return combined.isEmpty() ? null : combined.toString();
     }
 
-    private void persistFailedRunWithoutReplacingOriginal(String runNo, TriggerType triggerType,
-                                                           String requestedBy, Instant startedAt,
-                                                           RuntimeException originalFailure) {
+    private ConsistencyCheckRun persistFailedRunWithoutReplacingOriginal(
+            String runNo, TriggerType triggerType, String requestedBy, Instant startedAt,
+            RuntimeException originalFailure) {
         ConsistencyCheckRun failed = ConsistencyCheckRun.failed(
                 TENANT_ID, runNo, triggerType, requestedBy, startedAt, Instant.now(clock),
                 originalFailure.getClass().getSimpleName());
         try {
             persistence.persist(failed);
         } catch (RuntimeException persistenceFailure) {
-            log.error("一致性失败摘要持久化失败，保留原始确定性异常"
-                            + "（deterministicFailureType={}, persistenceFailureType={}）",
-                    originalFailure.getClass().getSimpleName(),
-                    persistenceFailure.getClass().getSimpleName());
+            if (triggerType == TriggerType.SCHEDULED) {
+                log.error("一致性定时巡检失败摘要持久化失败"
+                                + "（runNo={}，总数=0，ERROR=0，WARN=0，INFO=0）",
+                        runNo);
+            } else {
+                log.error("一致性失败摘要持久化失败，保留原始确定性异常"
+                                + "（deterministicFailureType={}, persistenceFailureType={}）",
+                        originalFailure.getClass().getSimpleName(),
+                        persistenceFailure.getClass().getSimpleName());
+            }
         }
+        return failed;
     }
 
     private static ConsistencyFinding toFinding(int sequenceNo, String ruleCode,

@@ -40,6 +40,11 @@ public class ConsistencyScheduledChecker {
     @Scheduled(cron = "${sjherp.consistency.cron:0 0 3 * * *}")
     public void runScheduledCheck() {
         ConsistencyCheckRun run = consistencyCheckRunner.runScheduled();
+        if (run.status() == ConsistencyCheckRun.Status.FAILED) {
+            log.error("数据一致性定时巡检失败（runNo={}，总数={}，ERROR={}，WARN={}，INFO={}）",
+                    run.runNo(), run.totalCount(), run.errorCount(), run.warnCount(), run.infoCount());
+            return;
+        }
         if (run.clean()) {
             log.info("数据一致性定时巡检完成（runNo={}，总数=0）", run.runNo());
             return;
