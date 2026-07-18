@@ -16,6 +16,9 @@ public interface SystemNotificationRepository {
 
     Optional<SystemNotification> findByIdAndRecipient(long tenantId, long id, long recipientUserId);
 
+    Optional<SystemNotification> findByIdAndRecipientForUpdate(long tenantId, long id,
+                                                                long recipientUserId);
+
     boolean existsBySource(long tenantId, long recipientUserId,
                            SystemNotification.SourceType sourceType, String sourceRef);
 }

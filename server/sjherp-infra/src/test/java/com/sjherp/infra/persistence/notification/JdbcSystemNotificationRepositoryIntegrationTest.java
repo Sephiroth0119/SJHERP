@@ -3,10 +3,18 @@ package com.sjherp.infra.persistence.notification;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import com.sjherp.domain.notification.SystemNotification;
 import com.sjherp.domain.notification.SystemNotificationQuery;
@@ -45,6 +53,84 @@ class JdbcSystemNotificationRepositoryIntegrationTest extends MySqlContainerTest
         assertThat(repository.findByIdAndRecipient(0, notification.id(), adminId)).get()
                 .satisfies(found -> assertThat(found.readAt()).isEqualTo(firstReadAt));
         assertThat(repository.countUnread(0, adminId)).isZero();
+    }
+
+    @Tag("integration-db")
+    @Test
+    void lockingCurrentReadSerializesTwoTransactionsAndReturnsFirstReadTimestamp() throws Exception {
+        SystemNotification notification = notificationFor(adminId);
+        repository.save(notification);
+        Instant firstReadAt = Instant.parse("2026-07-19T01:00:00Z");
+        Instant secondReadAt = firstReadAt.plusSeconds(30);
+        CountDownLatch firstLocked = new CountDownLatch(1);
+        CountDownLatch releaseFirst = new CountDownLatch(1);
+        CountDownLatch secondAttemptingLock = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        try {
+            Future<SystemNotification> first = executor.submit(() -> inTransaction(() -> {
+                SystemNotification current = lockingFind(notification.id(), adminId);
+                firstLocked.countDown();
+                current.markRead(firstReadAt);
+                repository.save(current);
+                await(releaseFirst);
+                return current;
+            }));
+            assertThat(firstLocked.await(5, TimeUnit.SECONDS)).isTrue();
+
+            Future<SystemNotification> second = executor.submit(() -> inTransaction(() -> {
+                secondAttemptingLock.countDown();
+                SystemNotification current = lockingFind(notification.id(), adminId);
+                current.markRead(secondReadAt);
+                repository.save(current);
+                return current;
+            }));
+            assertThat(secondAttemptingLock.await(5, TimeUnit.SECONDS)).isTrue();
+            org.assertj.core.api.Assertions.assertThatThrownBy(
+                    () -> second.get(300, TimeUnit.MILLISECONDS))
+                    .isInstanceOf(TimeoutException.class);
+
+            releaseFirst.countDown();
+            SystemNotification firstResult = first.get(5, TimeUnit.SECONDS);
+            SystemNotification secondResult = second.get(5, TimeUnit.SECONDS);
+
+            assertThat(firstResult.readAt()).isNotNull().isEqualTo(firstReadAt);
+            assertThat(secondResult.readAt()).isNotNull().isEqualTo(firstReadAt);
+        } finally {
+            releaseFirst.countDown();
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
+    private SystemNotification lockingFind(long notificationId, long recipientUserId) {
+        return repository.findByIdAndRecipientForUpdate(0, notificationId, recipientUserId)
+                .orElseThrow();
+    }
+
+    private <T> T inTransaction(java.util.concurrent.Callable<T> callback) {
+        TransactionTemplate transaction = new TransactionTemplate(
+                new DataSourceTransactionManager(jdbc.getDataSource()));
+        return transaction.execute(status -> {
+            try {
+                return callback.call();
+            } catch (RuntimeException | Error exception) {
+                throw exception;
+            } catch (Exception exception) {
+                throw new IllegalStateException(exception);
+            }
+        });
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(5, TimeUnit.SECONDS)) {
+                throw new AssertionError("timed out waiting to release transaction");
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("interrupted while waiting to release transaction", exception);
+        }
     }
 
     private long insertUser(String username) {

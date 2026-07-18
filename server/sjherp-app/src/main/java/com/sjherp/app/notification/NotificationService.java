@@ -49,12 +49,11 @@ public class NotificationService {
         if (id < 1) {
             throw new NotificationNotFoundException(id);
         }
-        SystemNotification notification = repository.findByIdAndRecipient(TENANT_ID, id, recipientId)
+        SystemNotification notification = repository.findByIdAndRecipientForUpdate(TENANT_ID, id, recipientId)
                 .orElseThrow(() -> new NotificationNotFoundException(id));
         notification.markRead(Instant.now(clock));
         repository.save(notification);
-        return repository.findByIdAndRecipient(TENANT_ID, id, recipientId)
-                .orElseThrow(() -> new NotificationNotFoundException(id));
+        return notification;
     }
 
     private static long requireUserId(long userId) {

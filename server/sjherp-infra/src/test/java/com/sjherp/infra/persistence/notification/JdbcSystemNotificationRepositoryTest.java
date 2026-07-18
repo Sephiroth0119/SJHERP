@@ -29,6 +29,18 @@ class JdbcSystemNotificationRepositoryTest {
     }
 
     @Test
+    void lockingLookupUsesCurrentReadWithTenantAndRecipientScope() {
+        CapturingJdbcTemplate jdbc = new CapturingJdbcTemplate();
+
+        new JdbcSystemNotificationRepository(jdbc).findByIdAndRecipientForUpdate(0, 99, 7);
+
+        assertThat(jdbc.querySql)
+                .contains("WHERE tenant_id = ? AND id = ? AND recipient_user_id = ?")
+                .contains("FOR UPDATE");
+        assertThat(jdbc.queryArguments).containsExactly(0L, 99L, 7L);
+    }
+
+    @Test
     void largePageUsesPositiveLongOffset() {
         CapturingJdbcTemplate jdbc = new CapturingJdbcTemplate();
 
@@ -50,6 +62,7 @@ class JdbcSystemNotificationRepositoryTest {
 
     private static final class CapturingJdbcTemplate extends JdbcTemplate {
         private String updateSql;
+        private String querySql;
         private Object[] updateArguments;
         private Object[] queryArguments;
 
@@ -67,6 +80,7 @@ class JdbcSystemNotificationRepositoryTest {
 
         @Override
         public <T> List<T> query(String sql, RowMapper<T> rowMapper, Object... args) {
+            querySql = sql;
             queryArguments = args;
             return List.of();
         }

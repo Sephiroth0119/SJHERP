@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -59,40 +58,42 @@ class NotificationServiceTest {
     @Test
     void markReadScopesLookupToOwnerAndPersistsAggregate() {
         SystemNotification notification = unreadNotification(99, 7);
-        when(repository.findByIdAndRecipient(0, 99, 7)).thenReturn(Optional.of(notification));
+        when(repository.findByIdAndRecipientForUpdate(0, 99, 7)).thenReturn(Optional.of(notification));
 
         SystemNotification updated = service.markRead(7, 99);
 
         assertThat(updated).isSameAs(notification);
         assertThat(updated.readAt()).isEqualTo(READ_AT);
-        verify(repository, times(2)).findByIdAndRecipient(0, 99, 7);
+        verify(repository).findByIdAndRecipientForUpdate(0, 99, 7);
+        verify(repository, never()).findByIdAndRecipient(0, 99, 7);
         verify(repository).save(notification);
     }
 
     @Test
     void foreignOrMissingNotificationUsesDedicatedNotFoundAndDoesNotSave() {
-        when(repository.findByIdAndRecipient(0, 99, 8)).thenReturn(Optional.empty());
+        when(repository.findByIdAndRecipientForUpdate(0, 99, 8)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.markRead(8, 99))
                 .isInstanceOf(NotificationNotFoundException.class)
                 .hasMessageContaining("99");
+        verify(repository).findByIdAndRecipientForUpdate(0, 99, 8);
+        verify(repository, never()).findByIdAndRecipient(0, 99, 8);
         verify(repository, never()).save(org.mockito.ArgumentMatchers.any());
     }
 
     @Test
-    void concurrentMarkReadReturnsFirstEffectivePersistedTimestamp() {
+    void lockingCurrentReadReturnsFirstPersistedTimestamp() {
         Instant firstPersistedReadAt = READ_AT.minusSeconds(30);
-        SystemNotification staleUnread = unreadNotification(99, 7);
-        SystemNotification effective = readNotification(99, 7, firstPersistedReadAt);
-        when(repository.findByIdAndRecipient(0, 99, 7))
-                .thenReturn(Optional.of(staleUnread), Optional.of(effective));
+        SystemNotification current = readNotification(99, 7, firstPersistedReadAt);
+        when(repository.findByIdAndRecipientForUpdate(0, 99, 7)).thenReturn(Optional.of(current));
 
         SystemNotification updated = service.markRead(7, 99);
 
-        assertThat(updated).isSameAs(effective);
+        assertThat(updated).isSameAs(current);
         assertThat(updated.readAt()).isEqualTo(firstPersistedReadAt);
-        verify(repository).save(staleUnread);
-        verify(repository, times(2)).findByIdAndRecipient(0, 99, 7);
+        verify(repository).save(current);
+        verify(repository).findByIdAndRecipientForUpdate(0, 99, 7);
+        verify(repository, never()).findByIdAndRecipient(0, 99, 7);
     }
 
     @Test

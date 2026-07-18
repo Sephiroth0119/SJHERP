@@ -84,6 +84,16 @@ public final class JdbcSystemNotificationRepository implements SystemNotificatio
     }
 
     @Override
+    @Transactional
+    public Optional<SystemNotification> findByIdAndRecipientForUpdate(long tenantId, long id,
+                                                                       long recipientUserId) {
+        return first(jdbc.query(SELECT_COLUMNS + """
+                WHERE tenant_id = ? AND id = ? AND recipient_user_id = ?
+                FOR UPDATE
+                """, ROW_MAPPER, tenantId, id, recipientUserId));
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public boolean existsBySource(long tenantId, long recipientUserId,
                                   SystemNotification.SourceType sourceType, String sourceRef) {
