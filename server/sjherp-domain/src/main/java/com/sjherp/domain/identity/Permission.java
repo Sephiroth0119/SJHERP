@@ -241,6 +241,11 @@ public enum Permission {
      */
     PRODUCTION_COST("production:cost", "生产成本归集与结转"),
 
+    // ------------------------------------------------- 系统大记忆（M6-T01）
+
+    /** 大记忆真源、版本治理及派生索引的管理入口（REST /api/memories/**） */
+    MEMORY_MANAGE("memory:manage", "大记忆管理"),
+
     // ------------------------------------------------- 流程缺口
 
     /** 缺口状态流转（GapController POST /api/gaps/{id}/status，开发侧操作） */
