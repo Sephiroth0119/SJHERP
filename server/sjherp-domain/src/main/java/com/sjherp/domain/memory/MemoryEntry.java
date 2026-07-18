@@ -196,12 +196,44 @@ public final class MemoryEntry implements AuditTarget {
 
     /** 逻辑失效当前活动版本。 */
     public void expire(String operator, Instant now) {
-        requireActive("失效");
+        if (status != MemoryStatus.ACTIVE && status != MemoryStatus.CONFLICT) {
+            throw new IllegalStateException("仅活动或冲突记忆可失效，当前状态: " + status);
+        }
         requireText(operator, OPERATOR_MAX_LENGTH, "操作人");
-        Objects.requireNonNull(now, "当前时间不能为空");
+        Instant checkedNow = Objects.requireNonNull(now, "当前时间不能为空");
         this.status = MemoryStatus.EXPIRED;
-        this.validTo = now;
-        touch(operator, now);
+        this.validTo = checkedNow;
+        touch(operator, checkedNow);
+    }
+
+    /** 标记为待人工治理的冲突记忆；原文、版本和有效期保持不变。 */
+    public void markConflict(String operator, Instant now) {
+        requireActive("标记冲突");
+        requireText(operator, OPERATOR_MAX_LENGTH, "操作人");
+        Instant checkedNow = Objects.requireNonNull(now, "当前时间不能为空");
+        this.status = MemoryStatus.CONFLICT;
+        touch(operator, checkedNow);
+    }
+
+    /** 将仍在有效期内的冲突记忆恢复活动，并要求重新构建派生索引。 */
+    public void activate(String operator, Instant now) {
+        if (status != MemoryStatus.CONFLICT) {
+            throw new IllegalStateException("仅冲突记忆可恢复活动，当前状态: " + status);
+        }
+        requireText(operator, OPERATOR_MAX_LENGTH, "操作人");
+        Instant checkedNow = Objects.requireNonNull(now, "当前时间不能为空");
+        if (validTo != null && !validTo.isAfter(checkedNow)) {
+            throw new IllegalStateException("记忆有效期已结束，不能恢复活动");
+        }
+        this.status = MemoryStatus.ACTIVE;
+        this.indexStatus = MemoryIndexStatus.PENDING;
+        this.indexedCollection = null;
+        this.embeddingModel = null;
+        this.embeddingDimension = null;
+        this.retryCount = 0;
+        this.nextRetryAt = null;
+        this.lastIndexError = null;
+        touch(operator, checkedNow);
     }
 
     /** 将活动版本重置为待索引，供人工重试或配置切换后重建。 */
