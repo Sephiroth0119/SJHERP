@@ -308,8 +308,7 @@ class MemoryFoundationIntegrationTest {
     private static void assertPointMissing(long id) throws Exception {
         HttpResponse<String> response = send("GET", "/collections/" + COLLECTION
                 + "/points/" + id + "?with_payload=true&with_vector=false", null);
-        assertThat(response.statusCode()).isEqualTo(200);
-        assertThat(JSON.readTree(response.body()).path("result").isNull()).isTrue();
+        assertThat(response.statusCode()).isEqualTo(404);
     }
 
     private static void deleteCollection(String collection) throws Exception {
