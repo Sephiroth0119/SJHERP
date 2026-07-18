@@ -140,7 +140,7 @@ class BusinessToVoucherFlowIntegrationTest {
     @EnableTransactionManagement
     @EnableAspectJAutoProxy(proxyTargetClass = true)
     @Import({AuditConfig.class, InventoryInfraConfig.class, PurchaseInfraConfig.class,
-            SalesInfraConfig.class, GlInfraConfig.class})
+            SalesInfraConfig.class, GlInfraConfig.class, ProductRepositoryTestConfig.class})
     static class TestConfig {
 
         @Bean

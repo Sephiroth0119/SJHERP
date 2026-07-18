@@ -35,7 +35,6 @@ import com.sjherp.app.gl.AutoVoucherService;
 import com.sjherp.app.gl.VoucherAppService;
 import com.sjherp.app.purchase.PurchaseInvoiceAppService;
 import com.sjherp.app.purchase.PurchaseReceiptAppService;
-import com.sjherp.domain.catalog.ProductRepository;
 import com.sjherp.domain.common.numbering.DefaultDocumentNumberGenerator;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
 import com.sjherp.domain.common.numbering.SequenceProvider;
@@ -54,7 +53,6 @@ import com.sjherp.domain.purchase.PurchaseReceiptLineInput;
 import com.sjherp.domain.purchase.PurchaseReceiptService;
 import com.sjherp.domain.warehouse.WarehouseService;
 import com.sjherp.infra.persistence.JdbcSequenceProvider;
-import com.sjherp.infra.persistence.catalog.JdbcProductRepository;
 
 /**
  * 采购单据红冲端到端集成测试（M4-T07b 验收核心，Testcontainers 真实 MySQL）。
@@ -131,7 +129,7 @@ class PurchaseReversalFlowIntegrationTest {
     @EnableTransactionManagement
     @EnableAspectJAutoProxy(proxyTargetClass = true)
     @Import({AuditConfig.class, InventoryInfraConfig.class, PurchaseInfraConfig.class,
-            GlInfraConfig.class})
+            GlInfraConfig.class, ProductRepositoryTestConfig.class})
     static class TestConfig {
 
         @Bean
@@ -148,11 +146,6 @@ class PurchaseReversalFlowIntegrationTest {
         @Bean
         JdbcTemplate jdbcTemplate(DataSource dataSource) {
             return new JdbcTemplate(dataSource);
-        }
-
-        @Bean
-        ProductRepository productRepository(JdbcTemplate jdbcTemplate) {
-            return new JdbcProductRepository(jdbcTemplate);
         }
 
         @Bean
