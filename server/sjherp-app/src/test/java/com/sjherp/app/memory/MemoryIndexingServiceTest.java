@@ -12,6 +12,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -120,12 +121,56 @@ class MemoryIndexingServiceTest {
                 .doesNotThrowAnyException();
     }
 
+    @Test
+    void 全量重建按主键游标分批且返回完整计数() {
+        MemoryEntry second = entry(18L, "MEM-202607-0002");
+        MemoryEntry third = entry(19L, "MEM-202607-0003");
+        when(repository.findActiveAfterId(0, 50)).thenReturn(List.of(entry, second));
+        when(repository.findActiveAfterId(18, 50)).thenReturn(List.of(third));
+        when(repository.findActiveAfterId(19, 50)).thenReturn(List.of());
+        when(repository.findByMemoryNo(entry.getMemoryNo())).thenReturn(Optional.of(entry));
+        when(repository.findByMemoryNo(second.getMemoryNo())).thenReturn(Optional.of(second));
+        when(repository.findByMemoryNo(third.getMemoryNo())).thenReturn(Optional.of(third));
+        when(embedding.embed(any(), org.mockito.ArgumentMatchers.eq(EmbeddingPurpose.DOCUMENT)))
+                .thenReturn(vector1024());
+
+        MemoryIndexingService.RebuildResult result = indexing.rebuildIndex("user:1");
+
+        assertThat(result.succeeded()).isEqualTo(3);
+        assertThat(result.failed()).isZero();
+        assertThat(result.lastProcessedId()).isEqualTo(19);
+        verify(vectorIndex).ensureCollection(any());
+    }
+
+    @Test
+    void 全量重建单条失败不终止整批() {
+        MemoryEntry second = entry(18L, "MEM-202607-0002");
+        when(repository.findActiveAfterId(0, 50)).thenReturn(List.of(entry, second));
+        when(repository.findActiveAfterId(18, 50)).thenReturn(List.of());
+        when(repository.findByMemoryNo(entry.getMemoryNo())).thenReturn(Optional.of(entry));
+        when(repository.findByMemoryNo(second.getMemoryNo())).thenReturn(Optional.of(second));
+        when(embedding.embed(any(), org.mockito.ArgumentMatchers.eq(EmbeddingPurpose.DOCUMENT)))
+                .thenReturn(vector1024());
+        doThrow(new QdrantVectorException("first failed")).doNothing()
+                .when(vectorIndex).upsert(any());
+
+        MemoryIndexingService.RebuildResult result = indexing.rebuildIndex("user:1");
+
+        assertThat(result.succeeded()).isEqualTo(1);
+        assertThat(result.failed()).isEqualTo(1);
+        assertThat(result.lastProcessedId()).isEqualTo(18);
+    }
+
     private static MemoryEntry entry() {
-        MemoryEntry result = MemoryEntry.create("MEM-202607-0001", "MEM-202607-0001", 1,
+        return entry(17L, "MEM-202607-0001");
+    }
+
+    private static MemoryEntry entry(long id, String memoryNo) {
+        MemoryEntry result = MemoryEntry.create(memoryNo, memoryNo, 1,
                 MemoryType.BUSINESS_TERM, "大客户口径", ORIGINAL_CONTENT,
                 MemorySourceType.USER_INPUT, "session-1", NOW.minusSeconds(60),
                 null, "user:1", NOW.minusSeconds(60));
-        result.assignId(17L);
+        result.assignId(id);
         return result;
     }
 
