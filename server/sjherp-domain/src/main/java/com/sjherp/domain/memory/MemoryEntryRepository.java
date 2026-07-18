@@ -22,4 +22,10 @@ public interface MemoryEntryRepository {
     List<MemoryEntry> findActiveAfterId(long afterId, int limit);
 
     List<MemoryEntry> findRecallableByIds(List<Long> ids, long tenantId, Instant asOf);
+
+    List<MemoryEntry> findDuplicateCandidates(long tenantId, int groupLimit);
+
+    List<MemoryEntry> findConflictCandidates(long tenantId, int groupLimit);
+
+    List<MemoryEntry> findByMemoryNosForUpdate(List<String> memoryNos);
 }

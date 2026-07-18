@@ -13,6 +13,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import com.sjherp.app.memory.MemoryProperties;
 import com.sjherp.app.memory.MemoryContextProvider;
+import com.sjherp.app.memory.MemoryGovernanceService;
 import com.sjherp.app.memory.MemoryIndexingService;
 import com.sjherp.app.memory.MemoryIndexStateService;
 import com.sjherp.app.memory.MemoryPromptFormatter;
@@ -99,6 +100,11 @@ public class MemoryInfraConfig {
                                 DocumentNumberGenerator numberGenerator,
                                 ApplicationEventPublisher events) {
         return new MemoryService(repository, numberGenerator, events);
+    }
+
+    @Bean
+    MemoryGovernanceService memoryGovernanceService(MemoryEntryRepository repository) {
+        return new MemoryGovernanceService(repository);
     }
 
     @Bean
