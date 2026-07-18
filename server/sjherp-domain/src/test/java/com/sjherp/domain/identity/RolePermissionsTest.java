@@ -58,6 +58,7 @@ class RolePermissionsTest {
                 Permission.PRODUCTION_MATERIAL,
                 Permission.PRODUCTION_REPORT,
                 Permission.PRODUCTION_COST,
+                Permission.MEMORY_MANAGE,
                 Permission.DATA_IMPORT,
                 Permission.GAP_TRIAGE), boss);
         assertFalse(boss.contains(Permission.DEMO_POST_DOCUMENT));
@@ -102,6 +103,16 @@ class RolePermissionsTest {
         // 账期重开是高敏操作，ACCOUNTANT 不持有（仅 ADMIN/BOSS）
         assertFalse(RolePermissions.permissionsOf(Role.ACCOUNTANT)
                 .contains(Permission.FINANCE_PERIOD_REOPEN));
+    }
+
+    @Test
+    void 大记忆管理仅管理员和老板持有() {
+        assertTrue(RolePermissions.permissionsOf(Role.ADMIN).contains(Permission.MEMORY_MANAGE));
+        assertTrue(RolePermissions.permissionsOf(Role.BOSS).contains(Permission.MEMORY_MANAGE));
+        assertFalse(RolePermissions.permissionsOf(Role.ACCOUNTANT).contains(Permission.MEMORY_MANAGE));
+        assertFalse(RolePermissions.permissionsOf(Role.PURCHASER).contains(Permission.MEMORY_MANAGE));
+        assertFalse(RolePermissions.permissionsOf(Role.SALES).contains(Permission.MEMORY_MANAGE));
+        assertFalse(RolePermissions.permissionsOf(Role.WAREHOUSE).contains(Permission.MEMORY_MANAGE));
     }
 
     @Test
