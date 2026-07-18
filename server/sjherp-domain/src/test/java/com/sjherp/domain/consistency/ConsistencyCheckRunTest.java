@@ -46,6 +46,68 @@ class ConsistencyCheckRunTest {
     }
 
     @Test
+    void failedRestoreRejectsAnalysisSummaryAndNonSkippedAnalysisStatus() {
+        assertThatThrownBy(() -> restore(ConsistencyCheckRun.Status.FAILED, false, 0, 0, 0, 0,
+                ConsistencyCheckRun.AnalysisStatus.FAILED, null, "IllegalStateException", List.of()))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> restore(ConsistencyCheckRun.Status.FAILED, false, 0, 0, 0, 0,
+                ConsistencyCheckRun.AnalysisStatus.SKIPPED, "不应保存", "IllegalStateException", List.of()))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> restore(ConsistencyCheckRun.Status.FAILED, false, 0, 0, 0, 0,
+                ConsistencyCheckRun.AnalysisStatus.SKIPPED, null, " ", List.of()))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> restore(ConsistencyCheckRun.Status.FAILED, true, 0, 0, 0, 0,
+                ConsistencyCheckRun.AnalysisStatus.SKIPPED, null, "IllegalStateException", List.of()))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> restore(ConsistencyCheckRun.Status.FAILED, false, 1, 1, 0, 0,
+                ConsistencyCheckRun.AnalysisStatus.SKIPPED, null, "IllegalStateException", List.of(finding(1))))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void completedRestoreRejectsFailureType() {
+        assertThatThrownBy(() -> restore(ConsistencyCheckRun.Status.COMPLETED, false, 1, 1, 0, 0,
+                ConsistencyCheckRun.AnalysisStatus.SKIPPED, null, "IllegalStateException", List.of(finding(1))))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void completedAndRestoredRunsRejectDuplicateFindingSequenceNumbers() {
+        ConsistencyFinding first = finding(1);
+        ConsistencyFinding duplicate = new ConsistencyFinding(1, "SECOND_RULE", "LEDGER_QTY",
+                "warehouse=1,product=3", new BigDecimal("2.000000"), new BigDecimal("1.000000"),
+                ConsistencyFinding.Severity.WARN, "库存数量不平");
+
+        assertThatThrownBy(() -> ConsistencyCheckRun.completed(0, "CHK-202607-0003",
+                ConsistencyCheckRun.TriggerType.MANUAL_API, "admin", INSTANT, INSTANT,
+                ConsistencyCheckRun.AnalysisStatus.SKIPPED, null, List.of(first, duplicate)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("序号");
+        assertThatThrownBy(() -> restore(ConsistencyCheckRun.Status.COMPLETED, false, 2, 1, 1, 0,
+                ConsistencyCheckRun.AnalysisStatus.SKIPPED, null, null, List.of(first, duplicate)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("序号");
+    }
+
+    @Test
+    void decimalFindingValuesMustFitDecimal24Scale6WithoutRounding() {
+        BigDecimal maximum = new BigDecimal("999999999999999999.999999");
+
+        ConsistencyFinding accepted = new ConsistencyFinding(1, "RULE", "CHECK", null,
+                maximum, new BigDecimal("1.2"), ConsistencyFinding.Severity.ERROR, "错误");
+
+        assertThat(accepted.expectedValue()).isEqualTo(maximum);
+        assertThat(accepted.actualValue()).isEqualTo(new BigDecimal("1.2"));
+        assertThatThrownBy(() -> new ConsistencyFinding(2, "RULE", "CHECK", null,
+                new BigDecimal("1000000000000000000.000000"), null,
+                ConsistencyFinding.Severity.ERROR, "错误"))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new ConsistencyFinding(3, "RULE", "CHECK", null,
+                null, new BigDecimal("0.0000001"), ConsistencyFinding.Severity.ERROR, "错误"))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void assignedIdMustBePositiveAndCanOnlyBeAssignedOnce() {
         ConsistencyCheckRun run = completedRun();
 
@@ -85,9 +147,23 @@ class ConsistencyCheckRunTest {
     private static ConsistencyCheckRun completedRun() {
         return ConsistencyCheckRun.completed(0, "CHK-202607-0001",
                 ConsistencyCheckRun.TriggerType.MANUAL_API, "admin", INSTANT, INSTANT,
-                ConsistencyCheckRun.AnalysisStatus.SKIPPED, null, List.of(new ConsistencyFinding(1,
-                        "CORE_SQL_ASSERTIONS", "LEDGER_COST", "warehouse=1,product=2",
-                        new BigDecimal("10.000000"), new BigDecimal("9.000000"),
-                        ConsistencyFinding.Severity.ERROR, "库存金额不平")));
+                ConsistencyCheckRun.AnalysisStatus.SKIPPED, null, List.of(finding(1)));
+    }
+
+    private static ConsistencyCheckRun restore(ConsistencyCheckRun.Status status, boolean clean,
+                                               long totalCount, long errorCount, long warnCount, long infoCount,
+                                               ConsistencyCheckRun.AnalysisStatus analysisStatus,
+                                               String analysisSummary, String failureType,
+                                               List<ConsistencyFinding> findings) {
+        return ConsistencyCheckRun.restore(9, 0, "CHK-202607-0004",
+                ConsistencyCheckRun.TriggerType.MANUAL_API, "admin", INSTANT, INSTANT,
+                status, clean, totalCount, errorCount, warnCount, infoCount, analysisStatus,
+                analysisSummary, failureType, INSTANT, findings);
+    }
+
+    private static ConsistencyFinding finding(int sequenceNo) {
+        return new ConsistencyFinding(sequenceNo, "CORE_SQL_ASSERTIONS", "LEDGER_COST",
+                "warehouse=1,product=2", new BigDecimal("10.000000"), new BigDecimal("9.000000"),
+                ConsistencyFinding.Severity.ERROR, "库存金额不平");
     }
 }

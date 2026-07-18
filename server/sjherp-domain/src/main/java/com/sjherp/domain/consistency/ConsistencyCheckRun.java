@@ -1,8 +1,10 @@
 package com.sjherp.domain.consistency;
 
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 
 import com.sjherp.domain.common.audit.AuditTarget;
 
@@ -63,6 +65,7 @@ public final class ConsistencyCheckRun implements AuditTarget {
         this.failureType = optionalText(failureType, 128, "失败类型");
         this.createdAt = Objects.requireNonNull(createdAt, "创建时间不能为空");
         this.findings = List.copyOf(Objects.requireNonNull(findings, "差异明细不能为空"));
+        validateFindingSequenceNumbers();
         validateState();
     }
 
@@ -119,8 +122,19 @@ public final class ConsistencyCheckRun implements AuditTarget {
         if (status == Status.COMPLETED && failureType != null) {
             throw new IllegalArgumentException("已完成运行不能保存失败类型");
         }
-        if (status == Status.FAILED && (failureType == null || !findings.isEmpty() || clean || totalCount != 0)) {
+        if (status == Status.FAILED && (analysisStatus != AnalysisStatus.SKIPPED || analysisSummary != null
+                || failureType == null || !findings.isEmpty() || clean || totalCount != 0
+                || errorCount != 0 || warnCount != 0 || infoCount != 0)) {
             throw new IllegalArgumentException("失败运行只能保存失败类型且不能包含差异明细");
+        }
+    }
+
+    private void validateFindingSequenceNumbers() {
+        Set<Integer> sequenceNumbers = new HashSet<>();
+        for (ConsistencyFinding finding : findings) {
+            if (!sequenceNumbers.add(finding.sequenceNo())) {
+                throw new IllegalArgumentException("差异序号不能重复: " + finding.sequenceNo());
+            }
         }
     }
 
