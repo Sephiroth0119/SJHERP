@@ -1,0 +1,40 @@
+CREATE TABLE memory_entry
+(
+    id                    BIGINT        NOT NULL AUTO_INCREMENT,
+    tenant_id             BIGINT        NOT NULL DEFAULT 0,
+    memory_no             VARCHAR(32)   NOT NULL,
+    memory_key            VARCHAR(128)  NOT NULL,
+    version               INT           NOT NULL,
+    previous_id           BIGINT        NULL,
+    memory_type           VARCHAR(32)   NOT NULL,
+    title                 VARCHAR(200)  NOT NULL,
+    content               LONGTEXT      NOT NULL,
+    content_hash          CHAR(64)      NOT NULL,
+    source_type           VARCHAR(32)   NOT NULL,
+    source_ref            VARCHAR(128)  NOT NULL,
+    status                VARCHAR(16)   NOT NULL,
+    valid_from            DATETIME(6)   NOT NULL,
+    valid_to              DATETIME(6)   NULL,
+    index_status          VARCHAR(16)   NOT NULL,
+    indexed_collection    VARCHAR(128)  NULL,
+    embedding_model       VARCHAR(128)  NULL,
+    embedding_dimension   INT           NULL,
+    retry_count           INT           NOT NULL DEFAULT 0,
+    next_retry_at         DATETIME(6)   NULL,
+    last_index_error      VARCHAR(1000) NULL,
+    created_by            VARCHAR(64)   NOT NULL,
+    created_at            DATETIME(6)   NOT NULL,
+    updated_by            VARCHAR(64)   NOT NULL,
+    updated_at            DATETIME(6)   NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_memory_entry_no (tenant_id, memory_no),
+    UNIQUE KEY uk_memory_entry_version (tenant_id, memory_key, version),
+    KEY idx_memory_entry_retry (tenant_id, index_status, next_retry_at, id),
+    KEY idx_memory_entry_governance (tenant_id, status, memory_type, id),
+    KEY idx_memory_entry_source (tenant_id, source_type, source_ref),
+    CONSTRAINT chk_memory_entry_version CHECK (version >= 1),
+    CONSTRAINT chk_memory_entry_dimension CHECK (embedding_dimension IS NULL OR embedding_dimension > 0)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4
+  COLLATE = utf8mb4_unicode_ci
+  COMMENT = '系统大记忆真源（M6-T01）';
