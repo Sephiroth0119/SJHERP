@@ -8,6 +8,7 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -23,6 +24,7 @@ import com.sjherp.agent.tool.ToolPermissionChecker;
 import com.sjherp.agent.tool.ToolRegistry;
 import com.sjherp.app.chat.Agent;
 import com.sjherp.app.chat.LlmAgent;
+import com.sjherp.app.memory.MemoryContextProvider;
 import com.sjherp.app.chat.PlaceholderAgent;
 import com.sjherp.infra.agent.AgentReplyJsonCodec;
 import com.sjherp.infra.agent.JacksonToolArgumentsCodec;
@@ -76,8 +78,11 @@ public class ChatAgentConfig {
                            PendingToolCallJsonCodec pendingCodec,
                            ToolRegistry toolRegistry,
                            AgentInvocationListener invocationListener,
-                           ToolPermissionChecker permissionChecker) {
+                           ToolPermissionChecker permissionChecker,
+                           ObjectProvider<MemoryContextProvider> memoryContextProviders) {
         String normalized = mode == null ? "auto" : mode.strip().toLowerCase(Locale.ROOT);
+        MemoryContextProvider memoryContextProvider = memoryContextProviders
+                .getIfAvailable(MemoryContextProvider::none);
         return switch (normalized) {
             case "placeholder" -> {
                 log.info("聊天 Agent：按配置使用 PlaceholderAgent（sjherp.agent.mode=placeholder）");
@@ -91,13 +96,15 @@ public class ChatAgentConfig {
                 }
                 yield llmAgent(llm, codec, pendingCodec, toolRegistry, invocationListener,
                         permissionChecker, parseFinalJsonMode(finalJsonMode), maxIterations,
-                        loopTimeoutSeconds, historyTokenBudget, keepRecentRounds);
+                        loopTimeoutSeconds, historyTokenBudget, keepRecentRounds,
+                        memoryContextProvider);
             }
             case "auto" -> {
                 if (llm.roleHasApiKey(LlmProperties.ROLE_CHAT)) {
                     yield llmAgent(llm, codec, pendingCodec, toolRegistry, invocationListener,
                             permissionChecker, parseFinalJsonMode(finalJsonMode), maxIterations,
-                            loopTimeoutSeconds, historyTokenBudget, keepRecentRounds);
+                            loopTimeoutSeconds, historyTokenBudget, keepRecentRounds,
+                            memoryContextProvider);
                 }
                 log.warn("chat 角色的 provider 未配置 api-key，聊天回退到 PlaceholderAgent（规则占位演示模式）。"
                         + "设置环境变量 SJHERP_LLM_API_KEY 或启用 local profile 以启用 LLM");
@@ -113,7 +120,8 @@ public class ChatAgentConfig {
                            AgentInvocationListener invocationListener,
                            ToolPermissionChecker permissionChecker,
                            FinalJsonMode finalJsonMode, int maxIterations, long loopTimeoutSeconds,
-                           int historyTokenBudget, int keepRecentRounds) {
+                           int historyTokenBudget, int keepRecentRounds,
+                           MemoryContextProvider memoryContextProvider) {
         // 按角色构建/复用 LlmClient（M1-T07）：同 provider 同实例（HttpClient 连接池共享）
         Map<String, LlmClient> clientsByProvider = new HashMap<>();
         LlmClient chatClient = clientForRole(llm, LlmProperties.ROLE_CHAT, clientsByProvider);
@@ -140,7 +148,8 @@ public class ChatAgentConfig {
         return new LlmAgent(agentLoop, codec, pendingCodec, toolRegistry,
                 finalJsonMode, maxIterations, Duration.ofSeconds(loopTimeoutSeconds),
                 new HistoryTrimmer(historyTokenBudget, keepRecentRounds),
-                new LlmHistorySummarizer(summarizerClient, invocationListener));
+                new LlmHistorySummarizer(summarizerClient, invocationListener),
+                memoryContextProvider);
     }
 
     /**

@@ -31,6 +31,7 @@ import com.sjherp.agent.session.MessageRole;
 import com.sjherp.agent.tool.Tool;
 import com.sjherp.agent.tool.ToolContext;
 import com.sjherp.agent.tool.ToolRegistry;
+import com.sjherp.app.memory.MemoryContextProvider;
 import com.sjherp.infra.agent.AgentReplyJsonCodec;
 import com.sjherp.infra.agent.PendingToolCallJsonCodec;
 
@@ -312,6 +313,8 @@ public class LlmAgent implements Agent {
     private final HistoryTrimmer historyTrimmer;
     /** 摘要回调（M1-T05，单独调一次 LLM 压缩旧轮次）；裁剪开启时必须提供 */
     private final HistorySummarizer historySummarizer;
+    /** 企业记忆只读上下文；关闭功能时为 no-op，绝不改变原聊天链路。 */
+    private final MemoryContextProvider memoryContextProvider;
 
     /**
      * @param agentLoop     执行循环（M1-T02，LLM 客户端与各校验器已在装配时注入循环）
@@ -328,7 +331,7 @@ public class LlmAgent implements Agent {
                     PendingToolCallJsonCodec pendingCodec, ToolRegistry toolRegistry,
                     FinalJsonMode finalJsonMode, int maxIterations, Duration loopTimeout) {
         this(agentLoop, codec, pendingCodec, toolRegistry, finalJsonMode,
-                maxIterations, loopTimeout, null, null);
+                maxIterations, loopTimeout, null, null, MemoryContextProvider.none());
     }
 
     /**
@@ -343,6 +346,16 @@ public class LlmAgent implements Agent {
                     PendingToolCallJsonCodec pendingCodec, ToolRegistry toolRegistry,
                     FinalJsonMode finalJsonMode, int maxIterations, Duration loopTimeout,
                     HistoryTrimmer historyTrimmer, HistorySummarizer historySummarizer) {
+        this(agentLoop, codec, pendingCodec, toolRegistry, finalJsonMode,
+                maxIterations, loopTimeout, historyTrimmer, historySummarizer,
+                MemoryContextProvider.none());
+    }
+
+    public LlmAgent(AgentLoop agentLoop, AgentReplyJsonCodec codec,
+                    PendingToolCallJsonCodec pendingCodec, ToolRegistry toolRegistry,
+                    FinalJsonMode finalJsonMode, int maxIterations, Duration loopTimeout,
+                    HistoryTrimmer historyTrimmer, HistorySummarizer historySummarizer,
+                    MemoryContextProvider memoryContextProvider) {
         this.agentLoop = Objects.requireNonNull(agentLoop, "agentLoop 不能为空");
         this.codec = Objects.requireNonNull(codec, "codec 不能为空");
         this.pendingCodec = Objects.requireNonNull(pendingCodec, "pendingCodec 不能为空");
@@ -352,6 +365,8 @@ public class LlmAgent implements Agent {
         this.loopTimeout = loopTimeout;
         this.historyTrimmer = historyTrimmer;
         this.historySummarizer = historySummarizer;
+        this.memoryContextProvider = Objects.requireNonNull(
+                memoryContextProvider, "memoryContextProvider 不能为空");
     }
 
     @Override
@@ -412,7 +427,9 @@ public class LlmAgent implements Agent {
         log.info("恢复高风险工具确认流程（sessionId={}, tool={}, confirmed={}）",
                 session.getSessionId(), pending.toolName(), confirmed);
         try {
-            AgentLoopResult result = agentLoop.resume(loopRequest(session, currentUserText), pending, confirmed);
+            String memoryQuery = latestUserText(session, currentUserText);
+            AgentLoopResult result = agentLoop.resume(
+                    loopRequest(session, currentUserText, memoryQuery), pending, confirmed);
             return toReply(session, result);
         } catch (RuntimeException e) {
             log.error("确认流程恢复失败，返回兜底回复（sessionId={}, tool={}）",
@@ -463,6 +480,11 @@ public class LlmAgent implements Agent {
      * 裁剪只影响发给 LLM 的内容，agent_message 中的完整历史与回放 API 不受影响。
      */
     private AgentLoopRequest loopRequest(AgentSession session, String currentUserText) {
+        return loopRequest(session, currentUserText, currentUserText);
+    }
+
+    private AgentLoopRequest loopRequest(AgentSession session, String currentUserText,
+                                         String memoryQueryText) {
         // 候选消息：USER / ASSISTANT 进入上下文（SYSTEM/TOOL 历史暂不进入），
         // seq = 列表下标 + 1，与 agent_message.seq 的持久化口径一致（仓储按此插入）
         List<AgentMessage> all = session.getMessages();
@@ -511,8 +533,9 @@ public class LlmAgent implements Agent {
         history.add(LlmMessage.user(currentUserText));
 
         List<Tool> tools = List.copyOf(toolRegistry.all());
+        String memoryContext = memoryContext(memoryQueryText);
         return AgentLoopRequest.builder()
-                .systemPrompt(systemPrompt(tools.isEmpty(), summary))
+                .systemPrompt(systemPrompt(tools.isEmpty(), memoryContext, summary))
                 .history(history)
                 .tools(tools)
                 // 审计上下文：谁、哪个会话、依据什么指令（CLAUDE.md 原则 3）
@@ -524,10 +547,14 @@ public class LlmAgent implements Agent {
     }
 
     /** 系统提示 = 主体 + 能力边界（按有无工具二选一）+ 语言约定 + 早前对话摘要（如有） */
-    private static String systemPrompt(boolean noTools, String historySummary) {
+    private static String systemPrompt(boolean noTools, String memoryContext,
+                                       String historySummary) {
         String prompt = SYSTEM_PROMPT_BASE
                 + (noTools ? SYSTEM_PROMPT_NO_TOOLS : SYSTEM_PROMPT_WITH_TOOLS)
                 + SYSTEM_PROMPT_LANGUAGE;
+        if (memoryContext != null && !memoryContext.isBlank()) {
+            prompt += "\n\n## 企业记忆上下文\n" + memoryContext;
+        }
         if (historySummary != null && !historySummary.isBlank()) {
             // 摘要作为 system 上下文注入（M1-T05）：更早的对话已压缩，单据号/金额以摘要为准
             prompt += "\n\n## 早前对话摘要\n本会话更早的对话已被压缩为以下要点"
@@ -535,6 +562,27 @@ public class LlmAgent implements Agent {
                     + historySummary;
         }
         return prompt;
+    }
+
+    private String memoryContext(String queryText) {
+        try {
+            return memoryContextProvider.contextFor(queryText);
+        } catch (RuntimeException exception) {
+            log.warn("企业记忆上下文注入降级: errorType={}",
+                    exception.getClass().getSimpleName());
+            return "";
+        }
+    }
+
+    private static String latestUserText(AgentSession session, String fallback) {
+        List<AgentMessage> messages = session.getMessages();
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            AgentMessage message = messages.get(i);
+            if (message.role() == MessageRole.USER && !message.content().isBlank()) {
+                return message.content();
+            }
+        }
+        return fallback;
     }
 
     /** 工具调用记录结构化日志（落库已由 AgentInvocationListener 负责，此处保留便于按日志排查） */
