@@ -118,6 +118,43 @@ public final class MemoryEntry implements AuditTarget {
                 checkedOperator, checkedNow, checkedOperator, checkedNow);
     }
 
+    /**
+     * 从当前活动版本创建下一版本。新版本共享逻辑键并固化前版主键，旧版本状态
+     * 由应用服务在同一事务中调用 {@link #markSuperseded(String, Instant)} 关闭。
+     */
+    public static MemoryEntry createReplacement(String memoryNo, MemoryEntry previous,
+                                                MemoryType memoryType, String title, String content,
+                                                MemorySourceType sourceType, String sourceRef,
+                                                Instant validFrom, Instant validTo,
+                                                String operator, Instant now) {
+        Objects.requireNonNull(previous, "前版记忆不能为空");
+        if (previous.status != MemoryStatus.ACTIVE) {
+            throw new IllegalStateException("仅活动记忆可创建替代版本，当前状态: " + previous.status);
+        }
+        if (previous.id == null) {
+            throw new IllegalStateException("前版记忆尚未持久化，不能创建版本链");
+        }
+        if (previous.version == Integer.MAX_VALUE) {
+            throw new IllegalStateException("记忆版本号已达上限");
+        }
+        String normalizedContent = requireText(content, Integer.MAX_VALUE, "记忆原文");
+        Instant checkedValidFrom = Objects.requireNonNull(validFrom, "生效时间不能为空");
+        validateValidity(checkedValidFrom, validTo);
+        String checkedOperator = requireText(operator, OPERATOR_MAX_LENGTH, "操作人");
+        Instant checkedNow = Objects.requireNonNull(now, "当前时间不能为空");
+        return new MemoryEntry(null, previous.tenantId,
+                requireText(memoryNo, MEMORY_NO_MAX_LENGTH, "记忆编号"),
+                previous.memoryKey, previous.version + 1, previous.id,
+                Objects.requireNonNull(memoryType, "记忆类型不能为空"),
+                requireText(title, TITLE_MAX_LENGTH, "标题"), normalizedContent,
+                sha256(normalizedContent),
+                Objects.requireNonNull(sourceType, "来源类型不能为空"),
+                requireText(sourceRef, SOURCE_REF_MAX_LENGTH, "来源编号"),
+                MemoryStatus.ACTIVE, checkedValidFrom, validTo, MemoryIndexStatus.PENDING,
+                null, null, null, 0, null, null,
+                checkedOperator, checkedNow, checkedOperator, checkedNow);
+    }
+
     /** 持久层按数据库快照重建聚合。 */
     public static MemoryEntry restore(long id, long tenantId, String memoryNo, String memoryKey,
                                       int version, Long previousId, MemoryType memoryType,

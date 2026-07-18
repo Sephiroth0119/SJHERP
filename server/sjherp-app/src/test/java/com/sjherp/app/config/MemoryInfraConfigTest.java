@@ -11,9 +11,11 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import com.sjherp.domain.memory.EmbeddingClient;
+import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
 import com.sjherp.domain.memory.MemoryEntryRepository;
 import com.sjherp.domain.memory.VectorIndex;
 import com.sjherp.infra.memory.QdrantVectorException;
@@ -77,6 +79,8 @@ class MemoryInfraConfigTest {
         return new ApplicationContextRunner()
                 .withUserConfiguration(MemoryInfraConfig.class)
                 .withBean(JdbcTemplate.class, () -> mock(JdbcTemplate.class))
+                .withBean(DocumentNumberGenerator.class, () -> mock(DocumentNumberGenerator.class))
+                .withBean(ApplicationEventPublisher.class, () -> mock(ApplicationEventPublisher.class))
                 .withPropertyValues(
                         "sjherp.memory.enabled=true",
                         "sjherp.memory.embedding.provider=ollama",
