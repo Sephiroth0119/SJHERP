@@ -40,6 +40,7 @@
 - Create `server/sjherp-infra/src/main/resources/db/migration/V33__consistency_check_framework.sql`: 三张新表、索引、唯一键与外键。
 - Create `server/sjherp-infra/src/main/java/com/sjherp/infra/persistence/consistency/JdbcConsistencyCheckRunRepository.java`: 运行与差异原子写入、分页与详情查询。
 - Create `server/sjherp-infra/src/main/java/com/sjherp/infra/persistence/notification/JdbcSystemNotificationRepository.java`: 通知写入、个人分页、未读计数和本人详情查询。
+- Modify `server/sjherp-app/src/main/java/com/sjherp/app/consistency/ConsistencyConfig.java`: 按现有装配约定显式注册两个 infra 仓储 Bean。
 
 ### Application framework
 
@@ -257,12 +258,13 @@ git commit -m "feat: 建立检查报告与站内通知模型"
 **Files:**
 - Create: `server/sjherp-infra/src/main/java/com/sjherp/infra/persistence/consistency/JdbcConsistencyCheckRunRepository.java`
 - Create: `server/sjherp-infra/src/main/java/com/sjherp/infra/persistence/notification/JdbcSystemNotificationRepository.java`
+- Modify: `server/sjherp-app/src/main/java/com/sjherp/app/consistency/ConsistencyConfig.java`
 - Create: `server/sjherp-infra/src/test/java/com/sjherp/infra/persistence/consistency/JdbcConsistencyCheckRunRepositoryIntegrationTest.java`
 - Create: `server/sjherp-infra/src/test/java/com/sjherp/infra/persistence/notification/JdbcSystemNotificationRepositoryIntegrationTest.java`
 
 **Interfaces:**
 - Consumes: Task 1 repository ports and aggregate restore factories.
-- Produces: Spring `@Repository` adapters discovered by the app component scan.
+- Produces: 由 `ConsistencyConfig` 显式 `@Bean` 装配的两个 JDBC 仓储适配器；应用只扫描 `com.sjherp.app`，不能依赖 infra 包组件扫描。
 
 - [ ] **Step 1: Write failing Testcontainers repository tests**
 
@@ -303,7 +305,7 @@ Expected locally: Docker-unavailable infrastructure failure is acceptable and mu
 Use `GeneratedKeyHolder` to insert `consistency_check_run`, call `run.assignId(id)`, then batch insert findings in sequence order. `findByRunNo` loads one head plus ordered findings; `search` loads only heads with `ORDER BY id DESC LIMIT ? OFFSET ?`. Every SQL predicate includes `tenant_id`.
 
 ```java
-@Repository
+@Transactional
 public final class JdbcConsistencyCheckRunRepository implements ConsistencyCheckRunRepository {
     @Override
     public void save(ConsistencyCheckRun run) {
@@ -337,7 +339,7 @@ Map `DECIMAL` using `ResultSet.getBigDecimal`; never convert through `double`.
 - [ ] **Step 4: Implement JDBC notification repository**
 
 ```java
-@Repository
+@Transactional
 public final class JdbcSystemNotificationRepository implements SystemNotificationRepository {
     @Override
     public void save(SystemNotification notification) {
@@ -369,7 +371,25 @@ public final class JdbcSystemNotificationRepository implements SystemNotificatio
 
 An assigned notification ID updates only `read_at`; recipient, source, content and severity are immutable.
 
-- [ ] **Step 5: Run infra unit suite and CI-gated integration tests**
+- [ ] **Step 5: Register repository beans in the existing consistency config**
+
+Follow the repository's established `*InfraConfig` pattern instead of relying on component scanning outside `com.sjherp.app`:
+
+```java
+@Bean
+ConsistencyCheckRunRepository consistencyCheckRunRepository(JdbcTemplate jdbc) {
+    return new JdbcConsistencyCheckRunRepository(jdbc);
+}
+
+@Bean
+SystemNotificationRepository systemNotificationRepository(JdbcTemplate jdbc) {
+    return new JdbcSystemNotificationRepository(jdbc);
+}
+```
+
+Keep `@EnableScheduling` on `ConsistencyConfig` and update its Javadoc to describe the two explicit infra adapters.
+
+- [ ] **Step 6: Run infra unit suite and CI-gated integration tests**
 
 ```powershell
 mvn -pl sjherp-infra test
@@ -377,10 +397,10 @@ mvn -pl sjherp-infra test
 
 Expected: all non-container infra tests pass. The integration command is rerun in GitHub CI against MySQL 8.4.
 
-- [ ] **Step 6: Commit Task 2**
+- [ ] **Step 7: Commit Task 2**
 
 ```powershell
-git add -- server/sjherp-infra/src/main/java/com/sjherp/infra/persistence/consistency server/sjherp-infra/src/main/java/com/sjherp/infra/persistence/notification server/sjherp-infra/src/test/java/com/sjherp/infra/persistence/consistency server/sjherp-infra/src/test/java/com/sjherp/infra/persistence/notification
+git add -- server/sjherp-infra/src/main/java/com/sjherp/infra/persistence/consistency server/sjherp-infra/src/main/java/com/sjherp/infra/persistence/notification server/sjherp-infra/src/test/java/com/sjherp/infra/persistence/consistency server/sjherp-infra/src/test/java/com/sjherp/infra/persistence/notification server/sjherp-app/src/main/java/com/sjherp/app/consistency/ConsistencyConfig.java
 git commit -m "feat: 持久化检查报告与站内通知"
 ```
 
