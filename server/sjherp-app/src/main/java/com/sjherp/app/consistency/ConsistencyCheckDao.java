@@ -572,7 +572,7 @@ public class ConsistencyCheckDao {
                 + " JOIN production_cost_settlement_line pl ON pl.tenant_id = ph.tenant_id "
                 + "  AND pl.settlement_id = ph.id "
                 + " JOIN voucher origin_v ON origin_v.tenant_id = 0 "
-                + "  AND origin_v.source_type = 'PRODUCTION_COST_SETTLEMENT' "
+                + "  AND origin_v.source_doc_type = 'PRODUCTION_COST_SETTLEMENT' "
                 + "  AND origin_v.source_doc_no COLLATE utf8mb4_unicode_ci "
                 + "      = CONCAT(ph.doc_no, ':', pl.work_order_doc_no) "
                 + " JOIN voucher related_v ON related_v.tenant_id = origin_v.tenant_id "

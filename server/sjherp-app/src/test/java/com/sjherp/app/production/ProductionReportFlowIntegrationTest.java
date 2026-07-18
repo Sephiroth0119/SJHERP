@@ -63,7 +63,7 @@ import com.sjherp.domain.production.ProductionReportLineInput;
  *   <li>建报工单 → approve → post（PRODUCTION_IN 完工入库，inboundCost = issuedCost）；</li>
  *   <li>断言：PRODUCTION_IN 流水存在、inboundCost > 0、PR status=COMPLETED、
  *       WO.completedQty 更新、成品库存余额正确；</li>
- *   <li>零发料成本路径：无已过账领料单时 post 抛 IAE "issuedCost"，状态不变；</li>
+ *   <li>零发料成本路径：无已过账领料单时 post 抛 IAE，提示无可结转成本且状态不变；</li>
  *   <li>一致性校验 0 ERROR。</li>
  * </ol>
  *
@@ -333,12 +333,12 @@ class ProductionReportFlowIntegrationTest {
         String prDocNo = pr.getDocNo();
         txTemplate.executeWithoutResult(s -> productionReportAppService.approve(prDocNo, OPERATOR));
 
-        // post 时无已过账领料成本（issuedCost = 0），应抛 IAE 含 "issuedCost"，整批回滚
+        // post 时无已过账领料成本，应抛出明确的无可结转成本提示，整批回滚
         assertThatThrownBy(() ->
                 txTemplate.executeWithoutResult(s ->
                         productionReportAppService.post(prDocNo, OPERATOR)))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("issuedCost");
+                .hasMessageContaining("无可结转的新增领料成本");
 
         // 报工单状态回退到回滚前的 APPROVED（未能前进到 COMPLETED）
         String statusStr = jdbc.queryForObject(
