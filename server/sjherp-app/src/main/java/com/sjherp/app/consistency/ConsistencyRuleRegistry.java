@@ -8,8 +8,11 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import org.springframework.stereotype.Component;
+
 import com.sjherp.app.consistency.ConsistencyRule.Kind;
 
+@Component
 public final class ConsistencyRuleRegistry {
 
     private final List<ConsistencyRule> sqlRules;
