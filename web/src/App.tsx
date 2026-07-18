@@ -9,6 +9,7 @@ import { Sidebar } from './components/Sidebar';
 import { ChatPanel } from './components/chat/ChatPanel';
 import { LoginPage } from './components/LoginPage';
 import { ModulePlaceholder } from './components/ModulePlaceholder';
+import { MemoryGovernancePage } from './components/memory/MemoryGovernancePage';
 import { MODULE_NAV_ITEMS, type ModuleKey } from './types/navigation';
 import {
   clearAuth,
@@ -57,6 +58,16 @@ export function App() {
     setUser(null);
   }, []);
 
+  const canManageMemory = user?.roles.some(
+    (role) => role === 'ADMIN' || role === 'BOSS',
+  ) ?? false;
+
+  useEffect(() => {
+    if (activeModule === 'memory' && !canManageMemory) {
+      setActiveModule('agent');
+    }
+  }, [activeModule, canManageMemory]);
+
   if (!user) {
     return <LoginPage onLogin={setUser} />;
   }
@@ -65,7 +76,7 @@ export function App() {
 
   return (
     <div className="app-layout">
-      <Sidebar active={activeModule} onSelect={setActiveModule} />
+      <Sidebar active={activeModule} onSelect={setActiveModule} roles={user.roles} />
       <main className="app-main">
         <header className="app-topbar">
           <span className="app-topbar-user" title={`角色：${formatRoles(user.roles)}`}>
@@ -76,7 +87,9 @@ export function App() {
             退出
           </button>
         </header>
-        {activeModule === 'agent' || !activeItem ? (
+        {activeModule === 'memory' && canManageMemory ? (
+          <MemoryGovernancePage />
+        ) : activeModule === 'agent' || !activeItem || activeModule === 'memory' ? (
           <ChatPanel />
         ) : (
           <ModulePlaceholder module={activeItem} />
