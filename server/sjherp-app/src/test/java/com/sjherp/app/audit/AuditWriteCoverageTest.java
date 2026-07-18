@@ -266,6 +266,7 @@ class AuditWriteCoverageTest {
     void 大记忆失效产生审计记录() {
         MemoryEntryRepository repository = mock(MemoryEntryRepository.class);
         MemoryEntry persisted = memoryEntry();
+        persisted.markConflict(OPERATOR, Instant.parse("2026-07-18T00:00:01Z"));
         when(repository.findByMemoryNo(persisted.getMemoryNo())).thenReturn(Optional.of(persisted));
         MemoryService service = proxied(new MemoryService(repository,
                 numberGenerator("MEM-unused"), mock(ApplicationEventPublisher.class)));
@@ -273,6 +274,48 @@ class AuditWriteCoverageTest {
         service.expire(persisted.getMemoryNo(), OPERATOR);
 
         assertAudit("memory.expire", "memory");
+    }
+
+    @Test
+    void 大记忆整组冲突产生脱敏审计记录() {
+        MemoryEntryRepository repository = mock(MemoryEntryRepository.class);
+        MemoryEntry first = memoryEntry();
+        MemoryEntry second = memoryEntry("MEM-202607-0002", 12L,
+                "年采购金额超过80万元");
+        when(repository.findByMemoryNosForUpdate(
+                List.of(first.getMemoryNo(), second.getMemoryNo())))
+                .thenReturn(List.of(first, second));
+        MemoryService service = proxied(new MemoryService(repository,
+                numberGenerator("MEM-unused"), mock(ApplicationEventPublisher.class)));
+
+        service.markConflict(List.of(first.getMemoryNo(), second.getMemoryNo()), OPERATOR);
+
+        AuditLogEntry audit = capturedEntry();
+        assertEquals("memory.mark_conflict", audit.action());
+        assertEquals("memory", audit.targetType());
+        assertTrue(!audit.summary().contains(first.getContent())
+                        && !audit.summary().contains(first.getContentHash())
+                        && !audit.summary().contains(second.getContent()),
+                "整组冲突审计摘要不得包含正文或哈希: " + audit.summary());
+    }
+
+    @Test
+    void 大记忆恢复活动产生审计记录且摘要不含原文() {
+        MemoryEntryRepository repository = mock(MemoryEntryRepository.class);
+        MemoryEntry persisted = memoryEntry();
+        persisted.markConflict(OPERATOR, Instant.parse("2026-07-18T00:00:01Z"));
+        when(repository.findByMemoryNosForUpdate(List.of(persisted.getMemoryNo())))
+                .thenReturn(List.of(persisted));
+        MemoryService service = proxied(new MemoryService(repository,
+                numberGenerator("MEM-unused"), mock(ApplicationEventPublisher.class)));
+
+        service.activate(persisted.getMemoryNo(), OPERATOR);
+
+        AuditLogEntry audit = capturedEntry();
+        assertEquals("memory.activate", audit.action());
+        assertEquals("memory", audit.targetType());
+        assertTrue(!audit.summary().contains(persisted.getContent()),
+                "恢复审计摘要不得包含原文: " + audit.summary());
     }
 
     @Test
@@ -311,11 +354,15 @@ class AuditWriteCoverageTest {
     }
 
     private static MemoryEntry memoryEntry() {
+        return memoryEntry("MEM-202607-0001", 11L, "年采购金额超过50万元");
+    }
+
+    private static MemoryEntry memoryEntry(String memoryNo, long id, String content) {
         Instant now = Instant.parse("2026-07-18T00:00:00Z");
-        MemoryEntry entry = MemoryEntry.create("MEM-202607-0001", "MEM-202607-0001", 1,
-                MemoryType.BUSINESS_TERM, "大客户口径", "年采购金额超过50万元",
+        MemoryEntry entry = MemoryEntry.create(memoryNo, memoryNo, 1,
+                MemoryType.BUSINESS_TERM, "大客户口径", content,
                 MemorySourceType.USER_INPUT, "session-1", now, null, OPERATOR, now);
-        entry.assignId(11L);
+        entry.assignId(id);
         return entry;
     }
 

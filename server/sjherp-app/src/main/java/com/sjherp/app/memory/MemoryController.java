@@ -14,6 +14,9 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.sjherp.app.memory.MemoryDtos.CreateMemoryRequest;
+import com.sjherp.app.memory.MemoryDtos.ConflictResultResponse;
+import com.sjherp.app.memory.MemoryDtos.GovernanceCandidatesResponse;
+import com.sjherp.app.memory.MemoryDtos.MarkConflictRequest;
 import com.sjherp.app.memory.MemoryDtos.MemoryResponse;
 import com.sjherp.app.memory.MemoryDtos.PageResponse;
 import com.sjherp.app.memory.MemoryDtos.RebuildResponse;
@@ -34,10 +37,13 @@ public class MemoryController {
 
     private final MemoryService memoryService;
     private final MemoryIndexingService indexingService;
+    private final MemoryGovernanceService governanceService;
 
-    public MemoryController(MemoryService memoryService, MemoryIndexingService indexingService) {
+    public MemoryController(MemoryService memoryService, MemoryIndexingService indexingService,
+                            MemoryGovernanceService governanceService) {
         this.memoryService = memoryService;
         this.indexingService = indexingService;
+        this.governanceService = governanceService;
     }
 
     @PostMapping
@@ -61,6 +67,25 @@ public class MemoryController {
             @RequestParam(defaultValue = "20") int size) {
         return PageResponse.from(memoryService.search(
                 new MemoryEntryQuery(type, status, indexStatus, page, size)));
+    }
+
+    @GetMapping("/governance/candidates")
+    public GovernanceCandidatesResponse governanceCandidates(
+            @RequestParam(defaultValue = "50") int limit) {
+        return GovernanceCandidatesResponse.from(governanceService.findCandidates(limit));
+    }
+
+    @PostMapping("/governance/conflicts")
+    public ConflictResultResponse markConflict(
+            @Valid @RequestBody MarkConflictRequest request) {
+        return ConflictResultResponse.from(memoryService.markConflict(
+                request.memoryNos(), CurrentUser.operator()));
+    }
+
+    @PostMapping("/{memoryNo}/activate")
+    public MemoryResponse activate(@PathVariable String memoryNo) {
+        return MemoryResponse.from(
+                memoryService.activate(memoryNo, CurrentUser.operator()));
     }
 
     @PutMapping("/{memoryNo}")

@@ -97,6 +97,73 @@ public final class MemoryDtos {
         }
     }
 
+    /** 整组冲突标记请求；应用服务会在事务内重新验证候选关系。 */
+    public record MarkConflictRequest(
+            @NotNull(message = "记忆编号不能为空")
+            @Size(min = 2, max = 50, message = "记忆编号数量必须在 2 到 50 之间")
+            List<@NotBlank(message = "记忆编号不能为空") String> memoryNos) {
+
+        public MarkConflictRequest {
+            memoryNos = memoryNos == null ? null : List.copyOf(memoryNos);
+        }
+    }
+
+    public record DuplicateGroupResponse(String type, List<MemoryResponse> entries) {
+
+        public DuplicateGroupResponse {
+            entries = List.copyOf(entries);
+        }
+
+        static DuplicateGroupResponse from(MemoryGovernanceService.DuplicateGroup group) {
+            return new DuplicateGroupResponse(group.type().name(),
+                    group.entries().stream().map(MemoryResponse::from).toList());
+        }
+    }
+
+    public record ConflictGroupResponse(
+            String type, String title, List<MemoryResponse> entries) {
+
+        public ConflictGroupResponse {
+            entries = List.copyOf(entries);
+        }
+
+        static ConflictGroupResponse from(MemoryGovernanceService.ConflictGroup group) {
+            return new ConflictGroupResponse(group.type().name(), group.title(),
+                    group.entries().stream().map(MemoryResponse::from).toList());
+        }
+    }
+
+    public record GovernanceCandidatesResponse(
+            List<DuplicateGroupResponse> duplicateGroups,
+            List<ConflictGroupResponse> conflictGroups) {
+
+        public GovernanceCandidatesResponse {
+            duplicateGroups = List.copyOf(duplicateGroups);
+            conflictGroups = List.copyOf(conflictGroups);
+        }
+
+        static GovernanceCandidatesResponse from(
+                MemoryGovernanceService.Candidates candidates) {
+            return new GovernanceCandidatesResponse(
+                    candidates.duplicateGroups().stream()
+                            .map(DuplicateGroupResponse::from).toList(),
+                    candidates.conflictGroups().stream()
+                            .map(ConflictGroupResponse::from).toList());
+        }
+    }
+
+    public record ConflictResultResponse(List<MemoryResponse> entries) {
+
+        public ConflictResultResponse {
+            entries = List.copyOf(entries);
+        }
+
+        static ConflictResultResponse from(MemoryConflictResult result) {
+            return new ConflictResultResponse(
+                    result.entries().stream().map(MemoryResponse::from).toList());
+        }
+    }
+
     /** 全量重建执行摘要。 */
     public record RebuildResponse(int succeeded, int failed, long lastProcessedId) {
 

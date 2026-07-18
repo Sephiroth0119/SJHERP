@@ -55,6 +55,9 @@ class MemoryApiPermissionTest {
     private MemoryIndexingService indexingService;
 
     @MockitoBean
+    private MemoryGovernanceService governanceService;
+
+    @MockitoBean
     private UserRepository userRepository;
 
     @BeforeEach
@@ -63,6 +66,12 @@ class MemoryApiPermissionTest {
                 .thenReturn(entry());
         Mockito.when(memoryService.search(Mockito.any()))
                 .thenReturn(new PageResult<>(List.of(), 0, 1, 20));
+        Mockito.when(governanceService.findCandidates(50))
+                .thenReturn(new MemoryGovernanceService.Candidates(List.of(), List.of()));
+        Mockito.when(memoryService.markConflict(Mockito.anyList(), Mockito.anyString()))
+                .thenReturn(new MemoryConflictResult(List.of(entry(1), entry(2))));
+        Mockito.when(memoryService.activate(Mockito.anyString(), Mockito.anyString()))
+                .thenReturn(entry(1));
     }
 
     @Test
@@ -80,8 +89,16 @@ class MemoryApiPermissionTest {
             mockMvc.perform(get("/api/memories").with(asUser(role)))
                     .andExpect(status().isForbidden())
                     .andExpect(jsonPath("$.error").value("无权限执行该操作"));
+            mockMvc.perform(get("/api/memories/governance/candidates").with(asUser(role)))
+                    .andExpect(status().isForbidden());
+            mockMvc.perform(post("/api/memories/governance/conflicts").with(asUser(role))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(conflictJson()))
+                    .andExpect(status().isForbidden());
+            mockMvc.perform(post("/api/memories/MEM-202607-0001/activate").with(asUser(role)))
+                    .andExpect(status().isForbidden());
         }
-        Mockito.verifyNoInteractions(memoryService, indexingService);
+        Mockito.verifyNoInteractions(memoryService, indexingService, governanceService);
     }
 
     @Test
@@ -89,6 +106,19 @@ class MemoryApiPermissionTest {
         mockMvc.perform(get("/api/memories"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error").value("未登录或登录已过期"));
+    }
+
+    @Test
+    void adminAndBoss_canUseGovernanceEndpoints() throws Exception {
+        mockMvc.perform(get("/api/memories/governance/candidates").with(asUser(Role.ADMIN)))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/memories/governance/conflicts").with(asUser(Role.BOSS))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(conflictJson()))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/memories/MEM-202607-0001/activate")
+                        .with(asUser(Role.ADMIN)))
+                .andExpect(status().isOk());
     }
 
     private static RequestPostProcessor asUser(Role role) {
@@ -109,9 +139,20 @@ class MemoryApiPermissionTest {
                 """;
     }
 
+    private static String conflictJson() {
+        return """
+                {"memoryNos":["MEM-202607-0001","MEM-202607-0002"]}
+                """;
+    }
+
     private static MemoryEntry entry() {
+        return entry(1);
+    }
+
+    private static MemoryEntry entry(long id) {
         Instant now = Instant.parse("2026-07-18T00:00:00Z");
-        return MemoryEntry.restore(1, 0, "MEM-202607-0001", "MEM-202607-0001", 1,
+        return MemoryEntry.restore(id, 0, "MEM-202607-000" + id,
+                "MEM-202607-000" + id, 1,
                 null, MemoryType.BUSINESS_TERM, "含税单价", "内容", "hash",
                 MemorySourceType.USER_INPUT, "chat-100", MemoryStatus.ACTIVE,
                 now, null, MemoryIndexStatus.PENDING, null, null, null,
