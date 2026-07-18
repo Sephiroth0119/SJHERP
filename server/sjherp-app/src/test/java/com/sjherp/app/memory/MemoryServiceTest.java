@@ -5,12 +5,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -147,6 +150,73 @@ class MemoryServiceTest {
         org.mockito.Mockito.verifyNoInteractions(numberGenerator, events);
     }
 
+    @Test
+    void 整组冲突完整校验后保存并发布删除事件() {
+        MemoryEntry first = version1();
+        MemoryEntry second = conflictingEntry(12L, "MEM-202607-0002",
+                "大客户口径", "年采购金额超过80万元");
+        List<String> memoryNos = List.of(first.getMemoryNo(), second.getMemoryNo());
+        when(repository.findByMemoryNosForUpdate(memoryNos)).thenReturn(List.of(first, second));
+
+        MemoryConflictResult result = service.markConflict(memoryNos, "user:1");
+
+        assertThat(result.entries()).allMatch(entry -> entry.getStatus() == MemoryStatus.CONFLICT);
+        verify(repository).save(first);
+        verify(repository).save(second);
+        verify(events).publishEvent(new MemoryIndexRequestedEvent(
+                MemoryIndexOperation.DELETE, first.getMemoryNo(), first.getId()));
+        verify(events).publishEvent(new MemoryIndexRequestedEvent(
+                MemoryIndexOperation.DELETE, second.getMemoryNo(), second.getId()));
+        assertThat(result.auditSummary())
+                .doesNotContain(first.getContent())
+                .doesNotContain(first.getContentHash())
+                .contains(first.getMemoryNo(), second.getMemoryNo());
+    }
+
+    @Test
+    void 不满足同类型同标题不同内容时不做部分写入() {
+        MemoryEntry first = version1();
+        MemoryEntry otherTitle = conflictingEntry(12L, "MEM-202607-0002",
+                "另一口径", "年采购金额超过80万元");
+        List<String> memoryNos = List.of(first.getMemoryNo(), otherTitle.getMemoryNo());
+        when(repository.findByMemoryNosForUpdate(memoryNos))
+                .thenReturn(List.of(first, otherTitle));
+
+        assertThatThrownBy(() -> service.markConflict(memoryNos, "user:1"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("冲突组");
+        verify(repository, never()).save(any());
+        verifyNoInteractions(events);
+    }
+
+    @Test
+    void 重复编号在读取前被拒绝() {
+        String memoryNo = version1().getMemoryNo();
+
+        assertThatThrownBy(() -> service.markConflict(
+                List.of(memoryNo, memoryNo), "user:1"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("重复");
+        verifyNoInteractions(repository, events);
+    }
+
+    @Test
+    void 恢复冲突先保存待索引真源再发布上载事件() {
+        MemoryEntry entry = version1();
+        entry.markConflict("user:1", NOW.minusSeconds(1));
+        when(repository.findByMemoryNosForUpdate(List.of(entry.getMemoryNo())))
+                .thenReturn(List.of(entry));
+
+        MemoryEntry activated = service.activate(entry.getMemoryNo(), "user:1");
+
+        assertThat(activated.getStatus()).isEqualTo(MemoryStatus.ACTIVE);
+        assertThat(activated.getIndexStatus()).isEqualTo(MemoryIndexStatus.PENDING);
+        InOrder order = inOrder(repository, events);
+        order.verify(repository).save(entry);
+        order.verify(events).publishEvent(new MemoryIndexRequestedEvent(
+                MemoryIndexOperation.UPSERT, entry.getMemoryNo(), entry.getId()));
+    }
+
     private static MemoryEntryCommand command() {
         return new MemoryEntryCommand(MemoryType.BUSINESS_TERM, "大客户口径",
                 "年采购金额超过50万元", MemorySourceType.USER_INPUT,
@@ -165,6 +235,16 @@ class MemoryServiceTest {
                 MemorySourceType.USER_INPUT, "session-1", NOW.minusSeconds(60),
                 null, "user:1", NOW.minusSeconds(60));
         entry.assignId(11L);
+        return entry;
+    }
+
+    private static MemoryEntry conflictingEntry(long id, String memoryNo,
+                                                String title, String content) {
+        MemoryEntry entry = MemoryEntry.create(memoryNo, memoryNo, 1,
+                MemoryType.BUSINESS_TERM, title, content,
+                MemorySourceType.USER_INPUT, "session-2",
+                NOW.minusSeconds(60), null, "user:1", NOW.minusSeconds(60));
+        entry.assignId(id);
         return entry;
     }
 }
