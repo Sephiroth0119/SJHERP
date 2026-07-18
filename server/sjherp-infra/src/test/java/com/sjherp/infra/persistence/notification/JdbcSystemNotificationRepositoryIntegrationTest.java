@@ -20,8 +20,8 @@ class JdbcSystemNotificationRepositoryIntegrationTest extends MySqlContainerTest
 
     @BeforeEach
     void setUpRecipients() {
-        jdbc.update("DELETE FROM system_notification WHERE source_ref LIKE 'IT-T05-%'");
-        jdbc.update("DELETE FROM sys_user WHERE username LIKE 'it-t05-%'");
+        jdbc.update("DELETE FROM system_notification WHERE tenant_id = 0 AND source_ref LIKE 'IT-T05-%'");
+        jdbc.update("DELETE FROM sys_user WHERE tenant_id = 0 AND username LIKE 'it-t05-%'");
         adminId = insertUser("it-t05-admin-" + uniqueSuffix());
         otherId = insertUser("it-t05-other-" + uniqueSuffix());
     }

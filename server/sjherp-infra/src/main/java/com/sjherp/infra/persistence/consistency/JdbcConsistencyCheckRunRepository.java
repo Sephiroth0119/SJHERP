@@ -64,10 +64,10 @@ public final class JdbcConsistencyCheckRunRepository implements ConsistencyCheck
             throw new IllegalArgumentException("运行报告不可重复保存");
         }
         long id = insertHead(run);
-        run.assignId(id);
         if (!run.findings().isEmpty()) {
-            insertFindings(run);
+            insertFindings(run, id);
         }
+        run.assignId(id);
     }
 
     @Override
@@ -118,7 +118,7 @@ public final class JdbcConsistencyCheckRunRepository implements ConsistencyCheck
         return Objects.requireNonNull(keyHolder.getKey(), "未取得运行报告自增主键").longValue();
     }
 
-    private void insertFindings(ConsistencyCheckRun run) {
+    private void insertFindings(ConsistencyCheckRun run, long runId) {
         jdbc.batchUpdate("""
                 INSERT INTO consistency_check_break (
                     tenant_id, run_id, sequence_no, rule_code, check_type, object_key,
@@ -130,7 +130,7 @@ public final class JdbcConsistencyCheckRunRepository implements ConsistencyCheck
                 ConsistencyFinding finding = run.findings().get(index);
                 int parameter = 1;
                 statement.setLong(parameter++, run.tenantId());
-                statement.setLong(parameter++, run.id());
+                statement.setLong(parameter++, runId);
                 statement.setInt(parameter++, finding.sequenceNo());
                 statement.setString(parameter++, finding.ruleCode());
                 statement.setString(parameter++, finding.checkType());

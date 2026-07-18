@@ -27,14 +27,32 @@ class JdbcConsistencyCheckRunRepositoryIntegrationTest extends MySqlContainerTes
         assertThat(repository.findByRunNo(0, runNo)).get()
                 .satisfies(run -> {
                     assertThat(run.errorCount()).isEqualTo(1L);
-                    assertThat(run.findings()).singleElement().satisfies(finding -> {
-                        assertThat(finding.expectedValue()).isEqualByComparingTo("10.123456");
-                        assertThat(finding.actualValue()).isEqualByComparingTo("0.000000");
-                    });
+                    assertThat(run.findings()).extracting(ConsistencyFinding::sequenceNo).containsExactly(1, 2);
+                    assertThat(run.findings().get(0).expectedValue()).isEqualByComparingTo("10.123456");
+                    assertThat(run.findings().get(0).actualValue()).isEqualByComparingTo("0.000000");
+                    assertThat(run.findings().get(1).expectedValue()).isNull();
+                    assertThat(run.findings().get(1).actualValue()).isNull();
                 });
         assertThat(repository.search(0, new ConsistencyRunQuery(1, 20)).items())
-                .extracting(ConsistencyCheckRun::runNo)
-                .contains(runNo);
+                .filteredOn(run -> run.runNo().equals(runNo))
+                .singleElement()
+                .satisfies(run -> assertThat(run.findings()).isEmpty());
+    }
+
+    @Tag("integration-db")
+    @Test
+    void savesCleanRunWithoutFindings() {
+        String runNo = "CHK-IT-" + uniqueSuffix();
+        Instant startedAt = Instant.parse("2026-07-19T00:00:00Z");
+        repository.save(ConsistencyCheckRun.completed(0, runNo, ConsistencyCheckRun.TriggerType.SCHEDULED,
+                "tester", startedAt, startedAt.plusSeconds(1),
+                ConsistencyCheckRun.AnalysisStatus.SKIPPED, null, List.of()));
+
+        assertThat(repository.findByRunNo(0, runNo)).get()
+                .satisfies(run -> {
+                    assertThat(run.clean()).isTrue();
+                    assertThat(run.findings()).isEmpty();
+                });
     }
 
     private static ConsistencyCheckRun runWithFinding(String runNo, BigDecimal expectedValue) {
@@ -42,8 +60,11 @@ class JdbcConsistencyCheckRunRepositoryIntegrationTest extends MySqlContainerTes
         Instant completedAt = startedAt.plusSeconds(1);
         return ConsistencyCheckRun.completed(0, runNo, ConsistencyCheckRun.TriggerType.MANUAL_API,
                 "tester", startedAt, completedAt, ConsistencyCheckRun.AnalysisStatus.SKIPPED, null,
-                List.of(new ConsistencyFinding(1, "IT-RULE", "SQL_ASSERTION", "test-object",
-                        expectedValue, new BigDecimal("0.000000"),
-                        ConsistencyFinding.Severity.ERROR, "decimal round trip")));
+                List.of(
+                        new ConsistencyFinding(2, "IT-NULL", "SQL_ASSERTION", "nullable-object",
+                                null, null, ConsistencyFinding.Severity.WARN, "nullable round trip"),
+                        new ConsistencyFinding(1, "IT-RULE", "SQL_ASSERTION", "test-object",
+                                expectedValue, new BigDecimal("0.000000"),
+                                ConsistencyFinding.Severity.ERROR, "decimal round trip")));
     }
 }
