@@ -2,7 +2,12 @@ package com.sjherp.app.memory;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,6 +21,7 @@ import com.sjherp.domain.memory.MemoryEntryCommand;
 import com.sjherp.domain.memory.MemoryEntryNotFoundException;
 import com.sjherp.domain.memory.MemoryEntryQuery;
 import com.sjherp.domain.memory.MemoryEntryRepository;
+import com.sjherp.domain.memory.MemoryStatus;
 
 /** 大记忆 MySQL 真源的唯一应用写入口。 */
 public class MemoryService {
@@ -121,6 +127,52 @@ public class MemoryService {
         return entry;
     }
 
+    @Transactional
+    @Audited(action = "memory.mark_conflict", targetType = "memory")
+    public MemoryConflictResult markConflict(List<String> memoryNos, String operator) {
+        List<String> normalized = normalizeMemoryNos(memoryNos, 2, 50);
+        List<MemoryEntry> locked = repository.findByMemoryNosForUpdate(normalized);
+        Map<String, MemoryEntry> byMemoryNo = locked.stream().collect(Collectors.toMap(
+                MemoryEntry::getMemoryNo, Function.identity()));
+        List<MemoryEntry> entries = normalized.stream().map(memoryNo -> {
+            MemoryEntry entry = byMemoryNo.get(memoryNo);
+            if (entry == null) {
+                throw new MemoryEntryNotFoundException(memoryNo);
+            }
+            return entry;
+        }).toList();
+
+        MemoryEntry first = entries.getFirst();
+        boolean invalid = entries.stream().anyMatch(entry ->
+                entry.getStatus() != MemoryStatus.ACTIVE
+                        || entry.getTenantId() != first.getTenantId()
+                        || entry.getMemoryType() != first.getMemoryType()
+                        || !entry.getTitle().equals(first.getTitle()));
+        if (invalid || entries.stream().map(MemoryEntry::getContentHash).distinct().count() < 2) {
+            throw new IllegalStateException("所选记忆已变化或不再构成同一冲突组");
+        }
+
+        Instant now = Instant.now(clock);
+        entries.forEach(entry -> entry.markConflict(operator, now));
+        entries.forEach(repository::save);
+        entries.forEach(entry ->
+                events.publishEvent(event(MemoryIndexOperation.DELETE, entry)));
+        return new MemoryConflictResult(entries);
+    }
+
+    @Transactional
+    @Audited(action = "memory.activate", targetType = "memory")
+    public MemoryEntry activate(String memoryNo, String operator) {
+        List<String> normalized = normalizeMemoryNos(List.of(memoryNo), 1, 1);
+        MemoryEntry entry = repository.findByMemoryNosForUpdate(normalized).stream()
+                .findFirst()
+                .orElseThrow(() -> new MemoryEntryNotFoundException(normalized.getFirst()));
+        entry.activate(operator, Instant.now(clock));
+        repository.save(entry);
+        events.publishEvent(event(MemoryIndexOperation.UPSERT, entry));
+        return entry;
+    }
+
     @Transactional(readOnly = true)
     public MemoryEntry get(String memoryNo) {
         return repository.findByMemoryNo(memoryNo)
@@ -134,6 +186,25 @@ public class MemoryService {
 
     private static Instant effectiveValidFrom(MemoryEntryCommand command, Instant now) {
         return command.validFrom() == null ? now : command.validFrom();
+    }
+
+    private static List<String> normalizeMemoryNos(
+            List<String> memoryNos, int minSize, int maxSize) {
+        Objects.requireNonNull(memoryNos, "记忆编号列表不能为空");
+        if (memoryNos.size() < minSize || memoryNos.size() > maxSize) {
+            throw new IllegalArgumentException(
+                    "记忆编号数量必须在 " + minSize + " 到 " + maxSize + " 之间");
+        }
+        List<String> normalized = memoryNos.stream().map(memoryNo -> {
+            if (memoryNo == null || memoryNo.isBlank()) {
+                throw new IllegalArgumentException("记忆编号不能为空");
+            }
+            return memoryNo.strip();
+        }).toList();
+        if (new HashSet<>(normalized).size() != normalized.size()) {
+            throw new IllegalArgumentException("记忆编号不能重复");
+        }
+        return List.copyOf(normalized);
     }
 
     private static MemoryIndexRequestedEvent event(
