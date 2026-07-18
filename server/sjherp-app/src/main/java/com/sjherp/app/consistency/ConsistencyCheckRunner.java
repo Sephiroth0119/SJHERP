@@ -9,6 +9,7 @@ import java.util.Objects;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.sjherp.domain.common.audit.Audited;
@@ -27,12 +28,14 @@ public class ConsistencyCheckRunner {
     private static final long TENANT_ID = 0L;
     private static final DocumentNumberRule RUN_NUMBER_RULE = DocumentNumberRule.of("CHK");
     private static final String SCHEDULED_OPERATOR = "system:consistency-scheduler";
+    private static final int ANALYSIS_SUMMARY_MAX_LENGTH = 1000;
 
     private final ConsistencyRuleRegistry registry;
     private final DocumentNumberGenerator numberGenerator;
     private final ConsistencyRunPersistenceService persistence;
     private final Clock clock;
 
+    @Autowired
     public ConsistencyCheckRunner(ConsistencyRuleRegistry registry,
                                   DocumentNumberGenerator numberGenerator,
                                   ConsistencyRunPersistenceService persistence) {
@@ -112,7 +115,22 @@ public class ConsistencyCheckRunner {
             }
         }
         return new AnalysisOutcome(failed ? AnalysisStatus.FAILED : AnalysisStatus.SUCCEEDED,
-                summaries.isEmpty() ? null : String.join("\n", summaries));
+                aggregateAnalysisSummaries(summaries));
+    }
+
+    private static String aggregateAnalysisSummaries(List<String> summaries) {
+        StringBuilder combined = new StringBuilder(ANALYSIS_SUMMARY_MAX_LENGTH);
+        for (String summary : summaries) {
+            if (combined.length() >= ANALYSIS_SUMMARY_MAX_LENGTH) {
+                break;
+            }
+            if (!combined.isEmpty()) {
+                combined.append('\n');
+            }
+            int remaining = ANALYSIS_SUMMARY_MAX_LENGTH - combined.length();
+            combined.append(summary, 0, Math.min(summary.length(), remaining));
+        }
+        return combined.isEmpty() ? null : combined.toString();
     }
 
     private void persistFailedRunWithoutReplacingOriginal(String runNo, TriggerType triggerType,

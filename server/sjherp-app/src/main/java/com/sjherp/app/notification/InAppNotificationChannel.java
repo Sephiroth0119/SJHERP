@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.Set;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.sjherp.domain.consistency.ConsistencyCheckRun;
@@ -24,6 +25,7 @@ public class InAppNotificationChannel implements NotificationChannel {
     private final SystemNotificationRepository notifications;
     private final Clock clock;
 
+    @Autowired
     public InAppNotificationChannel(UserRepository users,
                                     SystemNotificationRepository notifications) {
         this(users, notifications, Clock.systemUTC());

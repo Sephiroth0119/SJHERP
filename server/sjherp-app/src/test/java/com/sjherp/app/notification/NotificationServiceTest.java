@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -64,7 +65,7 @@ class NotificationServiceTest {
 
         assertThat(updated).isSameAs(notification);
         assertThat(updated.readAt()).isEqualTo(READ_AT);
-        verify(repository).findByIdAndRecipient(0, 99, 7);
+        verify(repository, times(2)).findByIdAndRecipient(0, 99, 7);
         verify(repository).save(notification);
     }
 
@@ -76,6 +77,22 @@ class NotificationServiceTest {
                 .isInstanceOf(NotificationNotFoundException.class)
                 .hasMessageContaining("99");
         verify(repository, never()).save(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void concurrentMarkReadReturnsFirstEffectivePersistedTimestamp() {
+        Instant firstPersistedReadAt = READ_AT.minusSeconds(30);
+        SystemNotification staleUnread = unreadNotification(99, 7);
+        SystemNotification effective = readNotification(99, 7, firstPersistedReadAt);
+        when(repository.findByIdAndRecipient(0, 99, 7))
+                .thenReturn(Optional.of(staleUnread), Optional.of(effective));
+
+        SystemNotification updated = service.markRead(7, 99);
+
+        assertThat(updated).isSameAs(effective);
+        assertThat(updated.readAt()).isEqualTo(firstPersistedReadAt);
+        verify(repository).save(staleUnread);
+        verify(repository, times(2)).findByIdAndRecipient(0, 99, 7);
     }
 
     @Test
@@ -94,9 +111,13 @@ class NotificationServiceTest {
     }
 
     private static SystemNotification unreadNotification(long id, long recipientId) {
+        return readNotification(id, recipientId, null);
+    }
+
+    private static SystemNotification readNotification(long id, long recipientId, Instant readAt) {
         return SystemNotification.restore(id, 0, recipientId,
                 SystemNotification.Category.CONSISTENCY, SystemNotification.Severity.ERROR,
                 "一致性检查异常", "运行编号=CHK-1，来源=MANUAL_API，总数=1，错误=1，警告=0，提示=0",
-                SystemNotification.SourceType.CONSISTENCY_REPORT, "CHK-1", null, CREATED_AT);
+                SystemNotification.SourceType.CONSISTENCY_REPORT, "CHK-1", readAt, CREATED_AT);
     }
 }

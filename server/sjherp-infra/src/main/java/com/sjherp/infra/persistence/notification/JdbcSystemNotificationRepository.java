@@ -122,7 +122,7 @@ public final class JdbcSystemNotificationRepository implements SystemNotificatio
     private void updateReadAt(SystemNotification notification) {
         int affected = jdbc.update("""
                 UPDATE system_notification
-                   SET read_at = ?
+                   SET read_at = COALESCE(read_at, ?)
                  WHERE tenant_id = ? AND id = ? AND recipient_user_id = ?
                 """, toDbNullable(notification.readAt()), notification.tenantId(), notification.id(),
                 notification.recipientUserId());
@@ -133,11 +133,11 @@ public final class JdbcSystemNotificationRepository implements SystemNotificatio
 
     private List<SystemNotification> findInbox(long tenantId, long recipientUserId,
                                                  SystemNotificationQuery query) {
+        long offset = Math.multiplyExact((long) (query.page() - 1), query.size());
         return jdbc.query(SELECT_COLUMNS + """
                 WHERE tenant_id = ? AND recipient_user_id = ?
                 ORDER BY id DESC LIMIT ? OFFSET ?
-                """, ROW_MAPPER, tenantId, recipientUserId, query.size(),
-                (query.page() - 1) * query.size());
+                """, ROW_MAPPER, tenantId, recipientUserId, query.size(), offset);
     }
 
     private long countInbox(long tenantId, long recipientUserId) {

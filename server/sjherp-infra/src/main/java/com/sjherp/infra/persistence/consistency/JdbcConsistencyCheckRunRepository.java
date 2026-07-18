@@ -81,8 +81,9 @@ public final class JdbcConsistencyCheckRunRepository implements ConsistencyCheck
     public PageResult<ConsistencyCheckRun> search(long tenantId, ConsistencyRunQuery query) {
         Objects.requireNonNull(query, "query must not be null");
         long total = countHeads(tenantId);
+        long offset = Math.multiplyExact((long) (query.page() - 1), query.size());
         List<ConsistencyCheckRun> heads = findHeads(tenantId, query.size(),
-                (query.page() - 1) * query.size()).stream().map(head -> restore(head, List.of())).toList();
+                offset).stream().map(head -> restore(head, List.of())).toList();
         return new PageResult<>(heads, total, query.page(), query.size());
     }
 
@@ -171,7 +172,7 @@ public final class JdbcConsistencyCheckRunRepository implements ConsistencyCheck
         return total == null ? 0L : total;
     }
 
-    private List<Head> findHeads(long tenantId, int size, int offset) {
+    private List<Head> findHeads(long tenantId, int size, long offset) {
         return jdbc.query(HEAD_COLUMNS + """
                 WHERE tenant_id = ?
                 ORDER BY id DESC LIMIT ? OFFSET ?

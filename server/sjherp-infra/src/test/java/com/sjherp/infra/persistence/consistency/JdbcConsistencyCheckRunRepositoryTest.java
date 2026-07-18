@@ -16,6 +16,7 @@ import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.jdbc.core.BatchPreparedStatementSetter;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.PreparedStatementCreator;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.support.KeyHolder;
 
 import com.sjherp.domain.consistency.ConsistencyCheckRun;
@@ -39,6 +40,18 @@ class JdbcConsistencyCheckRunRepositoryTest {
         assertThat(run.id()).isNull();
     }
 
+    @Test
+    void largePageUsesPositiveLongOffset() {
+        CapturingQueryJdbcTemplate jdbc = new CapturingQueryJdbcTemplate();
+
+        new JdbcConsistencyCheckRunRepository(jdbc).search(
+                0, new com.sjherp.domain.consistency.ConsistencyRunQuery(Integer.MAX_VALUE, 100));
+
+        assertThat(jdbc.queryArguments)
+                .containsExactly(0L, 100, 214_748_364_600L);
+        assertThat(jdbc.queryArguments[2]).isInstanceOf(Long.class);
+    }
+
     private static ConsistencyCheckRun runWithFinding() {
         Instant startedAt = Instant.parse("2026-07-19T00:00:00Z");
         return ConsistencyCheckRun.completed(0, "CHK-UNIT-0001", ConsistencyCheckRun.TriggerType.MANUAL_API,
@@ -47,5 +60,20 @@ class JdbcConsistencyCheckRunRepositoryTest {
                 List.of(new ConsistencyFinding(1, "IT-RULE", "SQL_ASSERTION", "test-object",
                         new BigDecimal("1.000000"), BigDecimal.ZERO,
                         ConsistencyFinding.Severity.ERROR, "batch failure")));
+    }
+
+    private static final class CapturingQueryJdbcTemplate extends JdbcTemplate {
+        private Object[] queryArguments;
+
+        @Override
+        public <T> T queryForObject(String sql, Class<T> requiredType, Object... args) {
+            return requiredType.cast(0L);
+        }
+
+        @Override
+        public <T> List<T> query(String sql, RowMapper<T> rowMapper, Object... args) {
+            queryArguments = args;
+            return List.of();
+        }
     }
 }

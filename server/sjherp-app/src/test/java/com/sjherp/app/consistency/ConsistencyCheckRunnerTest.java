@@ -171,6 +171,29 @@ class ConsistencyCheckRunnerTest {
     }
 
     @Test
+    void capsCombinedLlmSummaryWithoutLosingCompletedRunOrDeterministicFindings() {
+        when(numberGenerator.generate(any())).thenReturn("CHK-202607-0008");
+        String firstSummary = "A".repeat(600);
+        String secondSummary = "B".repeat(600);
+        ConsistencyRule first = rule("LLM_A", 1, Kind.LLM_ANALYSIS,
+                context -> ConsistencyRule.Result.analysis(firstSummary));
+        ConsistencyRule second = rule("LLM_B", 2, Kind.LLM_ANALYSIS,
+                context -> ConsistencyRule.Result.analysis(secondSummary));
+
+        ConsistencyCheckRun run = runner(registry(
+                sqlRuleReturning("SQL", BREAK), first, second)).runScheduled();
+
+        assertThat(run.status()).isEqualTo(ConsistencyCheckRun.Status.COMPLETED);
+        assertThat(run.analysisStatus()).isEqualTo(AnalysisStatus.SUCCEEDED);
+        assertThat(run.analysisSummary())
+                .hasSize(1000)
+                .isEqualTo(firstSummary + "\n" + "B".repeat(399));
+        assertThat(run.findings()).hasSize(1);
+        assertThat(run.totalCount()).isEqualTo(1);
+        verify(persistence).persist(run);
+    }
+
+    @Test
     void manualEntryAloneCarriesAuditConventionAndRegistryIsSpringManaged() throws Exception {
         Audited audited = ConsistencyCheckRunner.class.getMethod("runManual", String.class)
                 .getAnnotation(Audited.class);

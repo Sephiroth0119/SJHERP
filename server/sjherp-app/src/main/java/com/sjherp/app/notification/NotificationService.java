@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Objects;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,6 +22,7 @@ public class NotificationService {
     private final SystemNotificationRepository repository;
     private final Clock clock;
 
+    @Autowired
     public NotificationService(SystemNotificationRepository repository) {
         this(repository, Clock.systemUTC());
     }
@@ -51,7 +53,8 @@ public class NotificationService {
                 .orElseThrow(() -> new NotificationNotFoundException(id));
         notification.markRead(Instant.now(clock));
         repository.save(notification);
-        return notification;
+        return repository.findByIdAndRecipient(TENANT_ID, id, recipientId)
+                .orElseThrow(() -> new NotificationNotFoundException(id));
     }
 
     private static long requireUserId(long userId) {
