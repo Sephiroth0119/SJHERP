@@ -13,7 +13,7 @@ import com.sjherp.agent.tool.Tool;
 import com.sjherp.agent.tool.ToolRegistry;
 import com.sjherp.agent.tool.ToolRiskLevel;
 import com.sjherp.app.collection.CollectionReceiptAppService;
-import com.sjherp.app.consistency.ConsistencyCheckService;
+import com.sjherp.app.consistency.ConsistencyCheckRunner;
 import com.sjherp.app.finance.AgingReportDao;
 import com.sjherp.app.finance.FinancialStatementService;
 import com.sjherp.app.gl.PeriodCloseService;
@@ -79,7 +79,7 @@ class HighRiskToolPermissionTest {
                 mock(SalesDeliveryAppService.class),
                 mock(SalesInvoiceAppService.class),
                 mock(ReceivableAppService.class),
-                mock(ConsistencyCheckService.class),
+                mock(ConsistencyCheckRunner.class),
                 mock(PaymentAccountService.class),
                 mock(CollectionReceiptAppService.class),
                 mock(PaymentDisbursementAppService.class),

@@ -9,6 +9,7 @@ import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
@@ -30,6 +31,7 @@ import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.sjherp.app.consistency.ConsistencyBreak;
+import com.sjherp.app.consistency.ConsistencyCheckRunner;
 import com.sjherp.app.consistency.ConsistencyCheckService;
 import com.sjherp.app.consistency.ConsistencyCheckType;
 import com.sjherp.app.consistency.ConsistencyReport;
@@ -82,6 +84,8 @@ class PeriodCloseServiceTest {
     private AccountingPeriodService accountingPeriodService;
     @Mock
     private ConsistencyCheckService consistencyCheckService;
+    @Mock
+    private ConsistencyCheckRunner consistencyCheckRunner;
     @Mock
     private DocumentNumberGenerator numberGenerator;
 
@@ -658,6 +662,19 @@ class PeriodCloseServiceTest {
         verify(voucherService, never()).createFromSource(any(), any(), any(), any(), any(), any(),
                 any(), any());
         verify(numberGenerator, never()).generate(any(), any());
+    }
+
+    @Test
+    void precheck_继续直接调用纯校验服务_不产生运行报告() {
+        when(accountingPeriodService.get(PERIOD)).thenReturn(openPeriod());
+        when(voucherService.findBySourceDocNo(PERIOD)).thenReturn(List.of());
+        when(consistencyCheckService.check()).thenReturn(report());
+        when(voucherService.trialBalance(PERIOD)).thenReturn(List.of());
+
+        service.precheck(PERIOD);
+
+        verify(consistencyCheckService).check();
+        verifyNoInteractions(consistencyCheckRunner);
     }
 
     @Test

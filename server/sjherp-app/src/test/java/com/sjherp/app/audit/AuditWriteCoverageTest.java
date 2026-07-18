@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
+import java.math.BigDecimal;
 import java.net.URI;
 import java.time.Instant;
 import java.util.Arrays;
@@ -39,6 +40,13 @@ import com.sjherp.domain.catalog.ProductService;
 import com.sjherp.domain.catalog.Unit;
 import com.sjherp.domain.catalog.UnitRepository;
 import com.sjherp.domain.catalog.UnitService;
+import com.sjherp.app.consistency.ConsistencyBreak;
+import com.sjherp.app.consistency.ConsistencyCheckRunner;
+import com.sjherp.app.consistency.ConsistencyCheckType;
+import com.sjherp.app.consistency.ConsistencyRule;
+import com.sjherp.app.consistency.ConsistencyRuleRegistry;
+import com.sjherp.app.consistency.ConsistencyRunPersistenceService;
+import com.sjherp.app.consistency.ConsistencySeverity;
 import com.sjherp.domain.common.audit.Audited;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
 import com.sjherp.app.memory.MemoryIndexStateService;
@@ -219,6 +227,36 @@ class AuditWriteCoverageTest {
                 "缺导入能力", BusinessModule.GENERAL, GapSeverity.MEDIUM, "7"), OPERATOR);
 
         assertAudit("gap.create", "gap");
+    }
+
+    @Test
+    void 管理端手工一致性运行产生脱敏审计记录() {
+        ConsistencyRule rule = new ConsistencyRule() {
+            @Override public String code() { return "CORE_SQL_ASSERTIONS"; }
+            @Override public int order() { return 1; }
+            @Override public Kind kind() { return Kind.SQL_ASSERTION; }
+            @Override public Result evaluate(Context context) {
+                return Result.deterministic(List.of(ConsistencyBreak.of(
+                        ConsistencyCheckType.LEDGER_COST, "warehouse=1,product=2",
+                        new BigDecimal("10.000000"), new BigDecimal("9.000000"),
+                        ConsistencySeverity.ERROR, "敏感差异正文不得进入审计")));
+            }
+        };
+        DocumentNumberGenerator generator = mock(DocumentNumberGenerator.class);
+        when(generator.generate(any())).thenReturn("CHK-202607-0001");
+        ConsistencyCheckRunner runner = proxied(new ConsistencyCheckRunner(
+                new ConsistencyRuleRegistry(List.of(rule)), generator,
+                mock(ConsistencyRunPersistenceService.class)));
+
+        runner.runManual(OPERATOR);
+
+        AuditLogEntry audit = capturedEntry();
+        assertEquals("consistency.run", audit.action());
+        assertEquals("consistency_report", audit.targetType());
+        assertEquals(OPERATOR, audit.operator());
+        assertEquals("CHK-202607-0001", audit.targetCode());
+        assertTrue(!audit.summary().contains("敏感差异正文不得进入审计"),
+                "一致性运行审计摘要不得包含差异正文: " + audit.summary());
     }
 
     @Test

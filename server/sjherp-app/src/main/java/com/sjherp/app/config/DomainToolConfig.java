@@ -36,7 +36,7 @@ import com.sjherp.app.purchase.PurchaseInvoiceAppService;
 import com.sjherp.app.sales.SalesDeliveryAppService;
 import com.sjherp.app.sales.SalesInvoiceAppService;
 import com.sjherp.app.receivable.ReceivableAppService;
-import com.sjherp.app.consistency.ConsistencyCheckService;
+import com.sjherp.app.consistency.ConsistencyCheckRunner;
 import com.sjherp.app.tool.purchase.ApprovePurchaseOrderTool;
 import com.sjherp.app.tool.purchase.CreatePurchaseReceiptTool;
 import com.sjherp.app.tool.purchase.ApprovePurchaseReceiptTool;
@@ -177,7 +177,7 @@ public class DomainToolConfig {
                      SalesDeliveryAppService salesDeliveryAppService,
                      SalesInvoiceAppService salesInvoiceAppService,
                      ReceivableAppService receivableAppService,
-                     ConsistencyCheckService consistencyCheckService,
+                     ConsistencyCheckRunner consistencyCheckRunner,
                      PaymentAccountService paymentAccountService,
                      CollectionReceiptAppService collectionReceiptAppService,
                      PaymentDisbursementAppService paymentDisbursementAppService,
@@ -205,8 +205,8 @@ public class DomainToolConfig {
         registry.register(new QuerySalesDeliveryTool(salesDeliveryAppService));
         registry.register(new QuerySalesInvoiceTool(salesInvoiceAppService));
         registry.register(new QueryReceivablesTool(customerService, receivableAppService));
-        // 数据一致性交叉校验（M3-T13，NORMAL，只读勾稽报告）
-        registry.register(new RunConsistencyCheckTool(consistencyCheckService));
+        // 数据一致性交叉校验（M6-T05，NORMAL，不改业务账；显式保存运行报告）
+        registry.register(new RunConsistencyCheckTool(consistencyCheckRunner));
         // 资金账户查询（M4-T04a，NORMAL，登录即可）
         registry.register(new SearchPaymentAccountsTool(paymentAccountService));
         // 收/付款单查询（M4-T04c，NORMAL，登录即可）
