@@ -17,6 +17,8 @@ import com.sjherp.domain.collection.CollectionReceiptService;
 import com.sjherp.domain.gl.Voucher;
 import com.sjherp.domain.gl.VoucherRepository;
 import com.sjherp.domain.gl.VoucherService;
+import com.sjherp.domain.memory.MemoryEntry;
+import com.sjherp.domain.memory.MemoryEntryRepository;
 import com.sjherp.domain.production.ProductionCostSettlement;
 import com.sjherp.domain.production.ProductionCostSettlementRepository;
 import com.sjherp.domain.production.ProductionCostSettlementService;
@@ -81,7 +83,7 @@ class NoPhysicalDeleteArchitectureTest {
             CollectionReceipt.class, PaymentDisbursement.class,
             TransferDocument.class, StockCountDocument.class,
             Voucher.class, WorkOrder.class, ProductionReport.class,
-            ProductionCostSettlement.class);
+            ProductionCostSettlement.class, MemoryEntry.class);
 
     /** 对应领域服务（唯一写入口） */
     private static final List<Class<?>> SERVICES = List.of(
@@ -99,7 +101,7 @@ class NoPhysicalDeleteArchitectureTest {
             CollectionReceiptRepository.class, PaymentDisbursementRepository.class,
             TransferRepository.class, StockCountRepository.class,
             VoucherRepository.class, WorkOrderRepository.class, ProductionReportRepository.class,
-            ProductionCostSettlementRepository.class);
+            ProductionCostSettlementRepository.class, MemoryEntryRepository.class);
 
     // ----------------------------------------------------- ① 聚合无物删
 
