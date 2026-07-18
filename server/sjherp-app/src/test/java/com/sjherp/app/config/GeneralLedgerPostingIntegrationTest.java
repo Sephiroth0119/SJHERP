@@ -30,7 +30,6 @@ import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 import com.sjherp.domain.common.DocumentStatus;
-import com.sjherp.domain.catalog.ProductRepository;
 import com.sjherp.domain.common.numbering.DefaultDocumentNumberGenerator;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
 import com.sjherp.domain.common.numbering.SequenceProvider;
@@ -42,7 +41,6 @@ import com.sjherp.domain.gl.VoucherLineInput;
 import com.sjherp.domain.gl.VoucherNotBalancedException;
 import com.sjherp.domain.gl.VoucherService;
 import com.sjherp.infra.persistence.JdbcSequenceProvider;
-import com.sjherp.infra.persistence.catalog.JdbcProductRepository;
 
 /**
  * 总账过账整链集成测试（M4-T01 验收①/②核心，Testcontainers 真实 MySQL）：用生产同套装配
@@ -105,7 +103,7 @@ class GeneralLedgerPostingIntegrationTest {
     @Configuration
     @EnableTransactionManagement
     @EnableAspectJAutoProxy(proxyTargetClass = true)
-    @Import({AuditConfig.class, GlInfraConfig.class})
+    @Import({AuditConfig.class, GlInfraConfig.class, ProductRepositoryTestConfig.class})
     static class TestConfig {
 
         @Bean
@@ -122,11 +120,6 @@ class GeneralLedgerPostingIntegrationTest {
         @Bean
         JdbcTemplate jdbcTemplate(DataSource dataSource) {
             return new JdbcTemplate(dataSource);
-        }
-
-        @Bean
-        ProductRepository productRepository(JdbcTemplate jdbcTemplate) {
-            return new JdbcProductRepository(jdbcTemplate);
         }
 
         @Bean

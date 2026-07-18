@@ -31,7 +31,6 @@ import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 import com.sjherp.app.gl.VoucherAppService;
-import com.sjherp.domain.catalog.ProductRepository;
 import com.sjherp.domain.common.DocumentStatus;
 import com.sjherp.domain.common.IllegalStateTransitionException;
 import com.sjherp.domain.common.numbering.DefaultDocumentNumberGenerator;
@@ -45,7 +44,6 @@ import com.sjherp.domain.gl.VoucherLineInput;
 import com.sjherp.domain.gl.VoucherService;
 import com.sjherp.domain.gl.VoucherSourceType;
 import com.sjherp.infra.persistence.JdbcSequenceProvider;
-import com.sjherp.infra.persistence.catalog.JdbcProductRepository;
 
 /**
  * 凭证红冲整链集成测试（M4-T07a 验收核心，Testcontainers 真实 MySQL）：用生产同套装配
@@ -118,7 +116,7 @@ class VoucherReversalFlowIntegrationTest {
     @Configuration
     @EnableTransactionManagement
     @EnableAspectJAutoProxy(proxyTargetClass = true)
-    @Import({AuditConfig.class, GlInfraConfig.class})
+    @Import({AuditConfig.class, GlInfraConfig.class, ProductRepositoryTestConfig.class})
     static class TestConfig {
 
         @Bean
@@ -135,11 +133,6 @@ class VoucherReversalFlowIntegrationTest {
         @Bean
         JdbcTemplate jdbcTemplate(DataSource dataSource) {
             return new JdbcTemplate(dataSource);
-        }
-
-        @Bean
-        ProductRepository productRepository(JdbcTemplate jdbcTemplate) {
-            return new JdbcProductRepository(jdbcTemplate);
         }
 
         @Bean

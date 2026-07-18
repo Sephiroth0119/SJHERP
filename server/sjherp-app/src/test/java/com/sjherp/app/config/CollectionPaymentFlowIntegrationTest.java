@@ -160,7 +160,7 @@ class CollectionPaymentFlowIntegrationTest {
     @EnableTransactionManagement
     @EnableAspectJAutoProxy(proxyTargetClass = true)
     @Import({AuditConfig.class, InventoryInfraConfig.class, PurchaseInfraConfig.class,
-            SalesInfraConfig.class, GlInfraConfig.class, SettlementInfraConfig.class,
+            SalesInfraConfig.class, GlInfraConfig.class, ProductRepositoryTestConfig.class, SettlementInfraConfig.class,
             FundInfraConfig.class, CollectionInfraConfig.class, PaymentInfraConfig.class})
     static class TestConfig {
 
