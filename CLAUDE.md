@@ -92,4 +92,6 @@ SJHERP/
 
 **M6-T02 记忆写入通道已完成（2026-07-18）**：新增结构化候选（类型、标题、最多 50 项 facts、来源编号、会话追溯）和 `write_memory` HIGH Agent 工具；仅 `memory:manage` 持有者可执行，框架 HITL 确认后经 `MemoryWriteChannel → MemoryService.createIdempotent` 写入 T01 真源。用户口径/偏好绑定真实 AgentSession，缺口解决方案必须经 GapRecordService 引用真实 GapRecord；稳定 memoryKey 防确认重放，写入受审计并沿用 T01 事务后索引链。未实现 M6-T03 对话召回或 M6-T04 管理前端。
 
+**M6-T03 记忆召回已完成（2026-07-18）**：所有已登录聊天用户在请求进入 LLM 前可只读召回，写入与治理仍仅 `memory:manage`（ADMIN/BOSS）。召回用 QUERY embedding 查 Qdrant 候选，随后必须批量回查 MySQL，只接受同租户、`ACTIVE + INDEXED` 且有效期内的真源；按向量顺序最多注入 5 条。提示采用 Jackson 转义的完整 JSON 数据行并限制总长，明确记忆是数据而非指令，引用 `[M1]` 时携来源、生效与更新时间，冲突不得静默裁决；工具结果、权限、HITL、领域状态机和财务规则始终优先。Ollama/Qdrant/格式化异常 fail-open，日志只记异常类型；高风险确认恢复沿用原始用户问题。未新增迁移、REST 召回 API、Agent 搜索工具或 M6-T04 管理前端。设计真源见 docs/superpowers/specs/2026-07-18-m6-memory-recall-design.md。
+
 0→1 完整计划见 **docs/产品路线图-0到1.md**（任务编号制，分配 subagent 时引用编号；该文档是计划的单一真源）。当前推进位置与已知技术债以该文档为准。

@@ -84,6 +84,8 @@ class MemoryFoundationIntegrationTest {
     private static VectorIndex vectorIndex;
     private static MemoryIndexStateService stateService;
     private static MemoryProperties properties;
+    private static MemoryRecallService recallService;
+    private static MemoryPromptFormatter promptFormatter;
 
     @BeforeAll
     static void setUp() {
@@ -102,6 +104,8 @@ class MemoryFoundationIntegrationTest {
         vectorIndex = context.getBean(VectorIndex.class);
         stateService = context.getBean(MemoryIndexStateService.class);
         properties = context.getBean(MemoryProperties.class);
+        recallService = context.getBean(MemoryRecallService.class);
+        promptFormatter = context.getBean(MemoryPromptFormatter.class);
     }
 
     @AfterAll
@@ -166,14 +170,24 @@ class MemoryFoundationIntegrationTest {
     }
 
     @Test
-    void expiredTruth_isExcludedEvenWhenStalePointStillExists() throws Exception {
-        MemoryEntry entry = memoryService.create(command("旧口径", "已经失效的口径"), "user:1");
+    void semanticRecallUsesTruthAndExcludesExpiredTruthWhenStalePointStillExists() throws Exception {
+        MemoryEntry entry = memoryService.create(command(
+                "大客户口径", "{\"annual_purchase_threshold\":\"500000\"}"), "agent:1");
         assertThat(indexingService.indexOne(entry.getMemoryNo(), "system:memory-indexer")).isTrue();
         assertThat(point(entry.getId()).path("id").longValue()).isEqualTo(entry.getId());
+
+        List<MemoryRecallHit> hits = recallService.recall("我们公司的大客户怎么定义");
+        assertThat(hits).extracting(MemoryRecallHit::memoryEntryId)
+                .containsExactly(entry.getId());
+        assertThat(promptFormatter.format(hits))
+                .contains("[M1]")
+                .contains("integration-test")
+                .contains("500000");
 
         memoryService.expire(entry.getMemoryNo(), "user:1");
 
         assertThat(memoryService.get(entry.getMemoryNo()).getStatus()).isEqualTo(MemoryStatus.EXPIRED);
+        assertThat(recallService.recall("我们公司的大客户怎么定义")).isEmpty();
         assertThat(repository.findActiveByMemoryKey(entry.getMemoryKey())).isEmpty();
         assertThat(repository.findActiveAfterId(0, 50)).isEmpty();
         assertThat(point(entry.getId()).path("id").longValue()).isEqualTo(entry.getId());
@@ -322,6 +336,19 @@ class MemoryFoundationIntegrationTest {
                 VectorIndex vectorIndex, MemoryIndexStateService state,
                 MemoryProperties properties) {
             return new MemoryIndexingService(repository, embeddingClient, vectorIndex, state, properties);
+        }
+
+        @Bean
+        MemoryRecallService memoryRecallService(EmbeddingClient embeddingClient,
+                VectorIndex vectorIndex, MemoryEntryRepository repository,
+                MemoryProperties properties) {
+            return new MemoryRecallService(embeddingClient, vectorIndex, repository,
+                    properties.recall(), Clock.fixed(NOW, ZoneOffset.UTC));
+        }
+
+        @Bean
+        MemoryPromptFormatter memoryPromptFormatter(MemoryProperties properties) {
+            return new MemoryPromptFormatter(properties.recall().maxContextChars());
         }
 
         @Bean

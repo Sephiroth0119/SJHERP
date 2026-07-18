@@ -42,7 +42,9 @@ class LlmAgentMemoryRecallTest {
     void 普通请求只召回一次并把只读记忆注入系统提示() {
         CapturingLlmClient llm = new CapturingLlmClient(finalText("大客户口径已说明"));
         RecordingProvider provider = new RecordingProvider(MEMORY_CONTEXT);
-        LlmAgent agent = agent(llm, new ToolRegistry(), provider);
+        ToolRegistry registry = new ToolRegistry();
+        registry.register(new HighRiskTool());
+        LlmAgent agent = agent(llm, registry, provider);
 
         AgentReply reply = agent.replyToText(new AgentSession("session-1", "user-1"),
                 "大客户怎么定义");
@@ -51,6 +53,8 @@ class LlmAgentMemoryRecallTest {
         assertThat(provider.queries).containsExactly("大客户怎么定义");
         assertThat(llm.requests.get(0).get(0).content())
                 .contains("## 企业记忆上下文")
+                .contains("对话前记忆召回（M6-T03）")
+                .doesNotContain("不要声称已经能够召回记忆")
                 .contains("[M1]")
                 .contains("年采购超过50万元");
     }
