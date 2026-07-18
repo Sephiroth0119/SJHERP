@@ -153,6 +153,19 @@ class MemoryFoundationIntegrationTest {
     }
 
     @Test
+    void idempotentWriteReplay_persistsOneTruthRow() {
+        String memoryKey = "write:integration-session-term";
+        MemoryEntry first = memoryService.createIdempotent(memoryKey,
+                command("大客户口径", "{\"threshold\":\"500000\"}"), "agent:1");
+        MemoryEntry replay = memoryService.createIdempotent(memoryKey,
+                command("大客户口径", "{\"threshold\":\"500000\"}"), "agent:1");
+
+        assertThat(replay.getId()).isEqualTo(first.getId());
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM memory_entry", Integer.class))
+                .isEqualTo(1);
+    }
+
+    @Test
     void expiredTruth_isExcludedEvenWhenStalePointStillExists() throws Exception {
         MemoryEntry entry = memoryService.create(command("旧口径", "已经失效的口径"), "user:1");
         assertThat(indexingService.indexOne(entry.getMemoryNo(), "system:memory-indexer")).isTrue();
