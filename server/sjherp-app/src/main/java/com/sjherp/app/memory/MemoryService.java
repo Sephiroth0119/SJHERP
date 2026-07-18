@@ -48,7 +48,41 @@ public class MemoryService {
         Objects.requireNonNull(command, "大记忆命令不能为空");
         Instant now = Instant.now(clock);
         String memoryNo = numberGenerator.generate(MEMORY_NUMBER_RULE);
-        MemoryEntry entry = MemoryEntry.create(memoryNo, memoryNo, 1,
+        return createNew(memoryNo, memoryNo, command, operator, now);
+    }
+
+    /** T02 写入通道的幂等入口；同一稳定 key 的活动记忆只创建一次。 */
+    @Transactional
+    @Audited(action = "memory.create_idempotent", targetType = "memory")
+    public MemoryEntry createIdempotent(String memoryKey, MemoryEntryCommand command,
+                                        String operator) {
+        Objects.requireNonNull(command, "大记忆命令不能为空");
+        if (memoryKey == null || memoryKey.isBlank()) {
+            throw new IllegalArgumentException("记忆幂等键不能为空");
+        }
+        MemoryEntry existing = repository.findActiveByMemoryKey(memoryKey).orElse(null);
+        if (existing != null) {
+            if (!sameWrite(existing, command)) {
+                throw new IllegalStateException("记忆幂等键冲突: " + memoryKey);
+            }
+            return existing;
+        }
+        Instant now = Instant.now(clock);
+        String memoryNo = numberGenerator.generate(MEMORY_NUMBER_RULE);
+        return createNew(memoryNo, memoryKey, command, operator, now);
+    }
+
+    private static boolean sameWrite(MemoryEntry existing, MemoryEntryCommand command) {
+        return existing.getMemoryType() == command.memoryType()
+                && Objects.equals(existing.getTitle(), command.title())
+                && Objects.equals(existing.getContent(), command.content())
+                && existing.getSourceType() == command.sourceType()
+                && Objects.equals(existing.getSourceRef(), command.sourceRef());
+    }
+
+    private MemoryEntry createNew(String memoryNo, String memoryKey, MemoryEntryCommand command,
+                                  String operator, Instant now) {
+        MemoryEntry entry = MemoryEntry.create(memoryNo, memoryKey, 1,
                 command.memoryType(), command.title(), command.content(),
                 command.sourceType(), command.sourceRef(),
                 effectiveValidFrom(command, now), command.validTo(), operator, now);
