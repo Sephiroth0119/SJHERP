@@ -18,8 +18,7 @@ CREATE TABLE consistency_check_run (
     created_at DATETIME(6) NOT NULL,
     PRIMARY KEY (id),
     UNIQUE KEY uk_consistency_check_run_no (tenant_id, run_no),
-    UNIQUE KEY uk_consistency_check_run_tenant_id (tenant_id, id),
-    KEY idx_consistency_check_run_time (tenant_id, id)
+    UNIQUE KEY uk_consistency_check_run_tenant_id (tenant_id, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE consistency_check_break (
