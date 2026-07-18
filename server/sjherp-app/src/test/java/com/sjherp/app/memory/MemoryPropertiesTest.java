@@ -20,6 +20,42 @@ class MemoryPropertiesTest {
     }
 
     @Test
+    void 召回配置提供安全默认值() {
+        MemoryProperties.Recall recall = MemoryProperties.disabled().recall();
+
+        assertThat(recall.candidateLimit()).isEqualTo(12);
+        assertThat(recall.maxResults()).isEqualTo(5);
+        assertThat(recall.minScore()).isEqualTo(0.45d);
+        assertThat(recall.maxContextChars()).isEqualTo(6000);
+    }
+
+    @Test
+    void 启用时拒绝非法召回边界() {
+        MemoryProperties enabled = enabledProperties(1024, "COSINE");
+
+        assertThatThrownBy(() -> new MemoryProperties(true, enabled.embedding(),
+                enabled.vector(), enabled.indexing(),
+                new MemoryProperties.Recall(4, 5, 0.45d, 6000)))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> new MemoryProperties(true, enabled.embedding(),
+                enabled.vector(), enabled.indexing(),
+                new MemoryProperties.Recall(12, 5, Double.NaN, 6000)))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> new MemoryProperties(true, enabled.embedding(),
+                enabled.vector(), enabled.indexing(),
+                new MemoryProperties.Recall(201, 5, 0.45d, 6000)))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> new MemoryProperties(true, enabled.embedding(),
+                enabled.vector(), enabled.indexing(),
+                new MemoryProperties.Recall(12, 21, 0.45d, 6000)))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> new MemoryProperties(true, enabled.embedding(),
+                enabled.vector(), enabled.indexing(),
+                new MemoryProperties.Recall(12, 5, 0.45d, 999)))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
     void 启用时接受锁定的本地技术规格() {
         MemoryProperties properties = enabledProperties(1024, "COSINE");
 
