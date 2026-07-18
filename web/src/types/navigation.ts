@@ -10,7 +10,8 @@ export type ModuleKey =
   | 'sales'
   | 'inventory'
   | 'production'
-  | 'finance';
+  | 'finance'
+  | 'memory';
 
 export interface ModuleNavItem {
   key: ModuleKey;
@@ -18,6 +19,8 @@ export interface ModuleNavItem {
   label: string;
   /** 简短说明，用于占位页 */
   description: string;
+  /** 仅用于前端入口过滤；后端权限仍是最终边界 */
+  requiredRoles?: string[];
 }
 
 /** 导航菜单：Agent 助手置顶（主入口），其余为传统业务入口 */
@@ -28,4 +31,10 @@ export const MODULE_NAV_ITEMS: ModuleNavItem[] = [
   { key: 'inventory', label: '库存', description: '库存台账、盘点、调拨、存货成本核算' },
   { key: 'production', label: '生产', description: 'SOP/DP 计划、BOM、工单执行、工单成本' },
   { key: 'finance', label: '财务', description: '总账、应收应付、结算单、期间结账、报表' },
+  {
+    key: 'memory',
+    label: '记忆治理',
+    description: '查看、编辑、失效并处理重复或冲突记忆',
+    requiredRoles: ['ADMIN', 'BOSS'],
+  },
 ];
