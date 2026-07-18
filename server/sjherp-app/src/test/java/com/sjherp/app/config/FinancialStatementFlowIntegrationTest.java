@@ -33,6 +33,8 @@ import org.testcontainers.utility.DockerImageName;
 
 import com.sjherp.app.consistency.ConsistencyCheckDao;
 import com.sjherp.app.consistency.ConsistencyCheckService;
+import com.sjherp.app.consistency.ConsistencyCheckType;
+import com.sjherp.app.consistency.ConsistencySeverity;
 import com.sjherp.app.finance.FinancialStatementDao;
 import com.sjherp.app.finance.FinancialStatementDtos.BalanceSheet;
 import com.sjherp.app.finance.FinancialStatementDtos.BalanceSheetLine;
@@ -122,6 +124,7 @@ class FinancialStatementFlowIntegrationTest {
     private static AccountingPeriodService periodService;
     private static PeriodCloseService periodCloseService;
     private static FinancialStatementService financialStatementService;
+    private static ConsistencyCheckService consistencyCheckService;
 
     @BeforeAll
     static void setUp() {
@@ -148,6 +151,7 @@ class FinancialStatementFlowIntegrationTest {
         periodService = context.getBean(AccountingPeriodService.class);
         periodCloseService = context.getBean(PeriodCloseService.class);
         financialStatementService = context.getBean(FinancialStatementService.class);
+        consistencyCheckService = context.getBean(ConsistencyCheckService.class);
     }
 
     @AfterAll
@@ -423,6 +427,13 @@ class FinancialStatementFlowIntegrationTest {
         assertThat(new BigDecimal(bsAfter.totalEquity()))
                 .as("关账后权益合计与关账前一致（损益结转为权益内部腾挪）")
                 .isEqualByComparingTo(new BigDecimal(bsBefore.totalEquity()));
+
+        // M6-T06 验收：人为篡改 1122 控制科目一侧，下个检查周期必须揪出真实 GL_DETAIL break。
+        jdbc.update("UPDATE voucher_line SET debit = debit + 1.00 "
+                + "WHERE tenant_id = 0 AND account_code = '1122' LIMIT 1");
+        assertThat(consistencyCheckService.check().breaks())
+                .anyMatch(b -> b.checkType() == ConsistencyCheckType.GL_DETAIL
+                        && b.severity() == ConsistencySeverity.ERROR);
     }
 
     // ---------------------------------------------------------------

@@ -140,6 +140,12 @@ public class ConsistencyCheckDao {
                                            BigDecimal glInventoryDebit) {
     }
 
+    /** 控制科目（1122/220202）与 AR/AP 未核销余额的真实勾稽。 */
+    public record GlDetailRow(String accountCode, BigDecimal detailNet, BigDecimal ledgerNet) {}
+    public record VoucherBalanceRow(String voucherNo, BigDecimal debitSum, BigDecimal creditSum) {}
+    public record AuditIntegrityRow(String targetType, String targetCode, String requiredAction,
+                                    long auditCount) {}
+
     private static final RowMapper<InventoryLedgerRow> LEDGER_MAPPER = (rs, n) -> new InventoryLedgerRow(
             rs.getLong("warehouse_id"), rs.getLong("product_id"),
             nz(rs.getBigDecimal("txn_qty_sum")), nz(rs.getBigDecimal("txn_cost_sum")),
@@ -590,6 +596,47 @@ public class ConsistencyCheckDao {
                 + "  AND ph.tenant_id = pl.tenant_id "
                 + " WHERE pl.tenant_id = 0 AND ph.status = 'COMPLETED') x "
                 + "ORDER BY x.work_order_doc_no", PRODUCTION_INVENTORY_GL_MAPPER);
+    }
+
+    /** M6-T06：控制科目余额 = 业务明细账未核销余额；双向 UNION 覆盖孤儿侧。 */
+    @Transactional(readOnly = true)
+    public List<GlDetailRow> glDetailMatches() {
+        return jdbc.query("SELECT x.account_code, SUM(x.detail_net) AS detail_net, "
+                + "(SELECT COALESCE(SUM(vl.debit - vl.credit), 0) FROM voucher_line vl "
+                + " JOIN voucher v ON v.id = vl.voucher_id AND v.tenant_id = vl.tenant_id "
+                + " WHERE vl.tenant_id = 0 AND v.status IN ('APPROVED','REVERSED') "
+                + "   AND vl.account_code = x.account_code) AS ledger_net "
+                + "FROM ("
+                + " SELECT '1122' AS account_code, COALESCE(SUM(ar.amount - ar.settled_amount),0) AS detail_net "
+                + " FROM accounts_receivable ar WHERE ar.tenant_id = 0 "
+                + " UNION ALL SELECT '220202', -COALESCE(SUM(ap.amount - ap.settled_amount),0) "
+                + " FROM accounts_payable ap WHERE ap.tenant_id = 0 "
+                + " UNION ALL SELECT '1122', 0 FROM voucher_line WHERE tenant_id = 0 AND account_code = '1122'"
+                + " UNION ALL SELECT '220202', 0 FROM voucher_line WHERE tenant_id = 0 AND account_code = '220202'"
+                + ") x GROUP BY x.account_code ORDER BY x.account_code", (rs, n) -> new GlDetailRow(rs.getString("account_code"),
+                        nz(rs.getBigDecimal("detail_net")), nz(rs.getBigDecimal("ledger_net"))));
+    }
+
+    @Transactional(readOnly = true)
+    public List<VoucherBalanceRow> voucherBalanceMatches() {
+        return jdbc.query("SELECT v.doc_no, COALESCE(SUM(vl.debit),0) debit_sum, "
+                + "COALESCE(SUM(vl.credit),0) credit_sum FROM voucher v "
+                + "LEFT JOIN voucher_line vl ON vl.tenant_id = v.tenant_id AND vl.voucher_id = v.id "
+                + "WHERE v.tenant_id = 0 AND v.status IN ('APPROVED','REVERSED') "
+                + "GROUP BY v.id, v.doc_no ORDER BY v.id", (rs, n) -> new VoucherBalanceRow(
+                        rs.getString("doc_no"), nz(rs.getBigDecimal("debit_sum")), nz(rs.getBigDecimal("credit_sum"))));
+    }
+
+    @Transactional(readOnly = true)
+    public List<AuditIntegrityRow> auditIntegrityMatches() {
+        return jdbc.query("SELECT v.doc_no AS target_code, 'voucher' AS target_type, "
+                + "'voucher.post' AS required_action, COUNT(a.id) AS audit_count FROM voucher v "
+                + "LEFT JOIN audit_log a ON a.tenant_id = v.tenant_id AND a.target_type = 'voucher' "
+                + " AND a.target_code = v.doc_no AND a.action IN ('voucher.post','document.status_changed') "
+                + "WHERE v.tenant_id = 0 AND v.status IN ('APPROVED','REVERSED') "
+                + "GROUP BY v.id, v.doc_no ORDER BY v.id", (rs, n) -> new AuditIntegrityRow(
+                        rs.getString("target_type"), rs.getString("target_code"),
+                        rs.getString("required_action"), rs.getLong("audit_count")));
     }
 
     /** 将 SQL 聚合中的 NULL 统一收敛为零。 */

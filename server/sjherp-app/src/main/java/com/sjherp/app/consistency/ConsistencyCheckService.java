@@ -27,6 +27,9 @@ import com.sjherp.app.consistency.ConsistencyCheckDao.SettlementRollupRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.WorkOrderCompletedQtyRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.WorkOrderCostSettledRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.WorkOrderMaterialRow;
+import com.sjherp.app.consistency.ConsistencyCheckDao.GlDetailRow;
+import com.sjherp.app.consistency.ConsistencyCheckDao.VoucherBalanceRow;
+import com.sjherp.app.consistency.ConsistencyCheckDao.AuditIntegrityRow;
 
 /**
  * 数据一致性校验服务（M3-T13 检查 Agent 核心引擎，<b>只读</b>）。
@@ -149,6 +152,27 @@ public class ConsistencyCheckService {
         // 规则17：生产入库 + 工费追加入库成本与生产成本结算凭证 1405 净借方勾稽（ERROR）
         for (ProductionInventoryGlRow row : dao.productionInventoryGlMatches()) {
             checkProductionInventoryGl(row).ifPresent(breaks::add);
+        }
+        for (GlDetailRow row : dao.glDetailMatches()) {
+            if (row.detailNet().compareTo(row.ledgerNet()) != 0) {
+                breaks.add(ConsistencyBreak.of(ConsistencyCheckType.GL_DETAIL, row.accountCode(),
+                        row.detailNet(), row.ledgerNet(), ConsistencySeverity.ERROR,
+                        "总账与明细账不一致：" + row.accountCode()));
+            }
+        }
+        for (VoucherBalanceRow row : dao.voucherBalanceMatches()) {
+            if (row.debitSum().compareTo(row.creditSum()) != 0) {
+                breaks.add(ConsistencyBreak.of(ConsistencyCheckType.VOUCHER_BALANCE, row.voucherNo(),
+                        row.debitSum(), row.creditSum(), ConsistencySeverity.ERROR,
+                        "凭证借贷不平衡：" + row.voucherNo()));
+            }
+        }
+        for (AuditIntegrityRow row : dao.auditIntegrityMatches()) {
+            if (row.auditCount() == 0) {
+                breaks.add(ConsistencyBreak.of(ConsistencyCheckType.AUDIT_INTEGRITY, row.targetCode(),
+                        BigDecimal.ONE, BigDecimal.ZERO, ConsistencySeverity.ERROR,
+                        "已过账凭证缺少审计记录：" + row.targetCode()));
+            }
         }
 
         return new ConsistencyReport(clock.instant(), breaks);
