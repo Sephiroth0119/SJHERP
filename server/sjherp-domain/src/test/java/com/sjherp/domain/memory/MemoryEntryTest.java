@@ -137,6 +137,23 @@ class MemoryEntryTest {
         assertThat(entry.getIndexedCollection()).isNull();
     }
 
+    @Test
+    void 替代版本共享逻辑键并指向前版主键() {
+        MemoryEntry previous = fixture();
+        previous.assignId(7L);
+
+        MemoryEntry replacement = MemoryEntry.createReplacement(
+                "MEM-202607-0002", previous,
+                MemoryType.METRIC_DEFINITION, "新口径", "新的统计原文",
+                MemorySourceType.USER_INPUT, "session-2",
+                NOW.plusSeconds(1), null, "user:1", NOW.plusSeconds(1));
+
+        assertThat(replacement.getMemoryKey()).isEqualTo(previous.getMemoryKey());
+        assertThat(replacement.getVersion()).isEqualTo(2);
+        assertThat(replacement.getPreviousId()).isEqualTo(7L);
+        assertThat(replacement.getStatus()).isEqualTo(MemoryStatus.ACTIVE);
+    }
+
     private static MemoryEntry fixture() {
         return MemoryEntry.create("MEM-202607-0001", "MEM-202607-0001", 1,
                 MemoryType.BUSINESS_TERM, "大客户口径", "年采购金额超过50万元",
