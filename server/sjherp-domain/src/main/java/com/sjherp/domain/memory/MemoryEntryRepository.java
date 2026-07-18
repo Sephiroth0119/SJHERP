@@ -20,4 +20,6 @@ public interface MemoryEntryRepository {
     List<MemoryEntry> findIndexCandidates(Instant dueAt, int limit);
 
     List<MemoryEntry> findActiveAfterId(long afterId, int limit);
+
+    List<MemoryEntry> findRecallableByIds(List<Long> ids, long tenantId, Instant asOf);
 }
