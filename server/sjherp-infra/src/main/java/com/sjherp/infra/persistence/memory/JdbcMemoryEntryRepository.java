@@ -265,6 +265,76 @@ public class JdbcMemoryEntryRepository implements MemoryEntryRepository {
                 """ + placeholders + ") ORDER BY id", ROW_MAPPER, args.toArray());
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<MemoryEntry> findDuplicateCandidates(long tenantId, int groupLimit) {
+        requireTenantAndGroupLimit(tenantId, groupLimit);
+        return jdbc.query(SELECT_COLUMNS + """
+                WHERE tenant_id = ?
+                  AND status = 'ACTIVE'
+                  AND id IN (
+                    SELECT candidate_entry.id
+                      FROM memory_entry candidate_entry
+                      JOIN (
+                        SELECT memory_type, content_hash
+                          FROM memory_entry
+                         WHERE tenant_id = ? AND status = 'ACTIVE'
+                         GROUP BY memory_type, content_hash
+                        HAVING COUNT(*) > 1
+                         ORDER BY MAX(id) DESC
+                         LIMIT ?
+                      ) candidate_group
+                        ON candidate_group.memory_type = candidate_entry.memory_type
+                       AND candidate_group.content_hash = candidate_entry.content_hash
+                     WHERE candidate_entry.tenant_id = ?
+                       AND candidate_entry.status = 'ACTIVE'
+                  )
+                ORDER BY id DESC
+                """, ROW_MAPPER, tenantId, tenantId, groupLimit, tenantId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MemoryEntry> findConflictCandidates(long tenantId, int groupLimit) {
+        requireTenantAndGroupLimit(tenantId, groupLimit);
+        return jdbc.query(SELECT_COLUMNS + """
+                WHERE tenant_id = ?
+                  AND status = 'ACTIVE'
+                  AND id IN (
+                    SELECT candidate_entry.id
+                      FROM memory_entry candidate_entry
+                      JOIN (
+                        SELECT memory_type, BINARY title AS title_key
+                          FROM memory_entry
+                         WHERE tenant_id = ? AND status = 'ACTIVE'
+                         GROUP BY memory_type, BINARY title
+                        HAVING COUNT(DISTINCT content_hash) > 1
+                         ORDER BY MAX(id) DESC
+                         LIMIT ?
+                      ) candidate_group
+                        ON candidate_group.memory_type = candidate_entry.memory_type
+                       AND candidate_group.title_key = BINARY candidate_entry.title
+                     WHERE candidate_entry.tenant_id = ?
+                       AND candidate_entry.status = 'ACTIVE'
+                  )
+                ORDER BY id DESC
+                """, ROW_MAPPER, tenantId, tenantId, groupLimit, tenantId);
+    }
+
+    @Override
+    public List<MemoryEntry> findByMemoryNosForUpdate(List<String> memoryNos) {
+        Objects.requireNonNull(memoryNos, "记忆编号列表不能为空");
+        if (memoryNos.isEmpty() || memoryNos.size() > 50
+                || memoryNos.stream().anyMatch(no -> no == null || no.isBlank())) {
+            throw new IllegalArgumentException("记忆编号必须非空且数量在 1 到 50 之间");
+        }
+        String placeholders = String.join(",", Collections.nCopies(memoryNos.size(), "?"));
+        return jdbc.query(SELECT_COLUMNS + """
+                WHERE tenant_id = 0
+                  AND memory_no IN (
+                """ + placeholders + ") FOR UPDATE", ROW_MAPPER, memoryNos.toArray());
+    }
+
     private static Optional<MemoryEntry> first(List<MemoryEntry> rows) {
         return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
     }
@@ -272,6 +342,15 @@ public class JdbcMemoryEntryRepository implements MemoryEntryRepository {
     private static void requireLimit(int limit) {
         if (limit < 1 || limit > 1000) {
             throw new IllegalArgumentException("查询数量必须在 1 到 1000 之间");
+        }
+    }
+
+    private static void requireTenantAndGroupLimit(long tenantId, int groupLimit) {
+        if (tenantId < 0) {
+            throw new IllegalArgumentException("租户主键不能为负数");
+        }
+        if (groupLimit < 1 || groupLimit > 100) {
+            throw new IllegalArgumentException("候选组数量必须在 1 到 100 之间");
         }
     }
 
