@@ -1,5 +1,6 @@
 package com.sjherp.app.consistency;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -80,6 +81,20 @@ class ConsistencyControllerTest {
                 .andExpect(jsonPath("$.clean").value(true))
                 .andExpect(jsonPath("$.totalCount").value(0));
 
+        verify(runner).runManual("admin");
+    }
+
+    @Test
+    void postRunSanitizesExecutionIllegalArgumentExceptionAsServerError() throws Exception {
+        when(runner.runManual("admin"))
+                .thenThrow(new IllegalArgumentException("jdbc:secret-password"));
+
+        String responseBody = mockMvc.perform(post("/api/consistency/runs"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.error").value("一致性校验执行失败，请稍后重试"))
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(responseBody).doesNotContain("jdbc:secret-password");
         verify(runner).runManual("admin");
     }
 

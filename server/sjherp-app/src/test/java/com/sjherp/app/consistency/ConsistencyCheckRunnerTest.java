@@ -172,6 +172,54 @@ class ConsistencyCheckRunnerTest {
     }
 
     @Test
+    void scheduledCompletionPersistenceFailureReturnsSafeUnpersistedFailedOutcome() {
+        when(numberGenerator.generate(any())).thenReturn("CHK-202607-0010");
+        SecretPersistenceFailure failure = new SecretPersistenceFailure(
+                "jdbc:secret-password; full finding message");
+        org.mockito.Mockito.doThrow(failure).when(persistence).persist(any());
+
+        ConsistencyCheckRun run = runner(registry(sqlRuleReturning("SQL"))).runScheduled();
+
+        assertThat(run.runNo()).isEqualTo("CHK-202607-0010");
+        assertThat(run.status()).isEqualTo(ConsistencyCheckRun.Status.FAILED);
+        assertThat(run.id()).isNull();
+        assertThat(run.totalCount()).isZero();
+        assertThat(run.errorCount()).isZero();
+        assertThat(run.warnCount()).isZero();
+        assertThat(run.infoCount()).isZero();
+        assertThat(run.findings()).isEmpty();
+        assertThat(run.failureType()).isEqualTo("PERSISTENCE_FAILURE")
+                .doesNotContain("SecretPersistenceFailure", "jdbc:secret-password");
+        verify(persistence, times(1)).persist(any());
+    }
+
+    @Test
+    void manualCompletionPersistenceFailureRethrowsExactOriginalException() {
+        when(numberGenerator.generate(any())).thenReturn("CHK-202607-0011");
+        SecretPersistenceFailure failure = new SecretPersistenceFailure("manual storage secret");
+        org.mockito.Mockito.doThrow(failure).when(persistence).persist(any());
+
+        Throwable thrown = catchThrowable(
+                () -> runner(registry(sqlRuleReturning("SQL"))).runManual("admin"));
+
+        assertThat(thrown).isSameAs(failure);
+        verify(persistence, times(1)).persist(any());
+    }
+
+    @Test
+    void agentCompletionPersistenceFailureRethrowsExactOriginalException() {
+        when(numberGenerator.generate(any())).thenReturn("CHK-202607-0012");
+        SecretPersistenceFailure failure = new SecretPersistenceFailure("agent storage secret");
+        org.mockito.Mockito.doThrow(failure).when(persistence).persist(any());
+
+        Throwable thrown = catchThrowable(
+                () -> runner(registry(sqlRuleReturning("SQL"))).runAgent("7"));
+
+        assertThat(thrown).isSameAs(failure);
+        verify(persistence, times(1)).persist(any());
+    }
+
+    @Test
     void allLlmRulesAreAttemptedButAnyFailureMakesAnalysisFailed() {
         when(numberGenerator.generate(any())).thenReturn("CHK-202607-0007");
         ConsistencyRule first = rule("LLM_A", 1, Kind.LLM_ANALYSIS, context -> {
@@ -254,5 +302,11 @@ class ConsistencyCheckRunnerTest {
     @FunctionalInterface
     private interface Evaluator {
         ConsistencyRule.Result evaluate(ConsistencyRule.Context context);
+    }
+
+    private static final class SecretPersistenceFailure extends RuntimeException {
+        private SecretPersistenceFailure(String message) {
+            super(message);
+        }
     }
 }

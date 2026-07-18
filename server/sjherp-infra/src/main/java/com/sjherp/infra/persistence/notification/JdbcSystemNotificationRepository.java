@@ -22,7 +22,7 @@ import com.sjherp.domain.notification.SystemNotificationRepository;
 
 /** MySQL implementation of recipient-scoped system notifications. */
 @Transactional
-public final class JdbcSystemNotificationRepository implements SystemNotificationRepository {
+public class JdbcSystemNotificationRepository implements SystemNotificationRepository {
 
     private static final String SELECT_COLUMNS = """
             SELECT id, tenant_id, recipient_user_id, category, severity, title, content,

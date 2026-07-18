@@ -18,6 +18,7 @@ CREATE TABLE consistency_check_run (
     created_at DATETIME(6) NOT NULL,
     PRIMARY KEY (id),
     UNIQUE KEY uk_consistency_check_run_no (tenant_id, run_no),
+    UNIQUE KEY uk_consistency_check_run_tenant_id (tenant_id, id),
     KEY idx_consistency_check_run_time (tenant_id, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -36,14 +37,17 @@ CREATE TABLE consistency_check_break (
     created_at DATETIME(6) NOT NULL,
     PRIMARY KEY (id),
     UNIQUE KEY uk_consistency_check_break_sequence (tenant_id, run_id, sequence_no),
-    CONSTRAINT fk_consistency_check_break_run FOREIGN KEY (run_id)
-        REFERENCES consistency_check_run (id)
+    CONSTRAINT fk_consistency_check_break_run FOREIGN KEY (tenant_id, run_id)
+        REFERENCES consistency_check_run (tenant_id, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE sys_user
+    ADD UNIQUE KEY uk_sys_user_tenant_id (tenant_id, id);
 
 CREATE TABLE system_notification (
     id BIGINT NOT NULL AUTO_INCREMENT,
     tenant_id BIGINT NOT NULL DEFAULT 0,
-    recipient_user_id BIGINT NOT NULL,
+    recipient_user_id BIGINT UNSIGNED NOT NULL,
     category VARCHAR(32) NOT NULL,
     severity VARCHAR(16) NOT NULL,
     title VARCHAR(200) NOT NULL,
@@ -56,6 +60,6 @@ CREATE TABLE system_notification (
     UNIQUE KEY uk_system_notification_source
         (tenant_id, recipient_user_id, source_type, source_ref),
     KEY idx_system_notification_inbox (tenant_id, recipient_user_id, read_at, id),
-    CONSTRAINT fk_system_notification_recipient FOREIGN KEY (recipient_user_id)
-        REFERENCES sys_user (id)
+    CONSTRAINT fk_system_notification_recipient FOREIGN KEY (tenant_id, recipient_user_id)
+        REFERENCES sys_user (tenant_id, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

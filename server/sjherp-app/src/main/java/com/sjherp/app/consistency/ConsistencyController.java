@@ -63,7 +63,11 @@ public class ConsistencyController {
     @PreAuthorize("hasAnyRole('ADMIN', 'BOSS')")
     @PostMapping("/runs")
     public RunResponse run() {
-        return RunResponse.from(consistencyCheckRunner.runManual(CurrentUser.operator()));
+        try {
+            return RunResponse.from(consistencyCheckRunner.runManual(CurrentUser.operator()));
+        } catch (RuntimeException executionFailure) {
+            throw new ConsistencyRunExecutionException();
+        }
     }
 
     /** 分页查询历史运行摘要，不返回差异正文。 */
@@ -164,6 +168,12 @@ public class ConsistencyController {
     ResponseEntity<Map<String, String>> handleNotFound(ConsistencyReportNotFoundException exception) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(Map.of("error", exception.getMessage()));
+    }
+
+    @ExceptionHandler(ConsistencyRunExecutionException.class)
+    ResponseEntity<Map<String, String>> handleExecutionFailure() {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("error", ConsistencyRunExecutionException.SAFE_MESSAGE));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

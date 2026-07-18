@@ -24,7 +24,7 @@ import com.sjherp.domain.consistency.ConsistencyRunQuery;
 
 /** MySQL implementation of append-only consistency-check run reports. */
 @Transactional
-public final class JdbcConsistencyCheckRunRepository implements ConsistencyCheckRunRepository {
+public class JdbcConsistencyCheckRunRepository implements ConsistencyCheckRunRepository {
 
     private static final String HEAD_COLUMNS = """
             SELECT id, tenant_id, run_no, trigger_type, requested_by, started_at, completed_at,

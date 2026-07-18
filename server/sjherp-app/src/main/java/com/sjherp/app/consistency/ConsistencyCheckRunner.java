@@ -28,6 +28,7 @@ public class ConsistencyCheckRunner {
     private static final long TENANT_ID = 0L;
     private static final DocumentNumberRule RUN_NUMBER_RULE = DocumentNumberRule.of("CHK");
     private static final String SCHEDULED_OPERATOR = "system:consistency-scheduler";
+    private static final String PERSISTENCE_FAILURE_TYPE = "PERSISTENCE_FAILURE";
     private static final int ANALYSIS_SUMMARY_MAX_LENGTH = 1000;
 
     private final ConsistencyRuleRegistry registry;
@@ -95,7 +96,16 @@ public class ConsistencyCheckRunner {
         ConsistencyCheckRun completed = ConsistencyCheckRun.completed(
                 TENANT_ID, runNo, triggerType, checkedRequestedBy, startedAt, Instant.now(clock),
                 analysis.status(), analysis.summary(), findings);
-        persistence.persist(completed);
+        try {
+            persistence.persist(completed);
+        } catch (RuntimeException persistenceFailure) {
+            if (triggerType != TriggerType.SCHEDULED) {
+                throw persistenceFailure;
+            }
+            return ConsistencyCheckRun.failed(
+                    TENANT_ID, runNo, triggerType, checkedRequestedBy, startedAt, Instant.now(clock),
+                    PERSISTENCE_FAILURE_TYPE);
+        }
         return completed;
     }
 
