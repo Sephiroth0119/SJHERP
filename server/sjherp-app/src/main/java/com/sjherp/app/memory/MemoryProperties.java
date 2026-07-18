@@ -3,6 +3,7 @@ package com.sjherp.app.memory;
 import java.net.URI;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 /** 大记忆本地基础设施配置；开启时按设计规格 fail-fast 校验。 */
 @ConfigurationProperties(prefix = "sjherp.memory")
@@ -17,6 +18,7 @@ public record MemoryProperties(boolean enabled, Embedding embedding,
         this(enabled, embedding, vector, indexing, null);
     }
 
+    @ConstructorBinding
     public MemoryProperties {
         embedding = embedding == null ? defaultEmbedding() : embedding;
         vector = vector == null ? defaultVector() : vector;

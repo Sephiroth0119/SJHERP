@@ -20,6 +20,9 @@ import com.sjherp.domain.memory.MemoryEntryRepository;
 import com.sjherp.domain.memory.VectorIndex;
 import com.sjherp.agent.tool.ToolRegistry;
 import com.sjherp.app.memory.WriteMemoryTool;
+import com.sjherp.app.memory.MemoryContextProvider;
+import com.sjherp.app.memory.MemoryPromptFormatter;
+import com.sjherp.app.memory.MemoryRecallService;
 import com.sjherp.domain.gap.GapRecordService;
 import com.sjherp.infra.memory.QdrantVectorException;
 import com.sun.net.httpserver.HttpExchange;
@@ -55,6 +58,9 @@ class MemoryInfraConfigTest {
                     assertThat(context).doesNotHaveBean(EmbeddingClient.class);
                     assertThat(context).doesNotHaveBean(VectorIndex.class);
                     assertThat(context).doesNotHaveBean(MemoryEntryRepository.class);
+                    assertThat(context).doesNotHaveBean(MemoryRecallService.class);
+                    assertThat(context).doesNotHaveBean(MemoryPromptFormatter.class);
+                    assertThat(context).doesNotHaveBean(MemoryContextProvider.class);
                 });
     }
 
@@ -66,6 +72,9 @@ class MemoryInfraConfigTest {
             assertThat(context).hasSingleBean(VectorIndex.class);
             assertThat(context).hasSingleBean(MemoryEntryRepository.class);
             assertThat(context).hasSingleBean(WriteMemoryTool.class);
+            assertThat(context).hasSingleBean(MemoryRecallService.class);
+            assertThat(context).hasSingleBean(MemoryPromptFormatter.class);
+            assertThat(context).hasSingleBean(MemoryContextProvider.class);
             assertThat(context.getBean(ToolRegistry.class).find(WriteMemoryTool.NAME)).isPresent();
         });
     }

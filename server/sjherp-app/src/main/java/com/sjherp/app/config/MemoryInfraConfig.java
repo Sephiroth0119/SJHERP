@@ -1,6 +1,7 @@
 package com.sjherp.app.config;
 
 import java.time.Duration;
+import java.time.Clock;
 
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -11,9 +12,13 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import com.sjherp.app.memory.MemoryProperties;
+import com.sjherp.app.memory.MemoryContextProvider;
 import com.sjherp.app.memory.MemoryIndexingService;
 import com.sjherp.app.memory.MemoryIndexStateService;
+import com.sjherp.app.memory.MemoryPromptFormatter;
+import com.sjherp.app.memory.MemoryRecallService;
 import com.sjherp.app.memory.MemoryService;
+import com.sjherp.app.memory.SemanticMemoryContextProvider;
 import com.sjherp.app.memory.MemoryWriteChannel;
 import com.sjherp.app.memory.WriteMemoryTool;
 import com.sjherp.agent.tool.ToolRegistry;
@@ -68,6 +73,25 @@ public class MemoryInfraConfig {
             MemoryProperties properties) {
         return new MemoryIndexingService(repository, embeddingClient, vectorIndex,
                 stateService, properties);
+    }
+
+    @Bean
+    MemoryRecallService memoryRecallService(EmbeddingClient embeddingClient,
+            VectorIndex vectorIndex, MemoryEntryRepository repository,
+            MemoryProperties properties) {
+        return new MemoryRecallService(embeddingClient, vectorIndex, repository,
+                properties.recall(), Clock.systemUTC());
+    }
+
+    @Bean
+    MemoryPromptFormatter memoryPromptFormatter(MemoryProperties properties) {
+        return new MemoryPromptFormatter(properties.recall().maxContextChars());
+    }
+
+    @Bean
+    MemoryContextProvider memoryContextProvider(MemoryRecallService recallService,
+            MemoryPromptFormatter formatter) {
+        return new SemanticMemoryContextProvider(recallService, formatter);
     }
 
     @Bean
