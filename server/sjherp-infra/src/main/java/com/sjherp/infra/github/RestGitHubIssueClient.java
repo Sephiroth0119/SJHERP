@@ -26,7 +26,14 @@ public final class RestGitHubIssueClient implements GitHubIssueClient {
     public Optional<IssueResponse> findByTraceMarker(String marker){
         try { var response=http.send(request("/search/issues?q=repo:"+repo+"+"+java.net.URLEncoder.encode(marker,java.nio.charset.StandardCharsets.UTF_8)).GET().build(),HttpResponse.BodyHandlers.ofString());
             if(response.statusCode()/100!=2) throw new IllegalStateException("GitHub 查询 Issue 失败，HTTP "+response.statusCode());
-            for(JsonNode n:json.readTree(response.body())) if(n.path("body").asText().contains(marker)) return Optional.of(new IssueResponse(n.get("number").asLong(),n.get("html_url").asText()));
+            JsonNode root=json.readTree(response.body());
+            if(!root.isObject() || !root.has("items") || !root.get("items").isArray()) throw new IllegalStateException("GitHub 查询响应缺少 items");
+            for(JsonNode n:root.get("items")) {
+                if(n.path("body").asText().contains(marker)) {
+                    if(!n.hasNonNull("number") || !n.hasNonNull("html_url")) throw new IllegalStateException("GitHub Issue 响应缺少字段");
+                    return Optional.of(new IssueResponse(n.get("number").asLong(),n.get("html_url").asText()));
+                }
+            }
             return Optional.empty();
         } catch(InterruptedException e){Thread.currentThread().interrupt(); throw new IllegalStateException("GitHub 查询被中断",e);}
         catch(Exception e){if(e instanceof IllegalStateException x) throw x; throw new IllegalStateException("GitHub 查询失败",e);}
