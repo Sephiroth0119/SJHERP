@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/developer-agent/tasks")
-@PreAuthorize("@perm.has('gap:issue')")
+@PreAuthorize("@perm.has('developer:agent')")
 public class DeveloperAgentController {
     private final DeveloperAgentService service;
     public DeveloperAgentController(DeveloperAgentService service){this.service=service;}
