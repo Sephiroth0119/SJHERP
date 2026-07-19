@@ -490,6 +490,8 @@ class FinancialStatementFlowIntegrationTest {
             jdbc.update("UPDATE voucher_line SET debit = debit - 1.00 WHERE id = ?", controlLineId);
             jdbc.update("UPDATE voucher_line SET credit = credit - 1.00 WHERE id = ?", offsetLineId);
             jdbc.update("UPDATE voucher SET total_amount = total_amount - 1.00 WHERE id = ?", voucherId);
+            var restored = consistencyCheckRunner.runScheduled();
+            assertThat(restored.clean()).isTrue();
         }
     }
 
