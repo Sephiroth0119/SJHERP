@@ -80,7 +80,8 @@ public final class RolePermissions {
                 Permission.PRODUCTION_COST,
                 Permission.MEMORY_MANAGE,
                 Permission.DATA_IMPORT,
-                Permission.GAP_TRIAGE)));
+                Permission.GAP_TRIAGE,
+                Permission.GAP_ISSUE)));
 
         // PURCHASER：创建供应商 + 采购全程参与（采购订单/入库/发票）；商品/供应商查询登录即可
         grants.put(Role.PURCHASER, Collections.unmodifiableSet(EnumSet.of(
