@@ -23,18 +23,22 @@ class RestGitHubIssueClientTest {
         AtomicReference<String> createPath = new AtomicReference<>();
         AtomicReference<String> searchQuery = new AtomicReference<>();
         AtomicReference<String> authorization = new AtomicReference<>();
+        AtomicReference<String> userAgent = new AtomicReference<>();
+        AtomicReference<String> apiVersion = new AtomicReference<>();
         AtomicReference<String> requestBody = new AtomicReference<>();
         server = HttpServer.create(new InetSocketAddress(0), 0);
         server.createContext("/", exchange -> {
             authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
+            userAgent.set(exchange.getRequestHeaders().getFirst("User-Agent"));
+            apiVersion.set(exchange.getRequestHeaders().getFirst("X-GitHub-Api-Version"));
             String response;
             if ("POST".equals(exchange.getRequestMethod())) {
                 createPath.set(exchange.getRequestURI().getPath());
                 requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
-                response = "{\"number\":7,\"html_url\":\"http://issue/7\",\"labels\":[{\"name\":\"sjherp-gap\"}]}";
+                response = "{\"number\":7,\"html_url\":\"http://issue/7\",\"labels\":[{\"name\":\"sjherp-gap\"},{\"name\":\"general\"},{\"name\":\"low\"}]}";
             } else {
                 searchQuery.set(exchange.getRequestURI().getQuery());
-                response = "{\"total_count\":1,\"items\":[{\"number\":7,\"html_url\":\"http://issue/7\",\"body\":\"SJHERP-GAP-TRACE:key\",\"labels\":[{\"name\":\"sjherp-gap\"}]}]}";
+                response = "{\"total_count\":1,\"items\":[{\"number\":7,\"html_url\":\"http://issue/7\",\"body\":\"SJHERP-GAP-TRACE:key\",\"labels\":[{\"name\":\"sjherp-gap\"},{\"name\":\"general\"},{\"name\":\"low\"}]}]}";
             }
             exchange.sendResponseHeaders(200, response.getBytes(StandardCharsets.UTF_8).length);
             exchange.getResponseBody().write(response.getBytes(StandardCharsets.UTF_8));
@@ -42,12 +46,18 @@ class RestGitHubIssueClientTest {
         });
         server.start();
         var client = client();
-        assertThat(client.create(new IssueRequest("title", List.of("label"), "SJHERP-GAP-TRACE:key")).number()).isEqualTo(7);
-        assertThat(client.findByTraceMarker("SJHERP-GAP-TRACE:key")).isPresent();
+        var created = client.create(new IssueRequest("title", List.of("label"), "SJHERP-GAP-TRACE:key"));
+        var recovered = client.findByTraceMarker("SJHERP-GAP-TRACE:key");
+        assertThat(created.number()).isEqualTo(7);
+        assertThat(created.labels()).containsExactly("sjherp-gap", "general", "low");
+        assertThat(recovered).isPresent();
+        assertThat(recovered.orElseThrow().labels()).containsExactly("sjherp-gap", "general", "low");
         assertThat(createPath.get()).isEqualTo("/repos/acme/demo/issues");
         assertThat(searchQuery.get()).contains("in:body").contains("type:issue");
         assertThat(authorization.get()).isEqualTo("Bearer secret");
-        assertThat(requestBody.get()).contains("title").contains("label").contains("SJHERP-GAP-TRACE:key");
+        assertThat(userAgent.get()).isEqualTo("SJHERP-gap-issue");
+        assertThat(apiVersion.get()).isEqualTo("2022-11-28");
+        assertThat(requestBody.get()).contains("title", "label", "SJHERP-GAP-TRACE:key");
     }
 
     @Test
@@ -56,6 +66,21 @@ class RestGitHubIssueClientTest {
         server.createContext("/", exchange -> { exchange.sendResponseHeaders(502, 0); exchange.close(); });
         server.start();
         assertThatThrownBy(() -> client().create(new IssueRequest("title", List.of(), "body"))).isInstanceOf(GitHubIssueGatewayException.class);
+    }
+
+    @Test
+    void rejectsSuccessfulResponseWithoutRequiredIssueFields() throws Exception {
+        server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/", exchange -> {
+            byte[] body = "{\"number\":7}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(201, body.length);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+        server.start();
+
+        assertThatThrownBy(() -> client().create(new IssueRequest("title", List.of(), "body")))
+                .isInstanceOf(GitHubIssueGatewayException.class);
     }
 
     @Test

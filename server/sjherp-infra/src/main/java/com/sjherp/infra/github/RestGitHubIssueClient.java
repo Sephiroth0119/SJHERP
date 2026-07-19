@@ -14,22 +14,33 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 public final class RestGitHubIssueClient implements GitHubIssueClient {
+    private static final String USER_AGENT = "SJHERP-gap-issue";
+    private static final String API_VERSION = "2022-11-28";
+
     private final HttpClient http;
     private final ObjectMapper json;
     private final String base;
-    private final String repo;
+    private final String repository;
     private final String token;
     private final Duration timeout;
 
-    public RestGitHubIssueClient(String base, String repo, String token, Duration timeout, ObjectMapper json) {
-        if (base == null || base.isBlank() || repo == null || repo.isBlank() || token == null || token.isBlank()) {
+    public RestGitHubIssueClient(
+            String base,
+            String repository,
+            String token,
+            Duration timeout,
+            ObjectMapper json) {
+        if (base == null || base.isBlank()
+                || repository == null || repository.isBlank()
+                || token == null || token.isBlank()) {
             throw new GapIssueDisabledException("GitHub Issue configuration is incomplete");
         }
         this.base = base.replaceAll("/$", "");
-        this.repo = repo;
+        this.repository = repository;
         this.token = token;
         this.timeout = timeout;
         this.json = json;
@@ -39,59 +50,85 @@ public final class RestGitHubIssueClient implements GitHubIssueClient {
     @Override
     public IssueResponse create(IssueRequest request) {
         try {
-            String payload = json.writeValueAsString(java.util.Map.of(
-                    "title", request.title(), "body", request.body(), "labels", request.labels()));
+            String payload = json.writeValueAsString(Map.of(
+                    "title", request.title(),
+                    "body", request.body(),
+                    "labels", request.labels()));
             HttpResponse<String> response = http.send(
-                    request("/repos/" + repo + "/issues").POST(HttpRequest.BodyPublishers.ofString(payload)).build(),
+                    request("/repos/" + repository + "/issues")
+                            .POST(HttpRequest.BodyPublishers.ofString(payload))
+                            .build(),
                     HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() / 100 != 2) throw new GitHubIssueGatewayException("GitHub create returned HTTP " + response.statusCode());
+            if (response.statusCode() / 100 != 2) {
+                throw new GitHubIssueGatewayException("GitHub create returned HTTP " + response.statusCode());
+            }
             return response(json.readTree(response.body()));
-        } catch (InterruptedException e) {
+        } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new GitHubIssueGatewayException("GitHub create interrupted", e);
-        } catch (GitHubIssueGatewayException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new GitHubIssueGatewayException("GitHub create failed", e);
+            throw new GitHubIssueGatewayException("GitHub create interrupted", exception);
+        } catch (GitHubIssueGatewayException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new GitHubIssueGatewayException("GitHub create failed", exception);
         }
     }
 
     @Override
     public Optional<IssueResponse> findByTraceMarker(String marker) {
         try {
-            String query = "repo:" + repo + "+in:body+type:issue+" + URLEncoder.encode(marker, StandardCharsets.UTF_8);
-            HttpResponse<String> response = http.send(request("/search/issues?q=" + query).GET().build(), HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() / 100 != 2) throw new GitHubIssueGatewayException("GitHub search returned HTTP " + response.statusCode());
+            String query = "repo:" + repository + "+in:body+type:issue+"
+                    + URLEncoder.encode(marker, StandardCharsets.UTF_8);
+            HttpResponse<String> response = http.send(
+                    request("/search/issues?q=" + query).GET().build(),
+                    HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() / 100 != 2) {
+                throw new GitHubIssueGatewayException("GitHub search returned HTTP " + response.statusCode());
+            }
+
             JsonNode root = json.readTree(response.body());
-            if (!root.isObject() || !root.path("items").isArray()) throw new GitHubIssueGatewayException("GitHub search response missing items");
-            if (root.path("incomplete_results").asBoolean(false)) throw new GitHubIssueGatewayException("GitHub search results are incomplete");
+            if (!root.isObject() || !root.path("items").isArray()) {
+                throw new GitHubIssueGatewayException("GitHub search response missing items");
+            }
+            if (root.path("incomplete_results").asBoolean(false)) {
+                throw new GitHubIssueGatewayException("GitHub search results are incomplete");
+            }
             for (JsonNode item : root.path("items")) {
-                if (item.path("body").asText().contains(marker)) return Optional.of(response(item));
+                if (item.path("body").asText().contains(marker)) {
+                    return Optional.of(response(item));
+                }
             }
             return Optional.empty();
-        } catch (InterruptedException e) {
+        } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new GitHubIssueGatewayException("GitHub search interrupted", e);
-        } catch (GitHubIssueGatewayException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new GitHubIssueGatewayException("GitHub search failed", e);
+            throw new GitHubIssueGatewayException("GitHub search interrupted", exception);
+        } catch (GitHubIssueGatewayException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new GitHubIssueGatewayException("GitHub search failed", exception);
         }
     }
 
     private HttpRequest.Builder request(String path) {
-        return HttpRequest.newBuilder(URI.create(base + path)).timeout(timeout)
-                .header("Authorization", "Bearer " + token).header("User-Agent", "SJHERP-gap-issue")
-                .header("X-GitHub-Api-Version", "2022-11-28").header("Accept", "application/vnd.github+json")
+        return HttpRequest.newBuilder(URI.create(base + path))
+                .timeout(timeout)
+                .header("Authorization", "Bearer " + token)
+                .header("User-Agent", USER_AGENT)
+                .header("X-GitHub-Api-Version", API_VERSION)
+                .header("Accept", "application/vnd.github+json")
                 .header("Content-Type", "application/json");
     }
 
     private IssueResponse response(JsonNode node) {
-        if (!node.hasNonNull("number") || !node.hasNonNull("html_url") || !node.path("labels").isArray()) {
+        if (!node.hasNonNull("number")
+                || !node.hasNonNull("html_url")
+                || !node.path("labels").isArray()) {
             throw new GitHubIssueGatewayException("GitHub Issue response missing required fields");
         }
+
         List<String> labels = new ArrayList<>();
-        for (JsonNode label : node.path("labels")) labels.add(label.path("name").asText());
+        for (JsonNode label : node.path("labels")) {
+            labels.add(label.path("name").asText());
+        }
         return new IssueResponse(node.get("number").asLong(), node.get("html_url").asText(), labels);
     }
 }

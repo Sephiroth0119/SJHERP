@@ -16,7 +16,11 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import com.sjherp.app.security.*;
+import com.sjherp.domain.gap.GapIssueDisabledException;
+import com.sjherp.domain.gap.GapIssueNotFoundException;
+import com.sjherp.domain.gap.GapIssueStateException;
 import com.sjherp.domain.gap.GapIssueService;
+import com.sjherp.domain.gap.GitHubIssueGatewayException;
 import com.sjherp.domain.identity.Role;
 import com.sjherp.domain.identity.UserRepository;
 
@@ -41,11 +45,31 @@ class GapIssueControllerPermissionTest {
             mvc.perform(post("/api/gap-issues/candidates").with(user(role))).andExpect(status().isOk());
             mvc.perform(post("/api/gap-issues/candidates/1/approve").with(user(role))).andExpect(status().isOk());
             mvc.perform(post("/api/gap-issues/candidates/1/deliver").with(user(role))).andExpect(status().isOk());
+            mvc.perform(post("/api/gap-issues/reclaim-expired").with(user(role))).andExpect(status().isOk());
         }
-        for (String path : List.of("/api/gap-issues/candidates", "/api/gap-issues/candidates/1/approve", "/api/gap-issues/candidates/1/deliver")) {
+        for (String path : List.of("/api/gap-issues/candidates", "/api/gap-issues/candidates/1/approve",
+                "/api/gap-issues/candidates/1/deliver", "/api/gap-issues/reclaim-expired")) {
             mvc.perform(post(path).with(user(Role.SALES))).andExpect(status().isForbidden());
             mvc.perform(post(path)).andExpect(status().isUnauthorized());
         }
+    }
+
+    @Test void typedGapIssueExceptionsHaveStableHttpContracts() throws Exception {
+        when(service.approve(eq(99L), anyString())).thenThrow(new GapIssueNotFoundException(99));
+        mvc.perform(post("/api/gap-issues/candidates/99/approve").with(user(Role.ADMIN)))
+                .andExpect(status().isNotFound());
+
+        when(service.deliver(eq(1L), anyString())).thenThrow(new GapIssueStateException("not approved"));
+        mvc.perform(post("/api/gap-issues/candidates/1/deliver").with(user(Role.ADMIN)))
+                .andExpect(status().isConflict());
+
+        when(service.deliver(eq(1L), anyString())).thenThrow(new GapIssueDisabledException());
+        mvc.perform(post("/api/gap-issues/candidates/1/deliver").with(user(Role.ADMIN)))
+                .andExpect(status().isServiceUnavailable());
+
+        when(service.deliver(eq(1L), anyString())).thenThrow(new GitHubIssueGatewayException("unavailable"));
+        mvc.perform(post("/api/gap-issues/candidates/1/deliver").with(user(Role.ADMIN)))
+                .andExpect(status().isBadGateway());
     }
     private static RequestPostProcessor user(Role role){var p=new AuthenticatedUser(7,"u","用户",Set.of(role));return authentication(new UsernamePasswordAuthenticationToken(p,null,List.of(new SimpleGrantedAuthority("ROLE_"+role))));}
 }

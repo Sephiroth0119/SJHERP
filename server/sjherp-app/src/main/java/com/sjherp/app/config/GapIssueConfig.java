@@ -11,6 +11,7 @@ import com.sjherp.domain.gap.GitHubIssueClient;
 import com.sjherp.infra.github.RestGitHubIssueClient;
 import com.sjherp.infra.persistence.gap.JdbcGapIssueCandidateRepository;
 import java.time.Duration;
+import java.util.Optional;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -18,6 +19,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 @Configuration
 public class GapIssueConfig {
+
     @Bean
     GapIssueCandidateRepository gapIssueCandidateRepository(JdbcTemplate jdbc, ObjectMapper mapper) {
         return new JdbcGapIssueCandidateRepository(jdbc, mapper);
@@ -25,24 +27,39 @@ public class GapIssueConfig {
 
     @Bean
     GitHubIssueClient gitHubIssueClient(
-            @Value("${sjherp.github.issue.api-base:https://api.github.com}") String base,
-            @Value("${sjherp.github.issue.repo:}") String repo,
+            @Value("${sjherp.github.issue.api-base:https://api.github.com}") String apiBase,
+            @Value("${sjherp.github.issue.repo:}") String repository,
             @Value("${sjherp.github.issue.token:}") String token,
-            @Value("${sjherp.github.issue.timeout-seconds:10}") long seconds,
+            @Value("${sjherp.github.issue.timeout-seconds:10}") long timeoutSeconds,
             ObjectMapper mapper) {
-        if (repo.isBlank() || token.isBlank()) {
-            return new GitHubIssueClient() {
-                @Override public IssueResponse create(IssueRequest request) { throw new GapIssueDisabledException("GitHub Issue configuration is incomplete"); }
-                @Override public java.util.Optional<IssueResponse> findByTraceMarker(String marker) { throw new GapIssueDisabledException("GitHub Issue configuration is incomplete"); }
-            };
+        if (repository.isBlank() || token.isBlank()) {
+            return new DisabledGitHubIssueClient();
         }
-        return new RestGitHubIssueClient(base, repo, token, Duration.ofSeconds(seconds), mapper);
+        return new RestGitHubIssueClient(apiBase, repository, token, Duration.ofSeconds(timeoutSeconds), mapper);
     }
 
     @Bean
-    GapIssueService gapIssueService(GapRecordRepository gaps, GapIssueCandidateRepository candidates,
-                                    GitHubIssueClient github, @Value("${sjherp.github.issue.enabled:false}") boolean enabled,
-                                    GapIssueDeliveryFinalizer finalizer, GapIssueClusterWriter writer) {
+    GapIssueService gapIssueService(
+            GapRecordRepository gaps,
+            GapIssueCandidateRepository candidates,
+            GitHubIssueClient github,
+            @Value("${sjherp.github.issue.enabled:false}") boolean enabled,
+            GapIssueDeliveryFinalizer finalizer,
+            GapIssueClusterWriter writer) {
         return new GapIssueService(gaps, candidates, github, enabled, finalizer, writer);
+    }
+
+    private static final class DisabledGitHubIssueClient implements GitHubIssueClient {
+        private static final String MESSAGE = "GitHub Issue configuration is incomplete";
+
+        @Override
+        public IssueResponse create(IssueRequest request) {
+            throw new GapIssueDisabledException(MESSAGE);
+        }
+
+        @Override
+        public Optional<IssueResponse> findByTraceMarker(String marker) {
+            throw new GapIssueDisabledException(MESSAGE);
+        }
     }
 }
