@@ -17,6 +17,7 @@ CREATE TABLE gap_issue_candidate (
     failure_type VARCHAR(64) NULL,
     attempt_count INT NOT NULL DEFAULT 0,
     sending_started_at DATETIME(6) NULL,
+    lease_token VARCHAR(64) NULL,
     created_at DATETIME(6) NOT NULL,
     updated_at DATETIME(6) NOT NULL,
     PRIMARY KEY (id), UNIQUE KEY uk_gap_issue_tenant_id (tenant_id, id), UNIQUE KEY uk_gap_issue_tenant_idem (tenant_id, idempotency_key),

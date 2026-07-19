@@ -17,5 +17,5 @@ public class GapIssueConfig {
      if(repo.isBlank()||token.isBlank()) return new GitHubIssueClient(){public IssueResponse create(IssueRequest r){throw new IllegalStateException("GitHub 配置缺失，外部写入已安全关闭");} public java.util.Optional<IssueResponse> findByTraceMarker(String m){throw new IllegalStateException("GitHub 配置缺失，外部写入已安全关闭");}};
      return new RestGitHubIssueClient(base,repo,token,Duration.ofSeconds(seconds),mapper);
  }
- @Bean GapIssueService gapIssueService(GapRecordRepository g,GapIssueCandidateRepository c,GitHubIssueClient h,@Value("${sjherp.github.issue.enabled:false}") boolean enabled){return new GapIssueService(g,c,h,enabled);}
+ @Bean GapIssueService gapIssueService(GapRecordRepository g,GapIssueCandidateRepository c,GitHubIssueClient h,@Value("${sjherp.github.issue.enabled:false}") boolean enabled, com.sjherp.domain.gap.GapRecordService gapService){return new GapIssueService(g,c,h,enabled,gapService);}
 }
