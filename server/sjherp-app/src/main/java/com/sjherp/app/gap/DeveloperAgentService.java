@@ -58,11 +58,13 @@ public class DeveloperAgentService {
         String branch = "codex/dev/" + candidate.idempotencyKey();
         Path workspace = workspacePolicy.validate(
                 branch, Path.of("developer-agent-workspaces", candidate.idempotencyKey()));
+        boolean replay = tasks.findByCandidateId(candidateId).isPresent();
         List<GapRecord> sourceGaps = candidate.sourceGapNos().stream()
                 .map(gapNo -> gaps.findByGapNo(gapNo)
                         .orElseThrow(() -> new GapRecordNotFoundException(gapNo)))
                 .toList();
-        if (sourceGaps.stream().anyMatch(gap -> gap.getStatus() != GapStatus.TRIAGED
+        if ((!replay && sourceGaps.stream().anyMatch(gap -> gap.getStatus() != GapStatus.TRIAGED))
+                || sourceGaps.stream().anyMatch(gap -> gap.getStatus() != GapStatus.TRIAGED
                 && gap.getStatus() != GapStatus.IN_DEVELOPMENT)) {
             throw new GapIssueStateException("developer task source gap is not triaged");
         }

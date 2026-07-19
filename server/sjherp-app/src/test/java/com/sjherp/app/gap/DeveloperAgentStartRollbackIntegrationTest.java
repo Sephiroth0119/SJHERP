@@ -4,8 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.spy;
-import static org.mockito.Mockito.doAnswer;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
@@ -52,6 +50,11 @@ class DeveloperAgentStartRollbackIntegrationTest {
         MYSQL.stop();
     }
 
+    @AfterEach
+    void resetGapFailure() {
+        if (context != null) ((FailingGapRecordRepository) context.getBean(GapRecordRepository.class)).reset();
+    }
+
     @Test
     void startUsesSpringTransactionAndRollsBackTaskAndFirstGap() {
         String suffix = Long.toString(System.nanoTime(), 36);
@@ -74,13 +77,7 @@ class DeveloperAgentStartRollbackIntegrationTest {
                 java.util.List.of(gapNo, secondGapNo), GapIssueStatus.SENT, 1L, "url", null, null, null, 0, null, null, null);
         GapIssueCandidateRepository candidates = context.getBean(GapIssueCandidateRepository.class);
         when(candidates.findById(candidateId)).thenReturn(java.util.Optional.of(candidate));
-        GapRecordRepository gaps = context.getBean(GapRecordRepository.class);
-        java.util.concurrent.atomic.AtomicInteger secondReads = new java.util.concurrent.atomic.AtomicInteger();
-        doAnswer(invocation -> {
-            if (invocation.getArgument(0, String.class).equals(secondGapNo)
-                    && secondReads.incrementAndGet() > 1) return java.util.Optional.empty();
-            return invocation.callRealMethod();
-        }).when(gaps).findByGapNo(org.mockito.ArgumentMatchers.anyString());
+        ((FailingGapRecordRepository) context.getBean(GapRecordRepository.class)).configure(secondGapNo);
 
         DeveloperAgentService service = context.getBean(DeveloperAgentService.class);
         assertThatThrownBy(() -> service.start(candidateId, "admin")).isInstanceOf(GapRecordNotFoundException.class);
@@ -127,12 +124,28 @@ class DeveloperAgentStartRollbackIntegrationTest {
         @Bean AuditAspect auditAspect(TransactionAwareAuditWriter writer, AuditMetrics metrics) { return new AuditAspect(writer, metrics); }
         @Bean GapIssueCandidateRepository candidateRepository() { return mock(GapIssueCandidateRepository.class); }
         @Bean DeveloperAgentTaskRepository taskRepository(JdbcTemplate jdbc, ObjectMapper json) { return new JdbcDeveloperAgentTaskRepository(jdbc, json); }
-        @Bean GapRecordRepository gapRepository(JdbcTemplate jdbc) { return spy(new JdbcGapRecordRepository(jdbc)); }
+        @Bean GapRecordRepository gapRepository(JdbcTemplate jdbc) { return new FailingGapRecordRepository(new JdbcGapRecordRepository(jdbc)); }
         @Bean DocumentNumberGenerator numberGenerator() { return new DocumentNumberGenerator() { public String generate(DocumentNumberRule rule) { return "TEST-1"; } public String generate(DocumentNumberRule rule, java.time.YearMonth month) { return "TEST-1"; } }; }
         @Bean GapRecordService gapService(GapRecordRepository repository, DocumentNumberGenerator generator) { return new GapRecordService(repository, generator); }
         @Bean DeveloperAgentRunner runner() { return new DisabledDeveloperAgentRunner(); }
         @Bean WorkspacePolicy workspacePolicy() { return new WorkspacePolicy(Path.of("").toAbsolutePath()); }
         @Bean DeveloperAgentFailureService failureService(DeveloperAgentTaskRepository tasks) { return new DeveloperAgentFailureService(tasks); }
         @Bean DeveloperAgentService developerAgentService(GapIssueCandidateRepository candidates, DeveloperAgentTaskRepository tasks, GapRecordRepository gaps, GapRecordService gapService, DeveloperAgentRunner runner, WorkspacePolicy workspacePolicy, DeveloperAgentFailureService failureService) { return new DeveloperAgentService(candidates, tasks, gaps, gapService, runner, workspacePolicy, failureService); }
+    }
+
+    static final class FailingGapRecordRepository implements GapRecordRepository {
+        private final JdbcGapRecordRepository delegate;
+        private String failingGap;
+        private int reads;
+        FailingGapRecordRepository(JdbcGapRecordRepository delegate) { this.delegate = delegate; }
+        void configure(String gapNo) { failingGap = gapNo; reads = 0; }
+        public void reset() { failingGap = null; reads = 0; }
+        public void save(GapRecord record) { delegate.save(record); }
+        public java.util.Optional<GapRecord> findById(long id) { return delegate.findById(id); }
+        public java.util.Optional<GapRecord> findByGapNo(String gapNo) {
+            if (gapNo.equals(failingGap) && ++reads > 1) return java.util.Optional.empty();
+            return delegate.findByGapNo(gapNo);
+        }
+        public com.sjherp.domain.common.PageResult<GapRecord> search(GapRecordQuery query) { return delegate.search(query); }
     }
 }
