@@ -39,6 +39,7 @@ class ConsistencyCheckRunnerTest {
 
     private final DocumentNumberGenerator numberGenerator = mock(DocumentNumberGenerator.class);
     private final ConsistencyRunPersistenceService persistence = mock(ConsistencyRunPersistenceService.class);
+    private final ConsistencyProactiveChannel proactiveChannel = mock(ConsistencyProactiveChannel.class);
 
     @Test
     void persistsEverySuccessfulRunAndSkipsLlmWhenNoneRegistered() {
@@ -53,6 +54,18 @@ class ConsistencyCheckRunnerTest {
         assertThat(run.runNo()).isEqualTo("CHK-202607-0001");
         verify(numberGenerator).generate(DocumentNumberRule.of("CHK"));
         verify(persistence).persist(run);
+    }
+
+    @Test
+    void pushesOnlyCompletedP0ReportsAfterPersistence() {
+        when(numberGenerator.generate(any())).thenReturn("CHK-202607-0013");
+
+        ConsistencyCheckRun run = new ConsistencyCheckRunner(
+                registry(sqlRuleReturning("SQL", BREAK)), numberGenerator, persistence, CLOCK,
+                proactiveChannel).runScheduled();
+
+        verify(persistence).persist(run);
+        verify(proactiveChannel).send(run);
     }
 
     @Test
