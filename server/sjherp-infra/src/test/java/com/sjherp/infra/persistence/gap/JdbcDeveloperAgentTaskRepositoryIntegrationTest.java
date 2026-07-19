@@ -35,6 +35,12 @@ class JdbcDeveloperAgentTaskRepositoryIntegrationTest extends MySqlContainerTest
         for(int i=0;i<2;i++){String next=tasks.claim(t.id(),Instant.now()).orElseThrow();tasks.markFailed(t.id(),DeveloperAgentTaskStatus.RUNNING,next,"X","bad");} assertThat(tasks.claim(t.id(),Instant.now())).isEmpty();
     }
 
+    @Test void runningAndTestingLeasesAreReclaimedWithFailureEvidence(){
+        GapIssueCandidate c=candidates.upsert(candidate("reclaim-"+uniqueSuffix())); DeveloperAgentTask t=tasks.createIfAbsent(task(c.id(),"reclaim-key-"+uniqueSuffix()),"boss");
+        String lease=tasks.claim(t.id(),Instant.now()).orElseThrow(); jdbc.update("UPDATE developer_agent_task SET updated_at=? WHERE id=?",LocalDateTime.now(ZoneOffset.UTC).minusMinutes(20),t.id()); assertThat(tasks.reclaimExpired(Instant.now().minus(Duration.ofMinutes(10)))).isEqualTo(1); assertThat(tasks.findById(t.id()).orElseThrow().failureType()).isEqualTo("LEASE_EXPIRED");
+        String retry=tasks.claim(t.id(),Instant.now()).orElseThrow(); tasks.transition(t.id(),DeveloperAgentTaskStatus.RUNNING,DeveloperAgentTaskStatus.TESTING,retry,List.of("code"),true,false,false,null,"out"); jdbc.update("UPDATE developer_agent_task SET updated_at=? WHERE id=?",LocalDateTime.now(ZoneOffset.UTC).minusMinutes(20),t.id()); assertThat(tasks.reclaimExpired(Instant.now().minus(Duration.ofMinutes(10)))).isEqualTo(1); assertThat(tasks.findById(t.id()).orElseThrow().status()).isEqualTo(DeveloperAgentTaskStatus.FAILED);
+    }
+
     private GapIssueCandidate candidate(String key){return new GapIssueCandidate(0,key,key,BusinessModule.GENERAL,GapSeverity.LOW,"title",List.of("scenario"),"expected","missing",List.of(),GapIssueStatus.SENT,1L,"https://issue",null,null,null,0,null,null,null);}
     private DeveloperAgentTask task(long candidateId,String key){return new DeveloperAgentTask(0,candidateId,key,DeveloperAgentTaskStatus.QUEUED,"codex/dev/x","C:/repo/x","FAKE",null,0,List.of(),false,false,false,null,false,null,null,null);}
 }
