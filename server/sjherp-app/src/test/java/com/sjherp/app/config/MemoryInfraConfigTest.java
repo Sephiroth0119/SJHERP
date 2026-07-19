@@ -51,13 +51,17 @@ class MemoryInfraConfigTest {
     @Test
     void 关闭时没有任何记忆基础设施bean() {
         new ApplicationContextRunner()
-                .withUserConfiguration(MemoryInfraConfig.class)
+                .withUserConfiguration(MemoryInfraConfig.class, MemoryWriteInfraConfig.class)
+                .withBean(JdbcTemplate.class, () -> mock(JdbcTemplate.class))
+                .withBean(DocumentNumberGenerator.class, () -> mock(DocumentNumberGenerator.class))
+                .withBean(ApplicationEventPublisher.class, () -> mock(ApplicationEventPublisher.class))
                 .withPropertyValues("sjherp.memory.enabled=false")
                 .run(context -> {
                     assertThat(context).hasNotFailed();
                     assertThat(context).doesNotHaveBean(EmbeddingClient.class);
                     assertThat(context).doesNotHaveBean(VectorIndex.class);
-                    assertThat(context).doesNotHaveBean(MemoryEntryRepository.class);
+                    assertThat(context).hasSingleBean(MemoryEntryRepository.class);
+                    assertThat(context).hasSingleBean(com.sjherp.app.memory.MemoryWriteChannel.class);
                     assertThat(context).doesNotHaveBean(MemoryRecallService.class);
                     assertThat(context).doesNotHaveBean(MemoryPromptFormatter.class);
                     assertThat(context).doesNotHaveBean(MemoryContextProvider.class);
@@ -91,7 +95,7 @@ class MemoryInfraConfigTest {
 
     private ApplicationContextRunner enabledRunner() {
         return new ApplicationContextRunner()
-                .withUserConfiguration(MemoryInfraConfig.class)
+                .withUserConfiguration(MemoryInfraConfig.class, MemoryWriteInfraConfig.class)
                 .withBean(JdbcTemplate.class, () -> mock(JdbcTemplate.class))
                 .withBean(DocumentNumberGenerator.class, () -> mock(DocumentNumberGenerator.class))
                 .withBean(ApplicationEventPublisher.class, () -> mock(ApplicationEventPublisher.class))

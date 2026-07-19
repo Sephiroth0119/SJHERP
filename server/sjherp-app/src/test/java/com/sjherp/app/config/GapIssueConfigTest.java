@@ -61,6 +61,9 @@ class GapIssueConfigTest {
                 .withBean(JdbcTemplate.class, () -> mock(JdbcTemplate.class))
                 .withBean(ObjectMapper.class, ObjectMapper::new)
                 .withBean(GapRecordRepository.class, () -> mock(GapRecordRepository.class))
+                .withBean(com.sjherp.app.memory.MemoryWriteChannel.class, () -> mock(com.sjherp.app.memory.MemoryWriteChannel.class))
+                .withBean(com.sjherp.domain.notification.SystemNotificationRepository.class, () -> mock(com.sjherp.domain.notification.SystemNotificationRepository.class))
+                .withBean(com.sjherp.agent.session.AgentSessionRepository.class, () -> mock(com.sjherp.agent.session.AgentSessionRepository.class))
                 .withBean(GapIssueDeliveryFinalizer.class, () -> mock(GapIssueDeliveryFinalizer.class))
                 .withBean(GapIssueClusterWriter.class, () -> mock(GapIssueClusterWriter.class));
     }

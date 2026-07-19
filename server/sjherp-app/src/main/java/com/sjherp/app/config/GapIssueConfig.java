@@ -12,6 +12,7 @@ import com.sjherp.infra.github.RestGitHubIssueClient;
 import com.sjherp.infra.persistence.gap.JdbcGapIssueCandidateRepository;
 import com.sjherp.domain.gap.DeveloperAgentTaskRepository;
 import com.sjherp.infra.persistence.gap.JdbcDeveloperAgentTaskRepository;
+import com.sjherp.infra.persistence.gap.JdbcClosureFeedbackRepository;
 import com.sjherp.domain.gap.DeveloperAgentRunner;
 import com.sjherp.app.gap.FakeDeveloperAgentRunner;
 import java.time.Duration;
@@ -21,14 +22,32 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.context.annotation.Profile;
+import com.sjherp.app.gap.ClosureFeedbackService;
+import com.sjherp.app.memory.MemoryWriteChannel;
+import com.sjherp.domain.notification.SystemNotificationRepository;
+import com.sjherp.agent.session.AgentSessionRepository;
 import java.nio.file.Path;
 
 @Configuration
 public class GapIssueConfig {
 
     @Bean
+    com.sjherp.domain.gap.ClosureFeedbackRepository closureFeedbackRepository(JdbcTemplate jdbc) {
+        return new JdbcClosureFeedbackRepository(jdbc);
+    }
+
+    @Bean
     DeveloperAgentTaskRepository developerAgentTaskRepository(JdbcTemplate jdbc, ObjectMapper mapper) {
         return new JdbcDeveloperAgentTaskRepository(jdbc, mapper);
+    }
+
+    @Bean
+    ClosureFeedbackService closureFeedbackService(DeveloperAgentTaskRepository tasks,
+            GapIssueCandidateRepository candidates, GapRecordRepository gaps,
+            com.sjherp.domain.gap.ClosureFeedbackRepository closures,
+            MemoryWriteChannel memory, SystemNotificationRepository notifications,
+            AgentSessionRepository sessions) {
+        return new ClosureFeedbackService(tasks, candidates, gaps, closures, memory, notifications, sessions);
     }
 
     @Bean
