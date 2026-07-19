@@ -8,9 +8,9 @@ public interface GapIssueCandidateRepository {
     void addSources(long candidateId, List<String> gapNos);
     List<GapIssueCandidate> findAll();
     Optional<GapIssueCandidate> findById(long id);
-    boolean claimForSend(long id);
+    Optional<String> claimForSend(long id);
     int reclaimExpiredSending(java.time.Instant cutoff);
     void markApproved(long id, String operator);
-    void markSent(long id, long number, String url);
-    void markFailed(long id, String failureType);
+    void markSent(long id, String leaseToken, long number, String url);
+    void markFailed(long id, String leaseToken, String failureType);
 }

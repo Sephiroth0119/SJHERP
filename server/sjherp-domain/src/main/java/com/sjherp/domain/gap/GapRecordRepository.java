@@ -13,6 +13,7 @@ public interface GapRecordRepository {
     void save(GapRecord record);
 
     Optional<GapRecord> findById(long id);
+    default Optional<GapRecord> findByGapNo(String gapNo) { return Optional.empty(); }
 
     /** 分页查询（按状态/模块过滤，最新在前） */
     PageResult<GapRecord> search(GapRecordQuery query);
