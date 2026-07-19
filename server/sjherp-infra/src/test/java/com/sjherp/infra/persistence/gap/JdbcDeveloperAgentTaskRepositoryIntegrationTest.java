@@ -18,7 +18,9 @@ class JdbcDeveloperAgentTaskRepositoryIntegrationTest extends MySqlContainerTest
         DeveloperAgentTask first=tasks.createIfAbsent(initial,"boss");
         assertThat(tasks.createIfAbsent(initial,"boss").id()).isEqualTo(first.id());
         String lease=tasks.claim(first.id(),Instant.now()).orElseThrow();
+        assertThat(tasks.findById(first.id()).orElseThrow().status()).isEqualTo(DeveloperAgentTaskStatus.RUNNING);
         assertThat(tasks.claim(first.id(),Instant.now())).isEmpty();
+        assertThatThrownBy(()->tasks.approve(first.id(),"boss")).isInstanceOf(IllegalStateException.class);
         tasks.transition(first.id(),DeveloperAgentTaskStatus.RUNNING,DeveloperAgentTaskStatus.TESTING,lease,List.of("code.java","test.java"),true,false,false,null,"running");
         assertThatThrownBy(()->tasks.transition(first.id(),DeveloperAgentTaskStatus.TESTING,DeveloperAgentTaskStatus.AWAITING_REVIEW,"stale",List.of("code.java"),true,true,true,"ci", "stale" )).isInstanceOf(IllegalStateException.class);
         tasks.transition(first.id(),DeveloperAgentTaskStatus.TESTING,DeveloperAgentTaskStatus.AWAITING_REVIEW,lease,List.of("code.java","test.java"),true,true,true,"ci://1","done");
@@ -26,6 +28,13 @@ class JdbcDeveloperAgentTaskRepositoryIntegrationTest extends MySqlContainerTest
         assertThat(tasks.findById(first.id()).orElseThrow().status()).isEqualTo(DeveloperAgentTaskStatus.APPROVED);
     }
 
+    @Test void foreignCandidateAndStaleFailureAreRejectedAndAttemptsAreBounded(){
+        assertThatThrownBy(()->tasks.createIfAbsent(task(999999,"fk-"+uniqueSuffix()),"boss")).isInstanceOf(Exception.class);
+        GapIssueCandidate c=candidates.upsert(candidate("attempt-"+uniqueSuffix())); DeveloperAgentTask t=tasks.createIfAbsent(task(c.id(),"attempt-key-"+uniqueSuffix()),"boss");
+        String lease=tasks.claim(t.id(),Instant.now()).orElseThrow(); assertThatThrownBy(()->tasks.markFailed(t.id(),DeveloperAgentTaskStatus.RUNNING,"stale","X","bad")).isInstanceOf(IllegalStateException.class); tasks.markFailed(t.id(),DeveloperAgentTaskStatus.RUNNING,lease,"X","bad");
+        for(int i=0;i<2;i++){String next=tasks.claim(t.id(),Instant.now()).orElseThrow();tasks.markFailed(t.id(),DeveloperAgentTaskStatus.RUNNING,next,"X","bad");} assertThat(tasks.claim(t.id(),Instant.now())).isEmpty();
+    }
+
     private GapIssueCandidate candidate(String key){return new GapIssueCandidate(0,key,key,BusinessModule.GENERAL,GapSeverity.LOW,"title",List.of("scenario"),"expected","missing",List.of(),GapIssueStatus.SENT,1L,"https://issue",null,null,null,0,null,null,null);}
-    private DeveloperAgentTask task(long candidateId,String key){return new DeveloperAgentTask(0,candidateId,key,DeveloperAgentTaskStatus.QUEUED,"codex/dev/x","C:/repo/x","FAKE",null,0,List.of(),false,false,false,null,false);}
+    private DeveloperAgentTask task(long candidateId,String key){return new DeveloperAgentTask(0,candidateId,key,DeveloperAgentTaskStatus.QUEUED,"codex/dev/x","C:/repo/x","FAKE",null,0,List.of(),false,false,false,null,false,null,null,null);}
 }
