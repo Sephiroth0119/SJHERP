@@ -31,7 +31,21 @@ class GapIssueControllerPermissionTest {
         for (Role role : List.of(Role.ADMIN,Role.BOSS)) mvc.perform(get("/api/gap-issues/candidates").with(user(role))).andExpect(status().isOk());
         mvc.perform(get("/api/gap-issues/candidates").with(user(Role.SALES))).andExpect(status().isForbidden());
         mvc.perform(get("/api/gap-issues/candidates")).andExpect(status().isUnauthorized());
-        verify(service, never()).cluster();
+        verify(service, never()).cluster(anyString());
+    }
+    @Test void postOperationsRequireAdminOrBoss() throws Exception {
+        when(service.cluster(anyString())).thenReturn(List.of());
+        when(service.approve(eq(1L), anyString())).thenReturn(null);
+        when(service.deliver(eq(1L), anyString())).thenReturn(null);
+        for (Role role : List.of(Role.ADMIN, Role.BOSS)) {
+            mvc.perform(post("/api/gap-issues/candidates").with(user(role))).andExpect(status().isOk());
+            mvc.perform(post("/api/gap-issues/candidates/1/approve").with(user(role))).andExpect(status().isOk());
+            mvc.perform(post("/api/gap-issues/candidates/1/deliver").with(user(role))).andExpect(status().isOk());
+        }
+        for (String path : List.of("/api/gap-issues/candidates", "/api/gap-issues/candidates/1/approve", "/api/gap-issues/candidates/1/deliver")) {
+            mvc.perform(post(path).with(user(Role.SALES))).andExpect(status().isForbidden());
+            mvc.perform(post(path)).andExpect(status().isUnauthorized());
+        }
     }
     private static RequestPostProcessor user(Role role){var p=new AuthenticatedUser(7,"u","用户",Set.of(role));return authentication(new UsernamePasswordAuthenticationToken(p,null,List.of(new SimpleGrantedAuthority("ROLE_"+role))));}
 }

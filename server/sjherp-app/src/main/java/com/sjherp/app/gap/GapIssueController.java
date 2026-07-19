@@ -12,8 +12,9 @@ import com.sjherp.domain.gap.*;
 public class GapIssueController {
     private final GapIssueService service;
     public GapIssueController(GapIssueService service){this.service=service;}
-    @PostMapping("/candidates") public List<GapIssueCandidate> cluster(){return service.cluster();}
+    @PostMapping("/candidates") public List<GapIssueCandidate> cluster(){return service.cluster(CurrentUser.operator());}
     @GetMapping("/candidates") public List<GapIssueCandidate> list(){return service.list();}
     @PostMapping("/candidates/{id}/approve") public GapIssueCandidate approve(@PathVariable long id){return service.approve(id,CurrentUser.operator());}
-    @PostMapping("/candidates/{id}/deliver") public GapIssueCandidate deliver(@PathVariable long id){return service.deliver(id);}
+    @PostMapping("/candidates/{id}/deliver") public GapIssueCandidate deliver(@PathVariable long id){return service.deliver(id,CurrentUser.operator());}
+    @PostMapping("/reclaim-expired") public int reclaimExpired(){return service.reclaimExpiredSending(java.time.Duration.ofMinutes(10),CurrentUser.operator());}
 }
