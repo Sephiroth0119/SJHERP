@@ -246,7 +246,8 @@ class AuditWriteCoverageTest {
         when(generator.generate(any())).thenReturn("CHK-202607-0001");
         ConsistencyCheckRunner runner = proxied(new ConsistencyCheckRunner(
                 new ConsistencyRuleRegistry(List.of(rule)), generator,
-                mock(ConsistencyRunPersistenceService.class)));
+                mock(ConsistencyRunPersistenceService.class),
+                run -> { }));
 
         runner.runManual(OPERATOR);
 

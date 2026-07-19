@@ -58,7 +58,9 @@ public class ConsistencyReportService {
     /** 查询最近一次显式运行，供用户未指定日期时回看最新报告。 */
     @Transactional(readOnly = true)
     public Optional<ConsistencyCheckRun> latest() {
-        return repository.search(TENANT_ID, new ConsistencyRunQuery(1, 1)).items().stream().findFirst();
+        return repository.search(TENANT_ID, new ConsistencyRunQuery(1, 1)).items().stream()
+                .findFirst()
+                .flatMap(summary -> repository.findByRunNo(TENANT_ID, summary.runNo()));
     }
 
     /** 当前查询时刻使用 UTC，保证与报告 DATETIME(6) 存储口径一致。 */

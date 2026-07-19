@@ -8,7 +8,7 @@ Java 21 下执行：
 mvn -pl sjherp-app -am '-Dtest=QueryConsistencyReportToolTest,ConsistencySessionPushChannelTest,ConsistencyCheckRunnerTest,ConsistencyReportServiceTest,HighRiskToolPermissionTest,AuditWriteCoverageTest' '-Dsurefire.failIfNoSpecifiedTests=false' test
 ```
 
-覆盖 79 项：
+覆盖 80 项：
 
 - `query_consistency_report` 的 NORMAL/无权限点、合法 schema、`daysAgo=1`、运行号/日期召回、未找到/非法参数、解释、BigDecimal 字符串和最多 10 条明细；
 - P0 仅投递启用 ADMIN/BOSS 的 ACTIVE 会话，WARN/clean 不投递，重复运行号推送幂等，推送不复制差异正文；

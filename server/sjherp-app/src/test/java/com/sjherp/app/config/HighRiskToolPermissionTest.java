@@ -141,7 +141,7 @@ class HighRiskToolPermissionTest {
         //   post 3 HIGH] + 退料 4 [query NORMAL + create/approve/post 3 HIGH] + check_kitting 1 NORMAL
         //   + 报工 4 [query NORMAL + create/approve/post 3 HIGH] + 成本结转 4 [query NORMAL + create/
         //   approve/post 3 HIGH] + query_mrp_run 1 NORMAL）
-        // + 演示 2 个（echo + demo_post_document）= 98（全量注册断言基线）。
+        // + ProductionToolConfig 26 个 + 演示 2 个（echo + demo_post_document）= 98（全量注册断言基线）。
         // 新增工具装配类后此处会先于权限断言提醒维护注册清单。
         assertTrue(registryWithAllTools().all().size() >= 98,
                 "注册工具数少于 M6-T07 基线（98 个）——若调整了工具装配，请同步维护本测试的注册清单");
