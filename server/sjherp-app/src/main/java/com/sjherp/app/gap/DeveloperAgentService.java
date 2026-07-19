@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -17,6 +18,24 @@ public class DeveloperAgentService {
     private final GapRecordService gapService;
     private final DeveloperAgentRunner runner;
     private final WorkspacePolicy workspacePolicy;
+    private final DeveloperAgentFailureService failureService;
+
+    @Autowired
+    public DeveloperAgentService(GapIssueCandidateRepository candidates,
+                                 DeveloperAgentTaskRepository tasks,
+                                 GapRecordRepository gaps,
+                                 GapRecordService gapService,
+                                 DeveloperAgentRunner runner,
+                                 WorkspacePolicy workspacePolicy,
+                                 DeveloperAgentFailureService failureService) {
+        this.candidates = candidates;
+        this.tasks = tasks;
+        this.gaps = gaps;
+        this.gapService = gapService;
+        this.runner = runner;
+        this.workspacePolicy = workspacePolicy;
+        this.failureService = failureService;
+    }
 
     public DeveloperAgentService(GapIssueCandidateRepository candidates,
                                  DeveloperAgentTaskRepository tasks,
@@ -24,12 +43,8 @@ public class DeveloperAgentService {
                                  GapRecordService gapService,
                                  DeveloperAgentRunner runner,
                                  WorkspacePolicy workspacePolicy) {
-        this.candidates = candidates;
-        this.tasks = tasks;
-        this.gaps = gaps;
-        this.gapService = gapService;
-        this.runner = runner;
-        this.workspacePolicy = workspacePolicy;
+        this(candidates, tasks, gaps, gapService, runner, workspacePolicy,
+                new DeveloperAgentFailureService(tasks));
     }
 
     @Transactional
@@ -43,15 +58,22 @@ public class DeveloperAgentService {
         String branch = "codex/dev/" + candidate.idempotencyKey();
         Path workspace = workspacePolicy.validate(
                 branch, Path.of("developer-agent-workspaces", candidate.idempotencyKey()));
+        List<GapRecord> sourceGaps = candidate.sourceGapNos().stream()
+                .map(gapNo -> gaps.findByGapNo(gapNo)
+                        .orElseThrow(() -> new GapRecordNotFoundException(gapNo)))
+                .toList();
+        if (sourceGaps.stream().anyMatch(gap -> gap.getStatus() != GapStatus.TRIAGED
+                && gap.getStatus() != GapStatus.IN_DEVELOPMENT)) {
+            throw new GapIssueStateException("developer task source gap is not triaged");
+        }
         DeveloperAgentTask task = new DeveloperAgentTask(
                 0, candidateId, "developer:" + candidate.idempotencyKey(),
                 DeveloperAgentTaskStatus.QUEUED, branch, workspace.toString(), runner.kind(),
                 null, 0, List.of(), false, false, false, null, false,
                 null, null, null);
         DeveloperAgentTask saved = tasks.createIfAbsent(task, operator);
-        for (String gapNo : candidate.sourceGapNos()) {
-            GapRecord gap = gaps.findByGapNo(gapNo)
-                    .orElseThrow(() -> new GapRecordNotFoundException(gapNo));
+        for (GapRecord gap : sourceGaps) {
+            String gapNo = gap.getGapNo();
             if (gap.getStatus() == GapStatus.TRIAGED) {
                 gapService.transitionStatusByGapNo(gapNo, GapStatus.IN_DEVELOPMENT, operator);
             }
@@ -82,16 +104,14 @@ public class DeveloperAgentService {
             if (result.generatedArtifacts().isEmpty()
                     || result.generatedArtifacts().stream().anyMatch(String::isBlank)
                     || !result.targetedTestsGreen()) {
-                markFailed(id, DeveloperAgentTaskStatus.RUNNING, lease,
-                        "QUALITY_GATE", "missing artifacts or targeted tests");
+            fail(id, DeveloperAgentTaskStatus.RUNNING, lease, "QUALITY_GATE", "missing artifacts or targeted tests", result, operator);
                 return get(id);
             }
             transition(id, DeveloperAgentTaskStatus.RUNNING, DeveloperAgentTaskStatus.TESTING,
                     lease, result, false);
             if (!result.fullTestsGreen() || !result.ciGreen()
                     || result.ciEvidence() == null || result.ciEvidence().isBlank()) {
-                markFailed(id, DeveloperAgentTaskStatus.TESTING, lease,
-                        "QUALITY_GATE", "full tests or CI evidence missing");
+                fail(id, DeveloperAgentTaskStatus.TESTING, lease, "QUALITY_GATE", "full tests or CI evidence missing", result, operator);
                 return get(id);
             }
             transition(id, DeveloperAgentTaskStatus.TESTING,
@@ -99,8 +119,10 @@ public class DeveloperAgentService {
             return get(id);
         } catch (RuntimeException ex) {
             try {
-                markFailed(id, get(id).status(), lease, ex.getClass().getSimpleName(),
-                        truncate(ex.getMessage(), 500));
+                DeveloperAgentTask current = get(id);
+                failureService.fail(id, current.status(), lease, ex.getClass().getSimpleName(),
+                        truncate(ex.getMessage(), 500), current.generatedArtifacts(), current.targetedTestsGreen(),
+                        current.fullTestsGreen(), current.ciGreen(), current.ciEvidence(), current.runnerOutputSummary(), operator);
             } catch (RuntimeException failure) {
                 ex.addSuppressed(failure);
             }
@@ -123,10 +145,12 @@ public class DeveloperAgentService {
         }
     }
 
-    private void markFailed(long id, DeveloperAgentTaskStatus expected, String lease,
-                            String type, String summary) {
+    private void fail(long id, DeveloperAgentTaskStatus expected, String lease, String type,
+                      String summary, DeveloperAgentRunner.Result result, String operator) {
         try {
-            tasks.markFailed(id, expected, lease, type, summary);
+            failureService.fail(id, expected, lease, type, summary, result.generatedArtifacts(),
+                    result.targetedTestsGreen(), result.fullTestsGreen(), result.ciGreen(),
+                    result.ciEvidence(), result.outputSummary(), operator);
         } catch (IllegalStateException ex) {
             throw new DeveloperAgentTaskStateException(ex.getMessage());
         }

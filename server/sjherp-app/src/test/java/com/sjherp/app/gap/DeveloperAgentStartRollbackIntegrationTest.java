@@ -88,6 +88,7 @@ class DeveloperAgentStartRollbackIntegrationTest {
         @Bean GapRecordService gapService(GapRecordRepository repository, DocumentNumberGenerator generator) { return new GapRecordService(repository, generator); }
         @Bean DeveloperAgentRunner runner() { return new DisabledDeveloperAgentRunner(); }
         @Bean WorkspacePolicy workspacePolicy() { return new WorkspacePolicy(Path.of("").toAbsolutePath()); }
-        @Bean DeveloperAgentService developerAgentService(GapIssueCandidateRepository candidates, DeveloperAgentTaskRepository tasks, GapRecordRepository gaps, GapRecordService gapService, DeveloperAgentRunner runner, WorkspacePolicy workspacePolicy) { return new DeveloperAgentService(candidates, tasks, gaps, gapService, runner, workspacePolicy); }
+        @Bean DeveloperAgentFailureService failureService(DeveloperAgentTaskRepository tasks) { return new DeveloperAgentFailureService(tasks); }
+        @Bean DeveloperAgentService developerAgentService(GapIssueCandidateRepository candidates, DeveloperAgentTaskRepository tasks, GapRecordRepository gaps, GapRecordService gapService, DeveloperAgentRunner runner, WorkspacePolicy workspacePolicy, DeveloperAgentFailureService failureService) { return new DeveloperAgentService(candidates, tasks, gaps, gapService, runner, workspacePolicy, failureService); }
     }
 }
