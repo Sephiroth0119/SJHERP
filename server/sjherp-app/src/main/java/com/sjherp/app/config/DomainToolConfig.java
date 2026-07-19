@@ -37,6 +37,7 @@ import com.sjherp.app.sales.SalesDeliveryAppService;
 import com.sjherp.app.sales.SalesInvoiceAppService;
 import com.sjherp.app.receivable.ReceivableAppService;
 import com.sjherp.app.consistency.ConsistencyCheckRunner;
+import com.sjherp.app.consistency.ConsistencyReportService;
 import com.sjherp.app.tool.purchase.ApprovePurchaseOrderTool;
 import com.sjherp.app.tool.purchase.CreatePurchaseReceiptTool;
 import com.sjherp.app.tool.purchase.ApprovePurchaseReceiptTool;
@@ -62,6 +63,7 @@ import com.sjherp.app.tool.sales.ReverseSalesInvoiceTool;
 import com.sjherp.app.tool.sales.QuerySalesInvoiceTool;
 import com.sjherp.app.tool.sales.QueryReceivablesTool;
 import com.sjherp.app.tool.consistency.RunConsistencyCheckTool;
+import com.sjherp.app.tool.consistency.QueryConsistencyReportTool;
 import com.sjherp.app.tool.gl.CloseAccountingPeriodTool;
 import com.sjherp.app.tool.gl.PrecheckPeriodCloseTool;
 import com.sjherp.app.tool.gl.ReverseVoucherTool;
@@ -107,12 +109,12 @@ import com.sjherp.domain.warehouse.WarehouseService;
  * + M4-T07b 采购/销售单据冲销 Agent 工具
  * + M4-T07c 收付款单/调拨单/盘点单冲销 Agent 工具
  * + M4-T08 财务只读查询工具），
- * <b>常驻注册</b> 69 个（所有 profile 生效，区别于
+ * <b>常驻注册</b> 70 个（所有 profile 生效，区别于
  * dev-only 的演示工具 {@link ToolConfig.DemoToolConfig} 2 个）。
  * 生产模块 26 个工具独立装配在 {@link ProductionToolConfig}（设计 D-6），同样常驻；
- * 全量常驻 69+26=95，含演示 95+2=97。完整清单见 docs/领域工具清单.md。
+ * 全量常驻 70+26=96，含演示 96+2=98。完整清单见 docs/领域工具清单.md。
  *
- * <p>查询类（NORMAL）29 个（多为登录即可，财务报表/账龄/凭证/核销类带 finance:* 权限点）：
+ * <p>查询类（NORMAL）37 个（多为登录即可，财务报表/账龄/凭证/核销类带 finance:* 权限点）：
  * search_products / get_product_detail /
  * search_customers / search_suppliers / search_warehouses / query_inventory_balance /
  * query_stock_count / query_transfer / query_purchase_order / query_sales_order /
@@ -178,6 +180,7 @@ public class DomainToolConfig {
                      SalesInvoiceAppService salesInvoiceAppService,
                      ReceivableAppService receivableAppService,
                      ConsistencyCheckRunner consistencyCheckRunner,
+                     ConsistencyReportService consistencyReportService,
                      PaymentAccountService paymentAccountService,
                      CollectionReceiptAppService collectionReceiptAppService,
                      PaymentDisbursementAppService paymentDisbursementAppService,
@@ -207,6 +210,8 @@ public class DomainToolConfig {
         registry.register(new QueryReceivablesTool(customerService, receivableAppService));
         // 数据一致性交叉校验（M6-T05，NORMAL，不改业务账；显式保存运行报告）
         registry.register(new RunConsistencyCheckTool(consistencyCheckRunner));
+        // 历史报告召回（M6-T07，NORMAL，登录即可；只读不重新运行）
+        registry.register(new QueryConsistencyReportTool(consistencyReportService));
         // 资金账户查询（M4-T04a，NORMAL，登录即可）
         registry.register(new SearchPaymentAccountsTool(paymentAccountService));
         // 收/付款单查询（M4-T04c，NORMAL，登录即可）
@@ -286,7 +291,8 @@ public class DomainToolConfig {
                 + " + M3-T05/T06/T07 采购线 + M3-T08/T09/T10 销售线 + M3-T11 全量注册"
                 + " + M3-T13 一致性校验 + M4-T04a 资金账户 + M4-T04c 收付款单"
                 + " + M4-T05 月末结转关账 + M4-T07a 凭证冲销 + M4-T07b 采购/销售单据冲销"
-                + " + M4-T07c 收付款单/调拨单/盘点单冲销 + M4-T08 财务只读查询，常驻）："
-                + "查询 36 个（NORMAL）+ 资金账户建档 1 个（NORMAL）+ 写 32 个（HIGH）");
+                + " + M4-T07c 收付款单/调拨单/盘点单冲销 + M4-T08 财务只读查询"
+                + " + M6-T07 一致性报告召回，常驻）："
+                + "查询 37 个（NORMAL）+ 资金账户建档 1 个（NORMAL）+ 写 32 个（HIGH）");
     }
 }
