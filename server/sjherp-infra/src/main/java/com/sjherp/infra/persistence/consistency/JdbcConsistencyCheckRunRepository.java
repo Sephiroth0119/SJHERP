@@ -78,6 +78,24 @@ public class JdbcConsistencyCheckRunRepository implements ConsistencyCheckRunRep
 
     @Override
     @Transactional(readOnly = true)
+    public Optional<ConsistencyCheckRun> findLatestByCompletedAtBetween(long tenantId,
+                                                                         Instant startInclusive,
+                                                                         Instant endExclusive) {
+        Objects.requireNonNull(startInclusive, "startInclusive must not be null");
+        Objects.requireNonNull(endExclusive, "endExclusive must not be null");
+        if (!startInclusive.isBefore(endExclusive)) {
+            throw new IllegalArgumentException("时间区间必须为半开正区间");
+        }
+        return first(jdbc.query(HEAD_COLUMNS + """
+                WHERE tenant_id = ? AND completed_at >= ? AND completed_at < ?
+                ORDER BY completed_at DESC, id DESC
+                LIMIT 1
+                """, HEAD_ROW_MAPPER, tenantId, toDb(startInclusive), toDb(endExclusive)))
+                .map(head -> restore(head, findFindings(tenantId, head.id())));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public PageResult<ConsistencyCheckRun> search(long tenantId, ConsistencyRunQuery query) {
         Objects.requireNonNull(query, "query must not be null");
         long total = countHeads(tenantId);
