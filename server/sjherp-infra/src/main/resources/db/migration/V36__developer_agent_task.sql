@@ -24,7 +24,6 @@ CREATE TABLE developer_agent_task (
     PRIMARY KEY (id),
     UNIQUE KEY uk_developer_task_tenant_idem (tenant_id, idempotency_key),
     UNIQUE KEY uk_developer_task_tenant_candidate (tenant_id, candidate_id),
-    UNIQUE KEY uk_developer_task_tenant_id (tenant_id, id),
     CONSTRAINT fk_developer_task_candidate FOREIGN KEY (tenant_id, candidate_id)
         REFERENCES gap_issue_candidate(tenant_id, id),
     KEY idx_developer_task_status (tenant_id, status)
