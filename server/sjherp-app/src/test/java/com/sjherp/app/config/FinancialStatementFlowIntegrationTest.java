@@ -1,6 +1,9 @@
 package com.sjherp.app.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.any;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -35,6 +38,13 @@ import com.sjherp.app.consistency.ConsistencyCheckDao;
 import com.sjherp.app.consistency.ConsistencyCheckService;
 import com.sjherp.app.consistency.ConsistencyCheckType;
 import com.sjherp.app.consistency.ConsistencySeverity;
+import com.sjherp.app.consistency.ConsistencyCheckRunner;
+import com.sjherp.app.consistency.ConsistencyRule;
+import com.sjherp.app.consistency.ConsistencyRuleRegistry;
+import com.sjherp.app.consistency.ConsistencyRunPersistenceService;
+import com.sjherp.app.consistency.ConsistencyConfig;
+import com.sjherp.app.notification.InAppNotificationChannel;
+import com.sjherp.domain.consistency.ConsistencyCheckRunRepository;
 import com.sjherp.app.finance.FinancialStatementDao;
 import com.sjherp.app.finance.FinancialStatementDtos.BalanceSheet;
 import com.sjherp.app.finance.FinancialStatementDtos.BalanceSheetLine;
@@ -125,6 +135,8 @@ class FinancialStatementFlowIntegrationTest {
     private static PeriodCloseService periodCloseService;
     private static FinancialStatementService financialStatementService;
     private static ConsistencyCheckService consistencyCheckService;
+    private static ConsistencyCheckRunner consistencyCheckRunner;
+    private static InAppNotificationChannel notificationChannel;
 
     @BeforeAll
     static void setUp() {
@@ -152,6 +164,8 @@ class FinancialStatementFlowIntegrationTest {
         periodCloseService = context.getBean(PeriodCloseService.class);
         financialStatementService = context.getBean(FinancialStatementService.class);
         consistencyCheckService = context.getBean(ConsistencyCheckService.class);
+        consistencyCheckRunner = context.getBean(ConsistencyCheckRunner.class);
+        notificationChannel = context.getBean(InAppNotificationChannel.class);
     }
 
     @AfterAll
@@ -164,7 +178,7 @@ class FinancialStatementFlowIntegrationTest {
     @Configuration
     @EnableTransactionManagement
     @EnableAspectJAutoProxy(proxyTargetClass = true)
-    @Import({AuditConfig.class, InventoryInfraConfig.class, PurchaseInfraConfig.class,
+    @Import({AuditConfig.class, ConsistencyConfig.class, InventoryInfraConfig.class, PurchaseInfraConfig.class,
             SalesInfraConfig.class, GlInfraConfig.class, ProductRepositoryTestConfig.class})
     static class TestConfig {
 
@@ -209,6 +223,24 @@ class FinancialStatementFlowIntegrationTest {
         @Bean
         ConsistencyCheckService consistencyCheckService(ConsistencyCheckDao dao) {
             return new ConsistencyCheckService(dao, false);
+        }
+
+        @Bean
+        InAppNotificationChannel inAppNotificationChannel() {
+            return mock(InAppNotificationChannel.class);
+        }
+
+        @Bean
+        ConsistencyRunPersistenceService consistencyRunPersistenceService(
+                ConsistencyCheckRunRepository repository, InAppNotificationChannel channel) {
+            return new ConsistencyRunPersistenceService(repository, channel);
+        }
+
+        @Bean
+        ConsistencyCheckRunner consistencyCheckRunner(ConsistencyCheckService service,
+                DocumentNumberGenerator numberGenerator, ConsistencyRunPersistenceService persistence) {
+            ConsistencyRule core = new com.sjherp.app.consistency.CoreSqlAssertionRule(service);
+            return new ConsistencyCheckRunner(new ConsistencyRuleRegistry(List.of(core)), numberGenerator, persistence);
         }
 
         // 月末结转关账编排器（注入顺序同生产构造器）
@@ -431,9 +463,14 @@ class FinancialStatementFlowIntegrationTest {
         // M6-T06 验收：人为篡改 1122 控制科目一侧，下个检查周期必须揪出真实 GL_DETAIL break。
         jdbc.update("UPDATE voucher_line SET debit = debit + 1.00 "
                 + "WHERE tenant_id = 0 AND account_code = '1122' LIMIT 1");
-        assertThat(consistencyCheckService.check().breaks())
-                .anyMatch(b -> b.checkType() == ConsistencyCheckType.GL_DETAIL
-                        && b.severity() == ConsistencySeverity.ERROR);
+        var run = consistencyCheckRunner.runScheduled();
+        assertThat(run.clean()).isFalse();
+        assertThat(run.findings()).anyMatch(f -> f.checkType().equals(ConsistencyCheckType.GL_DETAIL.code()));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM consistency_check_run WHERE run_no = ?",
+                Long.class, run.runNo())).isEqualTo(1L);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM consistency_check_break WHERE run_no = ?",
+                Long.class, run.runNo())).isGreaterThan(0L);
+        verify(notificationChannel).send(any());
     }
 
     // ---------------------------------------------------------------

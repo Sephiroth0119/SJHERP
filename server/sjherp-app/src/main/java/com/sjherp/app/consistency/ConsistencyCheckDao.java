@@ -609,9 +609,9 @@ public class ConsistencyCheckDao {
                 + "   AND vl.account_code = x.account_code) AS ledger_net "
                 + "FROM ("
                 + " SELECT '1122' AS account_code, COALESCE(SUM(ar.amount - ar.settled_amount),0) AS detail_net "
-                + " FROM accounts_receivable ar WHERE ar.tenant_id = 0 "
+                + " FROM accounts_receivable ar WHERE ar.tenant_id = 0 AND ar.status IN ('OPEN','PARTIAL') "
                 + " UNION ALL SELECT '220202', -COALESCE(SUM(ap.amount - ap.settled_amount),0) "
-                + " FROM accounts_payable ap WHERE ap.tenant_id = 0 "
+                + " FROM accounts_payable ap WHERE ap.tenant_id = 0 AND ap.status IN ('OPEN','PARTIAL') "
                 + " UNION ALL SELECT '1122', 0 FROM voucher_line WHERE tenant_id = 0 AND account_code = '1122'"
                 + " UNION ALL SELECT '220202', 0 FROM voucher_line WHERE tenant_id = 0 AND account_code = '220202'"
                 + ") x GROUP BY x.account_code ORDER BY x.account_code", (rs, n) -> new GlDetailRow(rs.getString("account_code"),

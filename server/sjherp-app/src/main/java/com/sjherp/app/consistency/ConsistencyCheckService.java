@@ -161,13 +161,7 @@ public class ConsistencyCheckService {
             }
         }
         for (VoucherBalanceRow row : dao.voucherBalanceMatches()) {
-            if (row.lineCount() < 2 || row.invalidLineCount() > 0
-                    || row.debitSum().compareTo(row.creditSum()) != 0
-                    || row.debitSum().compareTo(row.headerTotal()) != 0) {
-                breaks.add(ConsistencyBreak.of(ConsistencyCheckType.VOUCHER_BALANCE, row.voucherNo(),
-                        row.headerTotal(), row.debitSum(), ConsistencySeverity.ERROR,
-                        "凭证行约束/借贷/表头金额不一致：" + row.voucherNo()));
-            }
+            checkVoucherBalance(row).ifPresent(breaks::add);
         }
         for (AuditIntegrityRow row : dao.auditIntegrityMatches()) {
             if (row.auditCount() == 0) {
@@ -178,6 +172,17 @@ public class ConsistencyCheckService {
         }
 
         return new ConsistencyReport(clock.instant(), breaks);
+    }
+
+    static java.util.Optional<ConsistencyBreak> checkVoucherBalance(VoucherBalanceRow row) {
+        if (row.lineCount() < 2 || row.invalidLineCount() > 0
+                || row.debitSum().compareTo(row.creditSum()) != 0
+                || row.debitSum().compareTo(row.headerTotal()) != 0) {
+            return java.util.Optional.of(ConsistencyBreak.of(ConsistencyCheckType.VOUCHER_BALANCE,
+                    row.voucherNo(), row.headerTotal(), row.debitSum(), ConsistencySeverity.ERROR,
+                    "凭证行约束/借贷/表头金额不一致：" + row.voucherNo()));
+        }
+        return java.util.Optional.empty();
     }
 
     // ===============================================================
