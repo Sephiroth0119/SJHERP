@@ -5,6 +5,7 @@ import java.util.Optional;
 
 public interface GapIssueCandidateRepository {
     GapIssueCandidate upsert(GapIssueCandidate candidate);
+    void addSources(long candidateId, List<String> gapNos);
     List<GapIssueCandidate> findAll();
     Optional<GapIssueCandidate> findById(long id);
     boolean claimForSend(long id);

@@ -8,7 +8,7 @@ import com.sjherp.domain.gap.*;
 
 @RestController
 @RequestMapping("/api/gap-issues")
-@PreAuthorize("hasAnyRole('ADMIN','BOSS')")
+@PreAuthorize("@perm.has('gap:issue')")
 public class GapIssueController {
     private final GapIssueService service;
     public GapIssueController(GapIssueService service){this.service=service;}
