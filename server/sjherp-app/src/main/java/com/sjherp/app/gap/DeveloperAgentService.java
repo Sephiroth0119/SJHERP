@@ -21,7 +21,7 @@ public class DeveloperAgentService {
     private final DeveloperAgentFailureService failureService;
 
     @Autowired
-    public DeveloperAgentService(GapIssueCandidateRepository candidates,
+    DeveloperAgentService(GapIssueCandidateRepository candidates,
                                  DeveloperAgentTaskRepository tasks,
                                  GapRecordRepository gaps,
                                  GapRecordService gapService,
