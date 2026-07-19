@@ -14,7 +14,7 @@ class RestGitHubIssueClientTest {
     @AfterEach void stop(){if(server!=null)server.stop(0);}
     @Test void createAndFindByTraceMarker使用结构化HTTP契约() throws Exception {
         server=HttpServer.create(new InetSocketAddress(0),0);
-        server.createContext("/repos/acme/demo/issues", exchange->{
+        server.createContext("/", exchange->{
             String body="POST".equals(exchange.getRequestMethod())?"{\"number\":7,\"html_url\":\"http://issue/7\"}":"[{\"number\":7,\"html_url\":\"http://issue/7\",\"body\":\"SJHERP-GAP-TRACE:key\"}]";
             exchange.sendResponseHeaders(200,body.getBytes().length); try(var out=exchange.getResponseBody()){out.write(body.getBytes());}
         }); server.start();

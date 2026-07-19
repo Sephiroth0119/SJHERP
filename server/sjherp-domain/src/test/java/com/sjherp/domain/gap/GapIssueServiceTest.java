@@ -18,7 +18,7 @@ class GapIssueServiceTest {
         assertThat(gaps.pages).isEqualTo(1);
     }
     @Test void 外部关闭且不调用客户端() {
-        FakeCandidates out = new FakeCandidates(); out.value = new GapIssueCandidate(1,"k","k",BusinessModule.GENERAL,GapSeverity.LOW,"t",List.of("s"),"e","m",List.of("GAP-1"),GapIssueStatus.APPROVED,null,null);
+        FakeCandidates out = new FakeCandidates(); out.value = new GapIssueCandidate(1,"k","k",BusinessModule.GENERAL,GapSeverity.LOW,"t",List.of("s"),"e","m",List.of("GAP-1"),GapIssueStatus.APPROVED,null,null,null,null,null,0,null,null,null);
         var client = new SafeClient();
         assertThatThrownBy(() -> new GapIssueService(new FakeGaps(),out,client,false).deliver(1)).isInstanceOf(IllegalStateException.class);
         assertThat(client.created).isFalse();
@@ -26,6 +26,6 @@ class GapIssueServiceTest {
     static final class FakeGaps implements GapRecordRepository { final List<GapRecord> rows=new ArrayList<>(); int pages;
         public void save(GapRecord r){} public Optional<GapRecord> findById(long id){return Optional.empty();}
         public PageResult<GapRecord> search(GapRecordQuery q){pages++; int from=(q.page()-1)*q.size(); if(from>=rows.size()) return new PageResult<>(List.of(),rows.size(),q.page(),q.size()); return new PageResult<>(rows.subList(from,rows.size()),rows.size(),q.page(),q.size());}}
-    static final class FakeCandidates implements GapIssueCandidateRepository { GapIssueCandidate value; public GapIssueCandidate upsert(GapIssueCandidate c){value=new GapIssueCandidate(1,c.idempotencyKey(),c.clusterKey(),c.businessModule(),c.severity(),c.title(),c.scenarioSamples(),c.expectedBehavior(),c.missingCapability(),c.sourceGapNos(),c.status(),null,null);return value;} public void addSources(long id,List<String> n){} public List<GapIssueCandidate> findAll(){return List.of(value);} public Optional<GapIssueCandidate> findById(long id){return Optional.ofNullable(value);} public boolean claimForSend(long id){return true;} public void markApproved(long id,String o){} public void markSent(long i,long n,String u){} public void markFailed(long i,String t){}}
+    static final class FakeCandidates implements GapIssueCandidateRepository { GapIssueCandidate value; public GapIssueCandidate upsert(GapIssueCandidate c){value=c;return value;} public void addSources(long id,List<String> n){} public int reclaimExpiredSending(java.time.Instant t){return 0;} public List<GapIssueCandidate> findAll(){return List.of(value);} public Optional<GapIssueCandidate> findById(long id){return Optional.ofNullable(value);} public boolean claimForSend(long id){return true;} public void markApproved(long id,String o){} public void markSent(long i,long n,String u){} public void markFailed(long i,String t){}}
     static final class SafeClient implements GitHubIssueClient { boolean created; public IssueResponse create(IssueRequest r){created=true; return new IssueResponse(1,"url");} public Optional<IssueResponse> findByTraceMarker(String m){return Optional.empty();}}
 }
