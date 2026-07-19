@@ -34,22 +34,40 @@ public class ConsistencyCheckRunner {
     private final ConsistencyRuleRegistry registry;
     private final DocumentNumberGenerator numberGenerator;
     private final ConsistencyRunPersistenceService persistence;
+    private final ConsistencyProactiveChannel proactiveChannel;
     private final Clock clock;
+
+    /** 兼容无主动通道的单元测试/离线装配；运行时由 Spring 使用下方全参构造器。 */
+    public ConsistencyCheckRunner(ConsistencyRuleRegistry registry,
+                                  DocumentNumberGenerator numberGenerator,
+                                  ConsistencyRunPersistenceService persistence) {
+        this(registry, numberGenerator, persistence, Clock.systemUTC(), run -> { });
+    }
 
     @Autowired
     public ConsistencyCheckRunner(ConsistencyRuleRegistry registry,
                                   DocumentNumberGenerator numberGenerator,
-                                  ConsistencyRunPersistenceService persistence) {
-        this(registry, numberGenerator, persistence, Clock.systemUTC());
+                                  ConsistencyRunPersistenceService persistence,
+                                  ConsistencyProactiveChannel proactiveChannel) {
+        this(registry, numberGenerator, persistence, Clock.systemUTC(), proactiveChannel);
     }
 
     ConsistencyCheckRunner(ConsistencyRuleRegistry registry,
                            DocumentNumberGenerator numberGenerator,
                            ConsistencyRunPersistenceService persistence,
                            Clock clock) {
+        this(registry, numberGenerator, persistence, clock, run -> { });
+    }
+
+    ConsistencyCheckRunner(ConsistencyRuleRegistry registry,
+                           DocumentNumberGenerator numberGenerator,
+                           ConsistencyRunPersistenceService persistence,
+                           Clock clock,
+                           ConsistencyProactiveChannel proactiveChannel) {
         this.registry = Objects.requireNonNull(registry, "registry 不能为空");
         this.numberGenerator = Objects.requireNonNull(numberGenerator, "numberGenerator 不能为空");
         this.persistence = Objects.requireNonNull(persistence, "persistence 不能为空");
+        this.proactiveChannel = Objects.requireNonNull(proactiveChannel, "proactiveChannel 不能为空");
         this.clock = Objects.requireNonNull(clock, "clock 不能为空");
     }
 
@@ -106,7 +124,20 @@ public class ConsistencyCheckRunner {
                     TENANT_ID, runNo, triggerType, checkedRequestedBy, startedAt, Instant.now(clock),
                     PERSISTENCE_FAILURE_TYPE);
         }
+        pushP0(completed);
         return completed;
+    }
+
+    private void pushP0(ConsistencyCheckRun run) {
+        if (run.errorCount() == 0) {
+            return;
+        }
+        try {
+            proactiveChannel.send(run);
+        } catch (RuntimeException channelFailure) {
+            log.warn("一致性 P0 主动会话推送失败，报告仍已保存（channelFailureType={}）",
+                    channelFailure.getClass().getSimpleName());
+        }
     }
 
     private AnalysisOutcome runLlmRules(ConsistencyRule.Context context) {
