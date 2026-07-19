@@ -41,17 +41,19 @@ public class ClosureFeedbackService {
             if (gap.getStatus() != GapStatus.IN_DEVELOPMENT && gap.getStatus() != GapStatus.RESOLVED) throw new GapIssueStateException("source gap is not in development");
         }
         for (GapRecord gap : source) if (gap.getStatus() == GapStatus.IN_DEVELOPMENT) { gap.transitionTo(GapStatus.RESOLVED, evidence.operator()); gaps.save(gap); }
-        if (memory != null) {
-            LinkedHashMap<String,String> facts = new LinkedHashMap<>();
-            facts.put("task", String.valueOf(taskId)); facts.put("candidate", candidate.idempotencyKey()); facts.put("gaps", String.join(",", candidate.sourceGapNos())); facts.put("evidence", evidence.reference()); facts.put("solution", evidence.summary());
-            memory.approveAndWrite(new StructuredMemoryCandidate(MemoryType.GAP_SOLUTION, candidate.title(), facts, MemoryWriteSource.GAP_RECORD, "task:" + taskId, source.stream().findFirst().map(GapRecord::getSessionId).orElse(null), false), evidence.operator());
-        }
+        LinkedHashMap<String,String> facts = new LinkedHashMap<>();
+        facts.put("task", String.valueOf(taskId)); facts.put("candidate", candidate.idempotencyKey()); facts.put("gaps", String.join(",", candidate.sourceGapNos())); facts.put("evidence", evidence.reference()); facts.put("solution", evidence.summary());
+        String sourceRef = "task:" + taskId + "|candidate:" + candidate.idempotencyKey()
+                + "|gaps:" + String.join(",", candidate.sourceGapNos());
+        memory.approveAndWrite(new StructuredMemoryCandidate(MemoryType.GAP_SOLUTION, candidate.title(), facts,
+                MemoryWriteSource.GAP_RECORD, sourceRef.substring(0, Math.min(128, sourceRef.length())),
+                source.stream().findFirst().map(GapRecord::getSessionId).orElse(null), false), evidence.operator());
         LinkedHashSet<Long> recipients = new LinkedHashSet<>();
         for (GapRecord gap : source) {
             if (gap.getSessionId() != null) sessions.findById(gap.getSessionId()).ifPresent(s -> addUser(recipients, s.getUserId()));
             else addUser(recipients, gap.getReporter());
         }
-        for (Long recipient : recipients) if (!notifications.existsBySource(0, recipient, SystemNotification.SourceType.GAP_CLOSURE, "task:" + taskId)) notifications.save(SystemNotification.create(0, recipient, SystemNotification.Category.GAP_CLOSURE, SystemNotification.Severity.INFO, "缺口已解决", evidence.summary(), SystemNotification.SourceType.GAP_CLOSURE, "task:" + taskId, java.time.Instant.now()));
+        for (Long recipient : recipients) notifications.saveIfAbsent(SystemNotification.create(0, recipient, SystemNotification.Category.GAP_CLOSURE, SystemNotification.Severity.INFO, "缺口已解决", evidence.summary(), SystemNotification.SourceType.GAP_CLOSURE, "task:" + taskId, java.time.Instant.now()));
     }
     private static void addUser(LinkedHashSet<Long> recipients, String v) { try { if (v != null && Long.parseLong(v) > 0) recipients.add(Long.parseLong(v)); } catch (RuntimeException ignored) { } }
 }

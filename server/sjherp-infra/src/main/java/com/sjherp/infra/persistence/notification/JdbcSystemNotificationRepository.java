@@ -57,6 +57,20 @@ public class JdbcSystemNotificationRepository implements SystemNotificationRepos
     }
 
     @Override
+    public boolean saveIfAbsent(SystemNotification notification) {
+        Objects.requireNonNull(notification, "notification must not be null");
+        return jdbc.update("""
+                INSERT IGNORE INTO system_notification (
+                    tenant_id, recipient_user_id, category, severity, title, content,
+                    source_type, source_ref, read_at, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, notification.tenantId(), notification.recipientUserId(),
+                notification.category().name(), notification.severity().name(), notification.title(),
+                notification.content(), notification.sourceType().name(), notification.sourceRef(),
+                toDbNullable(notification.readAt()), toDb(notification.createdAt())) == 1;
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public PageResult<SystemNotification> searchForRecipient(long tenantId, long recipientUserId,
                                                                SystemNotificationQuery query) {
