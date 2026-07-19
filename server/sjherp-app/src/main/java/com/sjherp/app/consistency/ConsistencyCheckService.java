@@ -161,17 +161,19 @@ public class ConsistencyCheckService {
             }
         }
         for (VoucherBalanceRow row : dao.voucherBalanceMatches()) {
-            if (row.debitSum().compareTo(row.creditSum()) != 0) {
+            if (row.lineCount() < 2 || row.invalidLineCount() > 0
+                    || row.debitSum().compareTo(row.creditSum()) != 0
+                    || row.debitSum().compareTo(row.headerTotal()) != 0) {
                 breaks.add(ConsistencyBreak.of(ConsistencyCheckType.VOUCHER_BALANCE, row.voucherNo(),
-                        row.debitSum(), row.creditSum(), ConsistencySeverity.ERROR,
-                        "凭证借贷不平衡：" + row.voucherNo()));
+                        row.headerTotal(), row.debitSum(), ConsistencySeverity.ERROR,
+                        "凭证行约束/借贷/表头金额不一致：" + row.voucherNo()));
             }
         }
         for (AuditIntegrityRow row : dao.auditIntegrityMatches()) {
             if (row.auditCount() == 0) {
-                breaks.add(ConsistencyBreak.of(ConsistencyCheckType.AUDIT_INTEGRITY, row.targetCode(),
+                breaks.add(ConsistencyBreak.of(ConsistencyCheckType.AUDIT_INTEGRITY, row.voucherNo(),
                         BigDecimal.ONE, BigDecimal.ZERO, ConsistencySeverity.ERROR,
-                        "已过账凭证缺少审计记录：" + row.targetCode()));
+                        "已过账凭证缺少匹配的状态/动作审计记录：" + row.voucherNo()));
             }
         }
 

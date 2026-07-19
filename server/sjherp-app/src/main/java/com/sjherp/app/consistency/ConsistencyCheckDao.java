@@ -142,8 +142,9 @@ public class ConsistencyCheckDao {
 
     /** 控制科目（1122/220202）与 AR/AP 未核销余额的真实勾稽。 */
     public record GlDetailRow(String accountCode, BigDecimal detailNet, BigDecimal ledgerNet) {}
-    public record VoucherBalanceRow(String voucherNo, BigDecimal debitSum, BigDecimal creditSum) {}
-    public record AuditIntegrityRow(String targetType, String targetCode, String requiredAction,
+    public record VoucherBalanceRow(String voucherNo, BigDecimal debitSum, BigDecimal creditSum,
+                                    BigDecimal headerTotal, long lineCount, long invalidLineCount) {}
+    public record AuditIntegrityRow(String voucherNo, String status, String reversalOfNo,
                                     long auditCount) {}
 
     private static final RowMapper<InventoryLedgerRow> LEDGER_MAPPER = (rs, n) -> new InventoryLedgerRow(
@@ -620,23 +621,27 @@ public class ConsistencyCheckDao {
     @Transactional(readOnly = true)
     public List<VoucherBalanceRow> voucherBalanceMatches() {
         return jdbc.query("SELECT v.doc_no, COALESCE(SUM(vl.debit),0) debit_sum, "
-                + "COALESCE(SUM(vl.credit),0) credit_sum FROM voucher v "
+                + "COALESCE(SUM(vl.credit),0) credit_sum, v.total_amount, COUNT(vl.id) line_count, "
+                + "COALESCE(SUM(CASE WHEN vl.id IS NOT NULL AND (vl.debit < 0 OR vl.credit < 0 "
+                + "OR (vl.debit = 0 AND vl.credit = 0) OR (vl.debit > 0 AND vl.credit > 0)) THEN 1 ELSE 0 END),0) invalid_line_count FROM voucher v "
                 + "LEFT JOIN voucher_line vl ON vl.tenant_id = v.tenant_id AND vl.voucher_id = v.id "
                 + "WHERE v.tenant_id = 0 AND v.status IN ('APPROVED','REVERSED') "
-                + "GROUP BY v.id, v.doc_no ORDER BY v.id", (rs, n) -> new VoucherBalanceRow(
-                        rs.getString("doc_no"), nz(rs.getBigDecimal("debit_sum")), nz(rs.getBigDecimal("credit_sum"))));
+                + "GROUP BY v.id, v.doc_no, v.total_amount ORDER BY v.id", (rs, n) -> new VoucherBalanceRow(
+                        rs.getString("doc_no"), nz(rs.getBigDecimal("debit_sum")), nz(rs.getBigDecimal("credit_sum")),
+                        nz(rs.getBigDecimal("total_amount")), rs.getLong("line_count"), rs.getLong("invalid_line_count")));
     }
 
     @Transactional(readOnly = true)
     public List<AuditIntegrityRow> auditIntegrityMatches() {
-        return jdbc.query("SELECT v.doc_no AS target_code, 'voucher' AS target_type, "
-                + "'voucher.post' AS required_action, COUNT(a.id) AS audit_count FROM voucher v "
-                + "LEFT JOIN audit_log a ON a.tenant_id = v.tenant_id AND a.target_type = 'voucher' "
-                + " AND a.target_code = v.doc_no AND a.action IN ('voucher.post','document.status_changed') "
-                + "WHERE v.tenant_id = 0 AND v.status IN ('APPROVED','REVERSED') "
-                + "GROUP BY v.id, v.doc_no ORDER BY v.id", (rs, n) -> new AuditIntegrityRow(
-                        rs.getString("target_type"), rs.getString("target_code"),
-                        rs.getString("required_action"), rs.getLong("audit_count")));
+        return jdbc.query("SELECT v.doc_no, v.status, v.reversal_of_id, "
+                + "(SELECT COUNT(*) FROM audit_log a WHERE a.tenant_id = v.tenant_id AND "
+                + "((v.status = 'APPROVED' AND v.reversal_of_id IS NULL AND a.target_type='voucher' AND a.target_code=v.doc_no AND a.action='voucher.post') "
+                + " OR (v.status = 'APPROVED' AND v.reversal_of_id IS NOT NULL AND ((a.target_type='voucher' AND a.target_code=v.doc_no AND a.action='voucher.reverse') "
+                + " OR (a.target_type='document' AND a.target_code=v.doc_no AND a.action='document.status_changed'))) "
+                + " OR (v.status = 'REVERSED' AND ((a.target_type='voucher' AND a.target_code=v.doc_no AND a.action='voucher.reverse') "
+                + " OR (a.target_type='document' AND a.target_code=v.doc_no AND a.action='document.status_changed'))))) audit_count "
+                + "FROM voucher v WHERE v.tenant_id=0 AND v.status IN ('APPROVED','REVERSED') ORDER BY v.id", (rs, n) -> new AuditIntegrityRow(
+                        rs.getString("doc_no"), rs.getString("status"), rs.getString("reversal_of_id"), rs.getLong("audit_count")));
     }
 
     /** 将 SQL 聚合中的 NULL 统一收敛为零。 */
