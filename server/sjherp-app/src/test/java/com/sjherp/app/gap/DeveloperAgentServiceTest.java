@@ -5,12 +5,15 @@ import static org.mockito.Mockito.*;
 import com.sjherp.domain.gap.*;
 import java.util.*;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 
 class DeveloperAgentServiceTest {
     @Test void runnerIsOutsideTransactionAndEvidenceIsForwardedToCas() {
         var candidates=mock(GapIssueCandidateRepository.class); var tasks=mock(DeveloperAgentTaskRepository.class); var runner=mock(DeveloperAgentRunner.class);
         when(runner.available()).thenReturn(true);
-        when(candidates.findById(2)).thenReturn(Optional.of(new GapIssueCandidate(2,"k","k",BusinessModule.GENERAL,GapSeverity.LOW,"title",List.of("scenario"),"expected","missing",List.of("GAP-1"),GapIssueStatus.SENT,1L,"https://issue",null,null,null,0,null,null,null)));
+        GapIssueCandidate before = new GapIssueCandidate(2,"k","k",BusinessModule.GENERAL,GapSeverity.LOW,"old",List.of("scenario"),"expected","missing",List.of("GAP-1"),GapIssueStatus.SENT,1L,"https://issue",null,null,null,0,null,null,null);
+        GapIssueCandidate after = new GapIssueCandidate(2,"k","k",BusinessModule.GENERAL,GapSeverity.LOW,"new",List.of("scenario"),"expected","missing",List.of("GAP-1"),GapIssueStatus.SENT,2L,"https://issue",null,null,null,0,null,null,null);
+        when(candidates.findById(2)).thenReturn(Optional.of(before), Optional.of(after));
         when(tasks.claim(eq(9L), any())).thenReturn(Optional.of("lease-1"));
         when(tasks.findById(9)).thenReturn(Optional.of(task(9, DeveloperAgentTaskStatus.RUNNING)));
         when(runner.run(any(DeveloperAgentRunner.RunRequest.class))).thenAnswer(invocation -> { org.assertj.core.api.Assertions.assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse(); return new DeveloperAgentRunner.Result(List.of("code.java","test.java"),true,true,true,"ci://run/9","ok"); });
@@ -18,9 +21,27 @@ class DeveloperAgentServiceTest {
         service.run(9,"admin");
         var request=org.mockito.ArgumentCaptor.forClass(DeveloperAgentRunner.RunRequest.class);
         verify(runner).run(request.capture());
-        org.assertj.core.api.Assertions.assertThat(request.getValue().candidate().issueNumber()).isEqualTo(1L);
+        org.assertj.core.api.Assertions.assertThat(request.getValue().candidate().issueNumber()).isEqualTo(2L);
+        InOrder order = inOrder(candidates, tasks);
+        order.verify(candidates).findById(2);
+        order.verify(tasks).claim(eq(9L), any());
+        order.verify(candidates).findById(2);
         verify(tasks).transition(eq(9L),eq(DeveloperAgentTaskStatus.RUNNING),eq(DeveloperAgentTaskStatus.TESTING),eq("lease-1"),anyList(),eq(true),eq(false),eq(false),isNull(),eq("ok"));
         verify(tasks).transition(eq(9L),eq(DeveloperAgentTaskStatus.TESTING),eq(DeveloperAgentTaskStatus.AWAITING_REVIEW),eq("lease-1"),anyList(),eq(true),eq(true),eq(true),eq("ci://run/9"),eq("ok"));
+    }
+    @Test void runMapsRepositoryStateErrorsToConflictException() {
+        GapIssueCandidateRepository candidates = mock(GapIssueCandidateRepository.class);
+        when(candidates.findById(2)).thenReturn(Optional.of(candidate(GapIssueStatus.SENT)));
+        DeveloperAgentTaskRepository tasks = mock(DeveloperAgentTaskRepository.class);
+        when(tasks.claim(eq(9L), any())).thenReturn(Optional.of("lease-1"));
+        when(tasks.findById(9)).thenReturn(Optional.of(task(9, DeveloperAgentTaskStatus.RUNNING)));
+        doThrow(new IllegalStateException("stale" )).when(tasks).transition(anyLong(), any(), any(), anyString(), anyList(), anyBoolean(), anyBoolean(), anyBoolean(), any(), any());
+        DeveloperAgentRunner runner = mock(DeveloperAgentRunner.class);
+        when(runner.available()).thenReturn(true);
+        when(runner.run(any())).thenReturn(new DeveloperAgentRunner.Result(List.of("code.java"), true, true, true, "ci://1", "out"));
+        var service = new DeveloperAgentService(candidates, tasks,
+                mock(GapRecordRepository.class), mock(GapRecordService.class), runner, mock(WorkspacePolicy.class));
+        assertThatThrownBy(() -> service.run(9, "admin")).isInstanceOf(DeveloperAgentTaskStateException.class);
     }
     @Test void startRejectsCandidateThatWasNotSent() {
         GapIssueCandidateRepository candidates=mock(GapIssueCandidateRepository.class);

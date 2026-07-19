@@ -18,7 +18,9 @@ class JdbcDeveloperAgentTaskRepositoryIntegrationTest extends MySqlContainerTest
         DeveloperAgentTask first=tasks.createIfAbsent(initial,"boss");
         assertThat(tasks.createIfAbsent(initial,"boss").id()).isEqualTo(first.id());
         String lease=tasks.claim(first.id(),Instant.now()).orElseThrow();
-        assertThat(tasks.findById(first.id()).orElseThrow().status()).isEqualTo(DeveloperAgentTaskStatus.RUNNING);
+        DeveloperAgentTask claimed = tasks.findById(first.id()).orElseThrow();
+        assertThat(claimed.status()).isEqualTo(DeveloperAgentTaskStatus.RUNNING);
+        assertThat(claimed.generatedArtifacts()).isEmpty();
         assertThat(tasks.claim(first.id(),Instant.now())).isEmpty();
         assertThatThrownBy(()->tasks.approve(first.id(),"boss")).isInstanceOf(IllegalStateException.class);
         tasks.transition(first.id(),DeveloperAgentTaskStatus.RUNNING,DeveloperAgentTaskStatus.TESTING,lease,List.of("code.java","test.java"),true,false,false,null,"running"); assertThat(tasks.findById(first.id()).orElseThrow().runnerOutputSummary()).isEqualTo("running");
@@ -31,8 +33,15 @@ class JdbcDeveloperAgentTaskRepositoryIntegrationTest extends MySqlContainerTest
     @Test void foreignCandidateAndStaleFailureAreRejectedAndAttemptsAreBounded(){
         assertThatThrownBy(()->tasks.createIfAbsent(task(999999,"fk-"+uniqueSuffix()),"boss")).isInstanceOf(Exception.class);
         GapIssueCandidate c=candidates.upsert(candidate("attempt-"+uniqueSuffix())); DeveloperAgentTask t=tasks.createIfAbsent(task(c.id(),"attempt-key-"+uniqueSuffix()),"boss");
-        String lease=tasks.claim(t.id(),Instant.now()).orElseThrow(); assertThatThrownBy(()->tasks.markFailed(t.id(),DeveloperAgentTaskStatus.RUNNING,"stale","X","bad")).isInstanceOf(IllegalStateException.class); tasks.markFailed(t.id(),DeveloperAgentTaskStatus.RUNNING,lease,"X","bad");
-        for(int i=0;i<2;i++){String next=tasks.claim(t.id(),Instant.now()).orElseThrow();tasks.markFailed(t.id(),DeveloperAgentTaskStatus.RUNNING,next,"X","bad");} assertThat(tasks.claim(t.id(),Instant.now())).isEmpty();
+        String lease=tasks.claim(t.id(),Instant.now()).orElseThrow();
+        assertThatThrownBy(() -> tasks.markFailed(t.id(),DeveloperAgentTaskStatus.RUNNING,"stale","X","bad"))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(tasks.findById(t.id()).orElseThrow().leaseToken()).isEqualTo(lease);
+        tasks.markFailed(t.id(),DeveloperAgentTaskStatus.RUNNING,lease,"X","bad");
+        assertThat(tasks.findById(t.id()).orElseThrow().failureSummary()).isEqualTo("bad");
+        for(int i=0;i<2;i++){String next=tasks.claim(t.id(),Instant.now()).orElseThrow();tasks.markFailed(t.id(),DeveloperAgentTaskStatus.RUNNING,next,"X","bad");}
+        assertThat(tasks.findById(t.id()).orElseThrow().attemptCount()).isEqualTo(3);
+        assertThat(tasks.claim(t.id(),Instant.now())).isEmpty();
     }
 
     @Test void runningAndTestingLeasesAreReclaimedWithFailureEvidence(){
