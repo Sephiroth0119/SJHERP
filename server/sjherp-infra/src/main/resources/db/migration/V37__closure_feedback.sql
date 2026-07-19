@@ -1,3 +1,6 @@
+ALTER TABLE developer_agent_task
+    ADD UNIQUE KEY uk_developer_task_tenant_id (tenant_id, id);
+
 CREATE TABLE closure_feedback (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     tenant_id BIGINT NOT NULL DEFAULT 0,
