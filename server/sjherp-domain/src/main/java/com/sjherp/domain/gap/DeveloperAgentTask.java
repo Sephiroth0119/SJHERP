@@ -17,7 +17,7 @@ public record DeveloperAgentTask(
         requireText(workspacePath, "workspacePath");
         requireText(runnerKind, "runnerKind");
         if (attemptCount < 0) throw new IllegalArgumentException("attemptCount must not be negative");
-        if (generatedArtifacts == null || (status != DeveloperAgentTaskStatus.QUEUED && generatedArtifacts.isEmpty())) throw new IllegalArgumentException("generated artifacts required after queue");
+        if (generatedArtifacts == null || ((status == DeveloperAgentTaskStatus.TESTING || status == DeveloperAgentTaskStatus.AWAITING_REVIEW || status == DeveloperAgentTaskStatus.APPROVED) && generatedArtifacts.isEmpty())) throw new IllegalArgumentException("generated artifacts required after testing");
         generatedArtifacts = java.util.List.copyOf(generatedArtifacts);
     }
 
