@@ -109,8 +109,8 @@ import com.sjherp.domain.warehouse.WarehouseService;
  * + M4-T07b 采购/销售单据冲销 Agent 工具
  * + M4-T07c 收付款单/调拨单/盘点单冲销 Agent 工具
  * + M4-T08 财务只读查询工具），
- * <b>常驻注册</b> 70 个（所有 profile 生效，区别于
- * dev-only 的演示工具 {@link ToolConfig.DemoToolConfig} 2 个）。
+ * <b>常驻注册</b> 70 个（37 个 NORMAL 查询 + 1 个 NORMAL 建档 + 32 个 HIGH 写工具，
+ * 所有 profile 生效，区别于 dev-only 的演示工具 {@link ToolConfig.DemoToolConfig} 2 个）。
  * 生产模块 26 个工具独立装配在 {@link ProductionToolConfig}（设计 D-6），同样常驻；
  * 全量常驻 70+26=96，含演示 96+2=98。完整清单见 docs/领域工具清单.md。
  *
@@ -120,6 +120,7 @@ import com.sjherp.domain.warehouse.WarehouseService;
  * query_stock_count / query_transfer / query_purchase_order / query_sales_order /
  * query_purchase_receipt / query_purchase_invoice / query_payables /
  * query_sales_delivery / query_sales_invoice / query_receivables / run_consistency_check /
+ * query_consistency_report（M6-T07，历史报告只读召回与解释）/
  * search_payment_accounts / query_collection_receipts / query_payment_disbursements /
  * precheck_period_close（M4-T05，关账可行性预检，只读）/
  * query_receivable_aging / query_payable_aging（M4-T08，账龄报告，finance:settlement）/
@@ -128,7 +129,7 @@ import com.sjherp.domain.warehouse.WarehouseService;
  * query_receivable_settlements / query_payable_settlements（M4-T08，核销流水，finance:settlement）；
  * 建档类（NORMAL）1 个：create_payment_account（M4-T04a，
  * glAccountCode 须为末级启用 GL 科目）；
- * 写类（HIGH，框架强制确认卡片）39 个：create_customer / create_supplier /
+ * 写类（HIGH，框架强制确认卡片）32 个：create_customer / create_supplier /
  * create_product / create_warehouse / adjust_inventory / create_stock_count /
  * create_transfer / create_purchase_order / create_sales_order + M3-T11 采购线
  * （approve_purchase_order / create·approve·post_purchase_receipt /

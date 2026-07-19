@@ -38,9 +38,9 @@ public class ConsistencyCheckRunner {
     private final Clock clock;
 
     /** 兼容无主动通道的单元测试/离线装配；运行时由 Spring 使用下方全参构造器。 */
-    public ConsistencyCheckRunner(ConsistencyRuleRegistry registry,
-                                  DocumentNumberGenerator numberGenerator,
-                                  ConsistencyRunPersistenceService persistence) {
+    ConsistencyCheckRunner(ConsistencyRuleRegistry registry,
+                           DocumentNumberGenerator numberGenerator,
+                           ConsistencyRunPersistenceService persistence) {
         this(registry, numberGenerator, persistence, Clock.systemUTC(), run -> { });
     }
 

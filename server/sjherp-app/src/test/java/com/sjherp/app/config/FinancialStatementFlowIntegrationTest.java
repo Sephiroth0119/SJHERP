@@ -242,7 +242,8 @@ class FinancialStatementFlowIntegrationTest {
         ConsistencyCheckRunner consistencyCheckRunner(ConsistencyCheckService service,
                 DocumentNumberGenerator numberGenerator, ConsistencyRunPersistenceService persistence) {
             ConsistencyRule core = new com.sjherp.app.consistency.CoreSqlAssertionRule(service);
-            return new ConsistencyCheckRunner(new ConsistencyRuleRegistry(List.of(core)), numberGenerator, persistence);
+            return new ConsistencyCheckRunner(new ConsistencyRuleRegistry(List.of(core)), numberGenerator,
+                    persistence, run -> { });
         }
 
         // 月末结转关账编排器（注入顺序同生产构造器）
