@@ -480,7 +480,8 @@ class FinancialStatementFlowIntegrationTest {
             assertThat(run.findings()).anyMatch(f -> f.checkType().equals(ConsistencyCheckType.GL_DETAIL.code()));
             assertThat(run.findings()).noneMatch(f -> f.checkType().equals(ConsistencyCheckType.VOUCHER_BALANCE.code()));
             assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM consistency_check_run WHERE run_no = ?", Long.class, run.runNo())).isEqualTo(1L);
-            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM consistency_check_break WHERE run_no = ?", Long.class, run.runNo())).isGreaterThan(0L);
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM consistency_check_break WHERE run_id = "
+                    + "(SELECT id FROM consistency_check_run WHERE run_no = ?)", Long.class, run.runNo())).isGreaterThan(0L);
         } finally {
             jdbc.update("UPDATE voucher_line SET debit = debit - 1.00 WHERE id = ?", controlLineId);
             jdbc.update("UPDATE voucher_line SET credit = credit - 1.00 WHERE id = ?", offsetLineId);
