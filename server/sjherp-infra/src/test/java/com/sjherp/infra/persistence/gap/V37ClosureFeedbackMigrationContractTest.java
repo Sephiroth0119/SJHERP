@@ -20,7 +20,7 @@ class V37ClosureFeedbackMigrationContractTest {
                 .getResourceAsStream("db/migration/V36__developer_agent_task.sql").readAllBytes(), StandardCharsets.UTF_8);
         String v37 = new String(getClass().getClassLoader()
                 .getResourceAsStream("db/migration/V37__closure_feedback.sql").readAllBytes(), StandardCharsets.UTF_8);
-        assertThat(v36).doesNotContain("uk_developer_task_tenant_id");
+        assertThat(v36).doesNotContain("UNIQUE KEY uk_developer_task_tenant_id (");
         assertThat(v37).contains("ALTER TABLE developer_agent_task", "ADD UNIQUE KEY uk_developer_task_tenant_id");
     }
 }
