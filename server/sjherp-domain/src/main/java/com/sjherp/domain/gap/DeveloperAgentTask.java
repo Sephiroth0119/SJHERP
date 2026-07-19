@@ -9,7 +9,7 @@ public record DeveloperAgentTask(
         String runnerKind, String leaseToken, int attemptCount,
         java.util.List<String> generatedArtifacts, boolean targetedTestsGreen,
         boolean fullTestsGreen, boolean ciGreen, String ciEvidence, boolean humanApproved,
-        String failureType, String failureSummary, String runnerOutputSummary) {
+        String failureType, String failureSummary, String runnerOutputSummary) implements com.sjherp.domain.common.audit.AuditTarget {
     public DeveloperAgentTask {
         if (candidateId <= 0) throw new IllegalArgumentException("candidateId must be positive");
         Objects.requireNonNull(status);
@@ -20,6 +20,15 @@ public record DeveloperAgentTask(
         if (attemptCount < 0) throw new IllegalArgumentException("attemptCount must not be negative");
         if (generatedArtifacts == null || ((status == DeveloperAgentTaskStatus.TESTING || status == DeveloperAgentTaskStatus.AWAITING_REVIEW || status == DeveloperAgentTaskStatus.APPROVED) && generatedArtifacts.isEmpty())) throw new IllegalArgumentException("generated artifacts required after testing");
         generatedArtifacts = java.util.List.copyOf(generatedArtifacts);
+    }
+
+    @Override public Long auditTargetId() { return id == 0 ? null : id; }
+    @Override public String auditTargetCode() { return idempotencyKey; }
+    @Override public String auditSummary() {
+        return "candidate=" + candidateId + ",status=" + status + ",attempt=" + attemptCount
+                + ",runner=" + runnerKind + ",gates=" + targetedTestsGreen + "/" + fullTestsGreen
+                + "/" + ciGreen + ",humanApproved=" + humanApproved + ",failureType="
+                + com.sjherp.domain.common.audit.AuditTarget.text(failureType);
     }
 
     public DeveloperAgentTask transitionTo(DeveloperAgentTaskStatus target) {
