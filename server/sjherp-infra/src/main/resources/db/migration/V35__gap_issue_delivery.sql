@@ -21,3 +21,12 @@ CREATE TABLE gap_issue_candidate (
     PRIMARY KEY (id), UNIQUE KEY uk_gap_issue_idem (idempotency_key),
     KEY idx_gap_issue_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE gap_issue_source (
+    candidate_id BIGINT UNSIGNED NOT NULL,
+    gap_no VARCHAR(32) NOT NULL,
+    created_at DATETIME(6) NOT NULL,
+    PRIMARY KEY (candidate_id, gap_no),
+    CONSTRAINT fk_gap_issue_source_candidate FOREIGN KEY (candidate_id)
+        REFERENCES gap_issue_candidate(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
