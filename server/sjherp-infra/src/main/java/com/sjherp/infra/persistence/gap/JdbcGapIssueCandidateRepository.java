@@ -15,22 +15,30 @@ public class JdbcGapIssueCandidateRepository implements GapIssueCandidateReposit
     private final JdbcTemplate jdbc; private final ObjectMapper json;
     public JdbcGapIssueCandidateRepository(JdbcTemplate jdbc,ObjectMapper json){this.jdbc=jdbc;this.json=json;}
     @Override public GapIssueCandidate upsert(GapIssueCandidate c){
-        String sql="INSERT INTO gap_issue_candidate(tenant_id,idempotency_key,cluster_key,business_module,severity,title,scenario_samples,expected_behavior,missing_capability,status,created_at,updated_at) VALUES(0,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE id=id";
+        String sql="INSERT INTO gap_issue_candidate(tenant_id,idempotency_key,cluster_key,business_module,severity,title,scenario_samples,expected_behavior,missing_capability,status,created_at,updated_at) VALUES(0,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)";
         jdbc.update(sql,c.idempotencyKey(),c.clusterKey(),c.businessModule().name(),c.severity().name(),c.title(),write(c.scenarioSamples()),c.expectedBehavior(),c.missingCapability(),c.status().name(),LocalDateTime.now(ZoneOffset.UTC),LocalDateTime.now(ZoneOffset.UTC));
-        return findByKey(c.idempotencyKey()).orElseThrow(); }
+        GapIssueCandidate current=jdbc.query("SELECT * FROM gap_issue_candidate WHERE tenant_id=0 AND idempotency_key=? FOR UPDATE",(rs,n)->map(rs),c.idempotencyKey()).stream().findFirst().orElseThrow();
+        if(current.status()==GapIssueStatus.PENDING || current.status()==GapIssueStatus.APPROVED || current.status()==GapIssueStatus.FAILED){
+            java.util.LinkedHashSet<String> samples=new java.util.LinkedHashSet<>(current.scenarioSamples());
+            samples.addAll(c.scenarioSamples());
+            java.util.List<String> merged=samples.stream().limit(20).toList();
+            jdbc.update("UPDATE gap_issue_candidate SET scenario_samples=?,updated_at=? WHERE tenant_id=0 AND id=? AND status IN ('PENDING','APPROVED','FAILED')",write(merged),LocalDateTime.now(ZoneOffset.UTC),current.id());
+        }
+        return findById(current.id()).orElseThrow(); }
     @Override public void addSources(long candidateId, List<String> gapNos) {
         for (String gapNo : gapNos) {
             jdbc.update("INSERT IGNORE INTO gap_issue_source(tenant_id,candidate_id,gap_no,created_at) VALUES(0,?,?,?)",
                     candidateId, gapNo, LocalDateTime.now(ZoneOffset.UTC));
         }
     }
-    private Optional<GapIssueCandidate> findByKey(String key){return jdbc.query("SELECT * FROM gap_issue_candidate WHERE idempotency_key=?",(rs,n)->map(rs),key).stream().findFirst();}
-    @Override public List<GapIssueCandidate> findAll(){return jdbc.query("SELECT * FROM gap_issue_candidate ORDER BY id",(rs,n)->map(rs));}
-    @Override public Optional<GapIssueCandidate> findById(long id){return jdbc.query("SELECT * FROM gap_issue_candidate WHERE id=?",(rs,n)->map(rs),id).stream().findFirst();}
+    private Optional<GapIssueCandidate> findByKey(String key){return jdbc.query("SELECT * FROM gap_issue_candidate WHERE tenant_id=0 AND idempotency_key=?",(rs,n)->map(rs),key).stream().findFirst();}
+    @Override public List<GapIssueCandidate> findAll(){return jdbc.query("SELECT * FROM gap_issue_candidate WHERE tenant_id=0 ORDER BY id",(rs,n)->map(rs));}
+    @Override public List<GapIssueCandidate> findDispatchable(int maxAttempts,int limit){return jdbc.query("SELECT * FROM gap_issue_candidate WHERE tenant_id=0 AND status IN ('PENDING','APPROVED','FAILED') AND attempt_count < ? ORDER BY id LIMIT ?",(rs,n)->map(rs),maxAttempts,limit);}
+    @Override public Optional<GapIssueCandidate> findById(long id){return jdbc.query("SELECT * FROM gap_issue_candidate WHERE tenant_id=0 AND id=?",(rs,n)->map(rs),id).stream().findFirst();}
     @Override public Optional<String> claimForSend(long id){String token=java.util.UUID.randomUUID().toString();int changed=jdbc.update("UPDATE gap_issue_candidate SET status='SENDING',attempt_count=attempt_count+1,sending_started_at=?,lease_token=?,updated_at=? WHERE tenant_id=0 AND id=? AND status IN ('APPROVED','FAILED') AND issue_number IS NULL",LocalDateTime.now(ZoneOffset.UTC),token,LocalDateTime.now(ZoneOffset.UTC),id);return changed==1?Optional.of(token):Optional.empty();}
-    @Override public int reclaimExpiredSending(java.time.Instant cutoff){return jdbc.update("UPDATE gap_issue_candidate SET status='FAILED',failure_type='LEASE_EXPIRED',updated_at=? WHERE status='SENDING' AND sending_started_at<?",LocalDateTime.now(ZoneOffset.UTC),LocalDateTime.ofInstant(cutoff,ZoneOffset.UTC));}
+    @Override public int reclaimExpiredSending(java.time.Instant cutoff){return jdbc.update("UPDATE gap_issue_candidate SET status='FAILED',failure_type='LEASE_EXPIRED',sending_started_at=NULL,lease_token=NULL,updated_at=? WHERE tenant_id=0 AND status='SENDING' AND sending_started_at<?",LocalDateTime.now(ZoneOffset.UTC),LocalDateTime.ofInstant(cutoff,ZoneOffset.UTC));}
     @Override public void markApproved(long id,String op){
-        int changed=jdbc.update("UPDATE gap_issue_candidate SET status='APPROVED',reviewed_by=?,reviewed_at=?,updated_at=? WHERE id=? AND status IN ('PENDING','FAILED')",op,LocalDateTime.now(ZoneOffset.UTC),LocalDateTime.now(ZoneOffset.UTC),id);
+        int changed=jdbc.update("UPDATE gap_issue_candidate SET status='APPROVED',reviewed_by=?,reviewed_at=?,updated_at=? WHERE tenant_id=0 AND id=? AND status IN ('PENDING','FAILED')",op,LocalDateTime.now(ZoneOffset.UTC),LocalDateTime.now(ZoneOffset.UTC),id);
         if(changed!=1) throw new IllegalStateException("候选不允许审核或已被并发处理");
     }
     @Override public void markSent(long id,String token,long no,String url){
