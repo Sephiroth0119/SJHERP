@@ -16,6 +16,7 @@ CREATE TABLE gap_issue_candidate (
     issue_url VARCHAR(500) NULL,
     failure_type VARCHAR(64) NULL,
     attempt_count INT NOT NULL DEFAULT 0,
+    sending_started_at DATETIME(6) NULL,
     created_at DATETIME(6) NOT NULL,
     updated_at DATETIME(6) NOT NULL,
     PRIMARY KEY (id), UNIQUE KEY uk_gap_issue_idem (idempotency_key),

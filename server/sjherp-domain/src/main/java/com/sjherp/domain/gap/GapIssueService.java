@@ -39,14 +39,15 @@ public class GapIssueService {
             var rows=e.getValue(); var first=rows.get(0);
             var sources=rows.stream().map(GapRecord::getGapNo).toList();
             var c=new GapIssueCandidate(0,e.getKey(),e.getKey(),first.getBusinessModule(),first.getSeverity(),first.getTitle(),
-                    rows.stream().map(GapRecord::getScenario).limit(20).toList(),first.getExpectedBehavior(),first.getMissingCapability(),sources,GapIssueStatus.PENDING,null,null);
+                    rows.stream().map(GapRecord::getScenario).limit(20).toList(),first.getExpectedBehavior(),first.getMissingCapability(),sources,GapIssueStatus.PENDING,null,null,null,null,null,0,null,null,null);
             var saved = candidates.upsert(c);
             candidates.addSources(saved.id(), sources);
-            result.add(saved);
+            result.add(candidates.findById(saved.id()).orElse(saved));
         }
         return result;
     }
     public List<GapIssueCandidate> list() { return candidates.findAll(); }
+    public int reclaimExpiredSending(java.time.Duration lease) { return candidates.reclaimExpiredSending(java.time.Instant.now().minus(lease)); }
     @Audited(action="gap.issue.review", targetType="gap_issue")
     public GapIssueCandidate approve(long id,String operator){ candidates.markApproved(id,operator); return candidates.findById(id).orElseThrow(); }
     @Audited(action="gap.issue.deliver", targetType="gap_issue")
