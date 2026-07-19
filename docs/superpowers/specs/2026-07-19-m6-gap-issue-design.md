@@ -12,7 +12,7 @@ GitHub 出站响应契约为 `IssueResponse(number, url, labels)`；`labels` 是
 
 ## 外部契约
 
-标题为 `[SJHERP][模块][严重度] <代表标题>`；标签为 `sjherp-gap`、模块名和严重度。正文固定包含场景样本、期望行为、缺失能力、来源 gap 编号与候选幂等键，保证可追溯。客户端只接受结构化 `IssueResponse(number,url)`。
+标题为 `[SJHERP][模块][严重度] <代表标题>`；标签为 `sjherp-gap`、模块名和严重度。正文固定包含场景样本、期望行为、缺失能力、来源 gap 编号与候选幂等键，保证可追溯。客户端只接受结构化 `IssueResponse(number,url,labels)`，并对返回的三个必备标签执行大小写无关的验收。
 
 ## 状态、幂等与失败
 
