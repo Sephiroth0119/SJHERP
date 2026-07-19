@@ -50,7 +50,7 @@ class DeveloperAgentServiceTest {
         when(candidates.findById(7)).thenReturn(Optional.of(candidate(GapIssueStatus.APPROVED)));
         DeveloperAgentService service=new DeveloperAgentService(candidates, tasks, mock(GapRecordRepository.class), mock(GapRecordService.class), mock(DeveloperAgentRunner.class), mock(WorkspacePolicy.class));
         assertThatThrownBy(()->service.start(7,"admin")).isInstanceOf(GapIssueStateException.class);
-        verifyNoInteractions(tasks);
+        verify(tasks, never()).createIfAbsent(any(), anyString());
     }
     @Test void startRejectsIllegalSourceBeforeCreatingTask() {
         GapIssueCandidateRepository candidates = mock(GapIssueCandidateRepository.class);
@@ -66,6 +66,40 @@ class DeveloperAgentServiceTest {
                 mock(GapRecordService.class), mock(DeveloperAgentRunner.class), mock(WorkspacePolicy.class));
         assertThatThrownBy(() -> service.start(7, "admin")).isInstanceOf(GapIssueStateException.class);
         verifyNoInteractions(tasks);
+    }
+
+    @Test void newTaskRejectsInDevelopmentSource() {
+        GapIssueCandidateRepository candidates = mock(GapIssueCandidateRepository.class);
+        DeveloperAgentTaskRepository tasks = mock(DeveloperAgentTaskRepository.class);
+        GapRecordRepository gaps = mock(GapRecordRepository.class);
+        GapRecord source = mock(GapRecord.class);
+        when(candidates.findById(7)).thenReturn(Optional.of(candidate(GapIssueStatus.SENT)));
+        when(gaps.findByGapNo("GAP-1")).thenReturn(Optional.of(source));
+        when(source.getStatus()).thenReturn(GapStatus.IN_DEVELOPMENT);
+        WorkspacePolicy workspacePolicy = mock(WorkspacePolicy.class);
+        when(workspacePolicy.validate(anyString(), any())).thenReturn(java.nio.file.Path.of("C:/repo/work"));
+        DeveloperAgentService service = new DeveloperAgentService(candidates, tasks, gaps, mock(GapRecordService.class), mock(DeveloperAgentRunner.class), workspacePolicy);
+        assertThatThrownBy(() -> service.start(7, "admin")).isInstanceOf(GapIssueStateException.class);
+        verify(tasks, never()).createIfAbsent(any(), anyString());
+    }
+
+    @Test void existingTaskAllowsIdempotentInDevelopmentReplay() {
+        GapIssueCandidateRepository candidates = mock(GapIssueCandidateRepository.class);
+        DeveloperAgentTaskRepository tasks = mock(DeveloperAgentTaskRepository.class);
+        GapRecordRepository gaps = mock(GapRecordRepository.class);
+        GapRecordService gapService = mock(GapRecordService.class);
+        WorkspacePolicy workspacePolicy = mock(WorkspacePolicy.class);
+        GapRecord source = mock(GapRecord.class);
+        when(candidates.findById(7)).thenReturn(Optional.of(candidate(GapIssueStatus.SENT)));
+        when(tasks.findByCandidateId(7)).thenReturn(Optional.of(task(11, DeveloperAgentTaskStatus.QUEUED)));
+        when(gaps.findByGapNo("GAP-1")).thenReturn(Optional.of(source));
+        when(source.getStatus()).thenReturn(GapStatus.IN_DEVELOPMENT);
+        when(workspacePolicy.validate(anyString(), any())).thenReturn(java.nio.file.Path.of("C:/repo/work"));
+        when(tasks.createIfAbsent(any(), anyString())).thenReturn(task(11, DeveloperAgentTaskStatus.QUEUED));
+        DeveloperAgentService service = new DeveloperAgentService(candidates, tasks, gaps, gapService, mock(DeveloperAgentRunner.class), workspacePolicy);
+        service.start(7, "admin");
+        verify(tasks).createIfAbsent(any(), eq("admin"));
+        verifyNoInteractions(gapService);
     }
 
     @Test void qualityFailuresForwardCompleteResultToFailureService() {
