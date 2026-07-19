@@ -86,7 +86,9 @@ class QueryConsistencyReportToolTest {
     @Test
     void rejectsConflictingSelectorsAndInvalidRelativeDay() {
         assertThat(tool.execute(Map.of("runNo", "CHK-1", "daysAgo", 1), context).error())
-                .isEqualTo("runNo 不能与 date 或 daysAgo 同时使用");
+                .isEqualTo("runNo、date、daysAgo 只能选择一个");
+        assertThat(tool.execute(Map.of("date", "2026-07-18", "daysAgo", 1), context).error())
+                .isEqualTo("runNo、date、daysAgo 只能选择一个");
         assertThat(tool.execute(Map.of("daysAgo", 366), context).error())
                 .isEqualTo("daysAgo 须为 0-365 的整数");
     }
