@@ -252,6 +252,7 @@ public enum Permission {
     GAP_TRIAGE("gap:triage", "缺口状态流转"),
 
     GAP_ISSUE("gap:issue", "缺口 Issue 治理"),
+    DEVELOPER_AGENT("developer:agent", "开发者 Agent"),
 
     // ------------------------------------------------- 演示（仅 dev/local profile 注册的演示工具）
 

@@ -10,7 +10,7 @@ public final class WorkspacePolicy {
         if(!BRANCH.matcher(branch).matches()) throw new IllegalArgumentException("invalid isolated branch");
         Path p=workspace.toAbsolutePath().normalize();
         if(!p.startsWith(repositoryRoot) || p.equals(repositoryRoot)) throw new IllegalArgumentException("workspace escapes repository allowlist");
-        try { Path parent=Files.exists(p)?p:Optional.ofNullable(p.getParent()).orElseThrow(); Path realParent=parent.toRealPath(); if(!realParent.startsWith(repositoryRoot.toRealPath())) throw new IllegalArgumentException("workspace real path escapes allowlist"); } catch(java.io.IOException e){throw new IllegalArgumentException("workspace path cannot be verified",e);}
+        try { Path existing=p; while(!Files.exists(existing)){existing=Optional.ofNullable(existing.getParent()).orElseThrow();} Path realParent=existing.toRealPath(); if(!realParent.startsWith(repositoryRoot.toRealPath())) throw new IllegalArgumentException("workspace real path escapes allowlist"); } catch(java.io.IOException e){throw new IllegalArgumentException("workspace path cannot be verified",e);}
         return p;
     }
 }

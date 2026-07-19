@@ -9,7 +9,7 @@ public interface DeveloperAgentTaskRepository {
     Optional<DeveloperAgentTask> findByCandidateId(long candidateId);
     Optional<String> claim(long id, Instant now);
     void transition(long id, DeveloperAgentTaskStatus expected, DeveloperAgentTaskStatus target, String leaseToken,
-                    java.util.List<String> artifacts, boolean targeted, boolean full, boolean ciGreen, String ciEvidence);
+                    java.util.List<String> artifacts, boolean targeted, boolean full, boolean ciGreen, String ciEvidence, String outputSummary);
     void markFailed(long id, DeveloperAgentTaskStatus expected, String leaseToken, String failureType, String failureSummary);
     void approve(long id, String operator);
     void cancel(long id, String operator);
