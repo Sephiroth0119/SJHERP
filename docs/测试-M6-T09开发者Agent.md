@@ -17,3 +17,7 @@
 - 前端 `npm run build`：通过。
 - 本机 Docker daemon 不可用，MySQL 8.4 Testcontainers 由 CI 执行。
 - PR #14 HEAD `b141cd1`：后端、前端、MySQL 8.4 CI 全绿，`mergeStateStatus=CLEAN`；独立复审 Ready Yes。
+
+## T10 交接边界
+
+T10 使用 `POST /api/developer-agent/tasks/{id}/confirm-resolution`，仅 ADMIN/BOSS 可调用；请求必须包含 `reference` 与 `summary`。仅 APPROVED task 可确认，重复确认按 task 幂等。闭环在同一应用事务内推进来源 gap、写入 `closure_feedback` 真源、生成 GAP_CLOSURE 通知，并复用 T02 `MemoryWriteChannel` 写入 `GAP_SOLUTION`；不自动合并、部署或调用真实 GitHub。

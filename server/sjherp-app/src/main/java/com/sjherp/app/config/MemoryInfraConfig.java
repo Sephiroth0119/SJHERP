@@ -5,6 +5,7 @@ import java.time.Clock;
 
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
@@ -45,6 +46,7 @@ import com.sjherp.infra.persistence.memory.JdbcMemoryEntryRepository;
 public class MemoryInfraConfig {
 
     @Bean
+    @ConditionalOnMissingBean(MemoryEntryRepository.class)
     MemoryEntryRepository memoryEntryRepository(JdbcTemplate jdbc) {
         return new JdbcMemoryEntryRepository(jdbc);
     }
@@ -96,21 +98,10 @@ public class MemoryInfraConfig {
     }
 
     @Bean
-    MemoryService memoryService(MemoryEntryRepository repository,
-                                DocumentNumberGenerator numberGenerator,
-                                ApplicationEventPublisher events) {
-        return new MemoryService(repository, numberGenerator, events);
-    }
-
-    @Bean
     MemoryGovernanceService memoryGovernanceService(MemoryEntryRepository repository) {
         return new MemoryGovernanceService(repository);
     }
 
-    @Bean
-    MemoryWriteChannel memoryWriteChannel(MemoryService memoryService) {
-        return new MemoryWriteChannel(memoryService);
-    }
 
     @Bean
     WriteMemoryTool writeMemoryTool(ToolRegistry registry, MemoryWriteChannel channel,
