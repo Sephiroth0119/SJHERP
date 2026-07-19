@@ -10,15 +10,36 @@ import com.sjherp.domain.gap.GapRecordRepository;
 import com.sjherp.domain.gap.GitHubIssueClient;
 import com.sjherp.infra.github.RestGitHubIssueClient;
 import com.sjherp.infra.persistence.gap.JdbcGapIssueCandidateRepository;
+import com.sjherp.domain.gap.DeveloperAgentTaskRepository;
+import com.sjherp.infra.persistence.gap.JdbcDeveloperAgentTaskRepository;
+import com.sjherp.domain.gap.DeveloperAgentRunner;
+import com.sjherp.app.gap.FakeDeveloperAgentRunner;
 import java.time.Duration;
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.context.annotation.Profile;
+import java.nio.file.Path;
 
 @Configuration
 public class GapIssueConfig {
+
+    @Bean
+    DeveloperAgentTaskRepository developerAgentTaskRepository(JdbcTemplate jdbc, ObjectMapper mapper) {
+        return new JdbcDeveloperAgentTaskRepository(jdbc, mapper);
+    }
+
+    @Bean
+    DeveloperAgentRunner developerAgentRunner(@Value("${sjherp.developer-agent.demo:false}") boolean demo) {
+        return demo ? new FakeDeveloperAgentRunner() : new com.sjherp.app.gap.DisabledDeveloperAgentRunner();
+    }
+
+    @Bean
+    com.sjherp.app.gap.WorkspacePolicy developerWorkspacePolicy(@Value("${sjherp.developer-agent.repository-root:${user.dir}}") String root) {
+        return new com.sjherp.app.gap.WorkspacePolicy(Path.of(root));
+    }
 
     @Bean
     GapIssueCandidateRepository gapIssueCandidateRepository(JdbcTemplate jdbc, ObjectMapper mapper) {
