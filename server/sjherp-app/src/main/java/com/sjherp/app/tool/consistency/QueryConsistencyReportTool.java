@@ -74,8 +74,11 @@ public class QueryConsistencyReportTool implements Tool {
             String runNo = ArchiveToolSupport.str(args.get("runNo"));
             String dateText = ArchiveToolSupport.str(args.get("date"));
             Object daysAgoRaw = args.get("daysAgo");
-            if (runNo != null && (dateText != null || daysAgoRaw != null)) {
-                return ToolResult.fail("runNo 不能与 date 或 daysAgo 同时使用");
+            int selectorCount = (runNo == null ? 0 : 1)
+                    + (dateText == null ? 0 : 1)
+                    + (daysAgoRaw == null ? 0 : 1);
+            if (selectorCount > 1) {
+                return ToolResult.fail("runNo、date、daysAgo 只能选择一个");
             }
             Optional<ConsistencyCheckRun> result;
             String queryLabel;
