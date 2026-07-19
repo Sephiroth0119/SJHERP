@@ -32,8 +32,14 @@ public class GapIssueConfig {
     }
 
     @Bean
-    DeveloperAgentRunner developerAgentRunner(@Value("${sjherp.developer-agent.demo:false}") boolean demo) {
-        return demo ? new FakeDeveloperAgentRunner() : new com.sjherp.app.gap.DisabledDeveloperAgentRunner();
+    DeveloperAgentRunner developerAgentRunner(@Value("${sjherp.developer-agent.demo:false}") boolean demo,
+            @Value("${sjherp.developer-agent.base-url:}") String baseUrl,
+            @Value("${sjherp.developer-agent.token:}") String token,
+            @Value("${sjherp.developer-agent.timeout-seconds:30}") long timeoutSeconds,
+            ObjectMapper mapper) {
+        if (demo) return new FakeDeveloperAgentRunner();
+        if (!baseUrl.isBlank() && !token.isBlank()) return new com.sjherp.app.gap.RestDeveloperAgentRunner(baseUrl, token, Duration.ofSeconds(timeoutSeconds), mapper);
+        return new com.sjherp.app.gap.DisabledDeveloperAgentRunner();
     }
 
     @Bean

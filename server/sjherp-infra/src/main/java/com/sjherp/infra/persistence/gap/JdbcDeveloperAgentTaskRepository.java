@@ -16,7 +16,7 @@ public class JdbcDeveloperAgentTaskRepository implements DeveloperAgentTaskRepos
 
     @Override public DeveloperAgentTask createIfAbsent(DeveloperAgentTask task, String operator) {
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
-        jdbc.update("INSERT INTO developer_agent_task(tenant_id,candidate_id,idempotency_key,status,branch_name,workspace_path,runner_kind,attempt_count,ci_green,human_approved,generated_artifacts,targeted_tests_green,full_tests_green,ci_evidence,created_by,created_at,updated_at) VALUES(0,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)",
+        jdbc.update("INSERT INTO developer_agent_task(tenant_id,candidate_id,idempotency_key,status,branch_name,workspace_path,runner_kind,attempt_count,ci_green,human_approved,generated_artifacts,targeted_tests_green,full_tests_green,ci_evidence,runner_output_summary,created_by,created_at,updated_at) VALUES(0,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id)",
                 task.candidateId(), task.idempotencyKey(), task.status().name(), task.branchName(), task.workspacePath(), task.runnerKind(), task.attemptCount(), task.ciGreen(), task.humanApproved(), jsonArray(task.generatedArtifacts()), task.targetedTestsGreen(), task.fullTestsGreen(), task.ciEvidence(), null, operator, now, now);
         return findByCandidateId(task.candidateId()).orElseThrow();
     }
