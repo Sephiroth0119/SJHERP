@@ -31,29 +31,36 @@ public class ClosureFeedbackService {
 
     @Transactional
     @Audited(action = "developer.task.confirm_resolution", targetType = "closure_feedback")
-    public void confirm(long taskId, ClosureEvidence evidence) {
+    public void confirm(long taskId, ClosureEvidence evidence, String operator) {
         DeveloperAgentTask task = tasks.findById(taskId).orElseThrow(() -> new DeveloperAgentTaskNotFoundException(taskId));
         if (task.status() != DeveloperAgentTaskStatus.APPROVED) throw new DeveloperAgentTaskStateException("task must be APPROVED before closure");
-        if (!closures.claim(taskId, task.candidateId(), evidence.reference(), evidence.summary(), evidence.operator())) return;
+        if (!closures.claim(taskId, task.candidateId(), evidence.reference(), evidence.summary(), operator)) return;
         GapIssueCandidate candidate = candidates.findById(task.candidateId()).orElseThrow(() -> new GapIssueNotFoundException(task.candidateId()));
         List<GapRecord> source = candidate.sourceGapNos().stream().map(no -> gaps.findByGapNo(no).orElseThrow(() -> new GapRecordNotFoundException(no))).toList();
         for (GapRecord gap : source) {
             if (gap.getStatus() != GapStatus.IN_DEVELOPMENT && gap.getStatus() != GapStatus.RESOLVED) throw new GapIssueStateException("source gap is not in development");
         }
-        for (GapRecord gap : source) if (gap.getStatus() == GapStatus.IN_DEVELOPMENT) { gap.transitionTo(GapStatus.RESOLVED, evidence.operator()); gaps.save(gap); }
+        for (GapRecord gap : source) if (gap.getStatus() == GapStatus.IN_DEVELOPMENT) { gap.transitionTo(GapStatus.RESOLVED, operator); gaps.save(gap); }
         LinkedHashMap<String,String> facts = new LinkedHashMap<>();
         facts.put("task", String.valueOf(taskId)); facts.put("candidate", candidate.idempotencyKey()); facts.put("gaps", String.join(",", candidate.sourceGapNos())); facts.put("evidence", evidence.reference()); facts.put("solution", evidence.summary());
         String sourceRef = "task:" + taskId + "|candidate:" + candidate.idempotencyKey()
                 + "|gaps:" + String.join(",", candidate.sourceGapNos());
         memory.approveAndWrite(new StructuredMemoryCandidate(MemoryType.GAP_SOLUTION, candidate.title(), facts,
                 MemoryWriteSource.GAP_RECORD, sourceRef.substring(0, Math.min(128, sourceRef.length())),
-                source.stream().findFirst().map(GapRecord::getSessionId).orElse(null), false), evidence.operator());
+                source.stream().findFirst().map(GapRecord::getSessionId).orElse(null), false), operator);
         LinkedHashSet<Long> recipients = new LinkedHashSet<>();
         for (GapRecord gap : source) {
-            if (gap.getSessionId() != null) sessions.findById(gap.getSessionId()).ifPresent(s -> addUser(recipients, s.getUserId()));
-            else addUser(recipients, gap.getReporter());
+            if (gap.getSessionId() != null) {
+                var session = sessions.findById(gap.getSessionId());
+                if (session.isPresent()) addUser(recipients, session.get().getUserId());
+                else addUser(recipients, gap.getReporter());
+            } else addUser(recipients, gap.getReporter());
         }
         for (Long recipient : recipients) notifications.saveIfAbsent(SystemNotification.create(0, recipient, SystemNotification.Category.GAP_CLOSURE, SystemNotification.Severity.INFO, "缺口已解决", evidence.summary(), SystemNotification.SourceType.GAP_CLOSURE, "task:" + taskId, java.time.Instant.now()));
     }
-    private static void addUser(LinkedHashSet<Long> recipients, String v) { try { if (v != null && Long.parseLong(v) > 0) recipients.add(Long.parseLong(v)); } catch (RuntimeException ignored) { } }
+    private static void addUser(LinkedHashSet<Long> recipients, String v) {
+        if (v == null || v.isBlank()) return;
+        try { long id = Long.parseLong(v); if (id > 0) recipients.add(id); }
+        catch (NumberFormatException ignored) { }
+    }
 }

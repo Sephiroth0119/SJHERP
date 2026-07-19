@@ -9,5 +9,8 @@ CREATE TABLE closure_feedback (
     created_at DATETIME(6) NOT NULL,
     PRIMARY KEY (id),
     UNIQUE KEY uk_closure_feedback_task (tenant_id, task_id),
-    KEY idx_closure_feedback_task (tenant_id, task_id)
+    CONSTRAINT fk_closure_feedback_task FOREIGN KEY (tenant_id, task_id)
+        REFERENCES developer_agent_task(tenant_id, id),
+    CONSTRAINT fk_closure_feedback_candidate FOREIGN KEY (tenant_id, candidate_id)
+        REFERENCES gap_issue_candidate(tenant_id, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
