@@ -20,6 +20,7 @@ import com.sjherp.infra.persistence.gap.JdbcGapIssueCandidateRepository;
 import com.sjherp.infra.persistence.gap.JdbcGapRecordRepository;
 import java.time.Instant;
 import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.List;
 import javax.sql.DataSource;
 import org.flywaydb.core.Flyway;
@@ -48,6 +49,7 @@ class GapIssueTransactionalIntegrationTest {
     private static GapIssueClusterWriter writer;
     private static GapIssueDeliveryFinalizer finalizer;
     private static GapRecordRepository gaps;
+    private static FailingGapRecordService failingGapService;
 
     @BeforeAll
     static void startDatabase() {
@@ -62,6 +64,7 @@ class GapIssueTransactionalIntegrationTest {
         writer = context.getBean(GapIssueClusterWriter.class);
         finalizer = context.getBean(GapIssueDeliveryFinalizer.class);
         gaps = context.getBean(GapRecordRepository.class);
+        failingGapService = (FailingGapRecordService) context.getBean(GapRecordService.class);
     }
 
     @AfterAll
@@ -90,6 +93,7 @@ class GapIssueTransactionalIntegrationTest {
         // real transaction rollback rather than a failure on the first item.
         String okGap = "GAP-A-OK-" + uniqueSuffix();
         String failingGap = "GAP-Z-FAIL-" + uniqueSuffix();
+        failingGapService.resetSuccessfulTransitions();
         gaps.save(gap(okGap));
         gaps.save(gap(failingGap));
 
@@ -102,6 +106,10 @@ class GapIssueTransactionalIntegrationTest {
         assertThatThrownBy(() -> finalizer.finalizeDelivery(saved, lease, 99, "https://example.test/99", "reviewer"))
                 .isInstanceOf(IllegalStateException.class);
 
+        // The service completed the A transition before Z threw. The database
+        // assertions below therefore prove that the surrounding transaction
+        // rolled the completed TRIAGED update back.
+        assertThat(failingGapService.successfulTransitions()).containsExactly(okGap);
         assertThat(gaps.findByGapNo(okGap).orElseThrow().getStatus()).isEqualTo(GapStatus.NEW);
         assertThat(candidates.findById(saved.id()).orElseThrow().status()).isEqualTo(GapIssueStatus.SENDING);
     }
@@ -195,6 +203,8 @@ class GapIssueTransactionalIntegrationTest {
     }
 
     static class FailingGapRecordService extends GapRecordService {
+        private final List<String> successfulTransitions = new ArrayList<>();
+
         FailingGapRecordService(GapRecordRepository repository, DocumentNumberGenerator numberGenerator) {
             super(repository, numberGenerator);
         }
@@ -204,7 +214,17 @@ class GapIssueTransactionalIntegrationTest {
             if (gapNo.contains("GAP-Z-FAIL-")) {
                 throw new IllegalStateException("forced gap transition failure");
             }
-            return super.transitionStatusByGapNo(gapNo, target, operator);
+            GapRecord transitioned = super.transitionStatusByGapNo(gapNo, target, operator);
+            successfulTransitions.add(gapNo);
+            return transitioned;
+        }
+
+        void resetSuccessfulTransitions() {
+            successfulTransitions.clear();
+        }
+
+        List<String> successfulTransitions() {
+            return List.copyOf(successfulTransitions);
         }
     }
 }

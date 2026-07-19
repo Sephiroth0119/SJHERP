@@ -115,6 +115,20 @@ class GapIssueServiceTest {
         assertThat(finalizer.failureType).isEqualTo(GitHubIssueGatewayException.class.getSimpleName());
     }
 
+    @Test
+    void configuredDeliveryWithDisabledGatewayKeepsTheTypedServiceUnavailableException() {
+        FakeCandidates candidates = new FakeCandidates();
+        candidates.value = candidate(11, GapIssueStatus.APPROVED, List.of("GAP-11"), List.of("scenario"));
+        RecordingClient client = new RecordingClient();
+        client.createFailure = new GapIssueDisabledException("GitHub Issue configuration is incomplete");
+        RecordingFinalizer finalizer = new RecordingFinalizer(candidates);
+
+        assertThatThrownBy(() -> service(new FakeGaps(), candidates, client, true, finalizer)
+                .deliver(11, "reviewer"))
+                .isInstanceOf(GapIssueDisabledException.class);
+        assertThat(finalizer.failureType).isEqualTo(GapIssueDisabledException.class.getSimpleName());
+    }
+
     private static GapIssueService service(
             GapRecordRepository gaps,
             FakeCandidates candidates,
