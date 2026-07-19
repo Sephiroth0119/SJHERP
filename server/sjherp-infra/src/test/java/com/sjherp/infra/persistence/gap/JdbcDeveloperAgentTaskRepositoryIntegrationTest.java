@@ -21,7 +21,7 @@ class JdbcDeveloperAgentTaskRepositoryIntegrationTest extends MySqlContainerTest
         assertThat(tasks.findById(first.id()).orElseThrow().status()).isEqualTo(DeveloperAgentTaskStatus.RUNNING);
         assertThat(tasks.claim(first.id(),Instant.now())).isEmpty();
         assertThatThrownBy(()->tasks.approve(first.id(),"boss")).isInstanceOf(IllegalStateException.class);
-        tasks.transition(first.id(),DeveloperAgentTaskStatus.RUNNING,DeveloperAgentTaskStatus.TESTING,lease,List.of("code.java","test.java"),true,false,false,null,"running");
+        tasks.transition(first.id(),DeveloperAgentTaskStatus.RUNNING,DeveloperAgentTaskStatus.TESTING,lease,List.of("code.java","test.java"),true,false,false,null,"running"); assertThat(tasks.findById(first.id()).orElseThrow().runnerOutputSummary()).isEqualTo("running");
         assertThatThrownBy(()->tasks.transition(first.id(),DeveloperAgentTaskStatus.TESTING,DeveloperAgentTaskStatus.AWAITING_REVIEW,"stale",List.of("code.java"),true,true,true,"ci", "stale" )).isInstanceOf(IllegalStateException.class);
         tasks.transition(first.id(),DeveloperAgentTaskStatus.TESTING,DeveloperAgentTaskStatus.AWAITING_REVIEW,lease,List.of("code.java","test.java"),true,true,true,"ci://1","done");
         tasks.approve(first.id(),"boss");
@@ -37,7 +37,7 @@ class JdbcDeveloperAgentTaskRepositoryIntegrationTest extends MySqlContainerTest
 
     @Test void runningAndTestingLeasesAreReclaimedWithFailureEvidence(){
         GapIssueCandidate c=candidates.upsert(candidate("reclaim-"+uniqueSuffix())); DeveloperAgentTask t=tasks.createIfAbsent(task(c.id(),"reclaim-key-"+uniqueSuffix()),"boss");
-        String lease=tasks.claim(t.id(),Instant.now()).orElseThrow(); jdbc.update("UPDATE developer_agent_task SET updated_at=? WHERE id=?",LocalDateTime.now(ZoneOffset.UTC).minusMinutes(20),t.id()); assertThat(tasks.reclaimExpired(Instant.now().minus(Duration.ofMinutes(10)))).isEqualTo(1); assertThat(tasks.findById(t.id()).orElseThrow().failureType()).isEqualTo("LEASE_EXPIRED");
+        String lease=tasks.claim(t.id(),Instant.now()).orElseThrow(); jdbc.update("UPDATE developer_agent_task SET updated_at=? WHERE id=?",LocalDateTime.now(ZoneOffset.UTC).minusMinutes(20),t.id()); assertThat(tasks.reclaimExpired(Instant.now().minus(Duration.ofMinutes(10)))).isEqualTo(1); assertThat(tasks.findById(t.id()).orElseThrow().failureType()).isEqualTo("LEASE_EXPIRED"); assertThat(tasks.findById(t.id()).orElseThrow().failureSummary()).isNotBlank();
         String retry=tasks.claim(t.id(),Instant.now()).orElseThrow(); tasks.transition(t.id(),DeveloperAgentTaskStatus.RUNNING,DeveloperAgentTaskStatus.TESTING,retry,List.of("code"),true,false,false,null,"out"); jdbc.update("UPDATE developer_agent_task SET updated_at=? WHERE id=?",LocalDateTime.now(ZoneOffset.UTC).minusMinutes(20),t.id()); assertThat(tasks.reclaimExpired(Instant.now().minus(Duration.ofMinutes(10)))).isEqualTo(1); assertThat(tasks.findById(t.id()).orElseThrow().status()).isEqualTo(DeveloperAgentTaskStatus.FAILED);
     }
 

@@ -30,6 +30,7 @@ class DeveloperAgentServiceTest {
         assertThatThrownBy(()->service.start(7,"admin")).isInstanceOf(GapIssueStateException.class);
         verifyNoInteractions(tasks);
     }
+    @Test void approveAndCancelWrapRepositoryStateErrors(){DeveloperAgentTaskRepository tasks=mock(DeveloperAgentTaskRepository.class);when(tasks.findById(1)).thenReturn(Optional.of(task(1,DeveloperAgentTaskStatus.AWAITING_REVIEW)));doThrow(new IllegalStateException("bad")).when(tasks).approve(1,"admin");doThrow(new IllegalStateException("bad")).when(tasks).cancel(1,"admin");var service=new DeveloperAgentService(mock(GapIssueCandidateRepository.class),tasks,mock(GapRecordRepository.class),mock(GapRecordService.class),mock(DeveloperAgentRunner.class),mock(WorkspacePolicy.class));org.assertj.core.api.Assertions.assertThatThrownBy(()->service.approve(1,"admin")).isInstanceOf(DeveloperAgentTaskStateException.class);org.assertj.core.api.Assertions.assertThatThrownBy(()->service.cancel(1,"admin")).isInstanceOf(DeveloperAgentTaskStateException.class);}
     private static DeveloperAgentTask task(long id, DeveloperAgentTaskStatus status){return new DeveloperAgentTask(id,2,"k",status,"codex/dev/k","C:/repo/k","FAKE","lease-1",1,List.of("pending"),false,false,false,null,false,null,null,null);}
     private static GapIssueCandidate candidate(GapIssueStatus status){return new GapIssueCandidate(7,"k","k",BusinessModule.GENERAL,GapSeverity.LOW,"t",List.of("s"),"e","m",List.of("GAP-1"),status,1L,"url",null,null,null,0,null,null,null);}
 }
