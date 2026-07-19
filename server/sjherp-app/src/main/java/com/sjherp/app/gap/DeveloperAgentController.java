@@ -16,5 +16,5 @@ public class DeveloperAgentController {
     @PostMapping("/{id}/run") public Object run(@PathVariable long id){return service.run(id,CurrentUser.operator());}
     @PostMapping("/{id}/approve") public Object approve(@PathVariable long id){return service.approve(id,CurrentUser.operator());}
     @PostMapping("/{id}/cancel") public Object cancel(@PathVariable long id){return service.cancel(id,CurrentUser.operator());}
-    @PostMapping("/reclaim-expired") public int reclaim(){return service.reclaimExpired(Duration.ofMinutes(10));}
+    @PostMapping("/reclaim-expired") public int reclaim(){return service.reclaimExpired(Duration.ofMinutes(10),CurrentUser.operator());}
 }
