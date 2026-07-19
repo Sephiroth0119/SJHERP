@@ -6,6 +6,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.stream.Collectors;
 
 import com.sjherp.domain.common.audit.Audited;
@@ -38,7 +40,9 @@ public class GapIssueService {
             var sources=rows.stream().map(GapRecord::getGapNo).toList();
             var c=new GapIssueCandidate(0,e.getKey(),e.getKey(),first.getBusinessModule(),first.getSeverity(),first.getTitle(),
                     rows.stream().map(GapRecord::getScenario).limit(20).toList(),first.getExpectedBehavior(),first.getMissingCapability(),sources,GapIssueStatus.PENDING,null,null);
-            result.add(candidates.upsert(c));
+            var saved = candidates.upsert(c);
+            candidates.addSources(saved.id(), sources);
+            result.add(saved);
         }
         return result;
     }
@@ -57,7 +61,14 @@ public class GapIssueService {
         catch(RuntimeException ex){ candidates.markFailed(id,ex.getClass().getSimpleName()); throw ex; }
         return candidates.findById(id).orElseThrow();
     }
-    static String clusterKey(GapRecord g){return normalize(g.getBusinessModule().name()+"|"+g.getSeverity()+"|"+g.getTitle()+"|"+g.getMissingCapability()+"|"+g.getExpectedBehavior());}
-    private static String normalize(String s){return Normalizer.normalize(s,Normalizer.Form.NFKC).strip().replaceAll("\\s+"," ").toLowerCase(Locale.ROOT).substring(0,Math.min(120,s.length()));}
+    static String clusterKey(GapRecord g){
+        String value = normalize(g.getBusinessModule().name()) + "|" + normalize(g.getSeverity().name()) + "|"
+                + normalize(g.getTitle()) + "|" + normalize(g.getMissingCapability()) + "|"
+                + normalize(g.getExpectedBehavior());
+        try { var digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+            var out = new StringBuilder(64); for (byte b : digest) out.append(String.format("%02x", b)); return out.toString();
+        } catch (Exception e) { throw new IllegalStateException("无法计算缺口聚类键", e); }
+    }
+    private static String normalize(String s){return Normalizer.normalize(s,Normalizer.Form.NFKC).strip().replaceAll("\\s+"," ").toLowerCase(Locale.ROOT);}
     private static String body(GapIssueCandidate c){return "## 场景\n"+c.scenarioSamples().stream().collect(Collectors.joining("\n- ","- ",""))+"\n\n## 期望行为\n"+c.expectedBehavior()+"\n\n## 缺失能力\n"+c.missingCapability()+"\n\n## 来源\n"+String.join(", ",c.sourceGapNos())+"\n\n幂等键：`"+c.idempotencyKey()+"`";}
 }
