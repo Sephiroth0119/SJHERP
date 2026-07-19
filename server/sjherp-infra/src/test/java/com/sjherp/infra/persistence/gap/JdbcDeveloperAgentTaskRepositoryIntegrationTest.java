@@ -25,6 +25,9 @@ class JdbcDeveloperAgentTaskRepositoryIntegrationTest extends MySqlContainerTest
         assertThatThrownBy(()->tasks.approve(first.id(),"boss")).isInstanceOf(IllegalStateException.class);
         tasks.transition(first.id(),DeveloperAgentTaskStatus.RUNNING,DeveloperAgentTaskStatus.TESTING,lease,List.of("code.java","test.java"),true,false,false,null,"running"); assertThat(tasks.findById(first.id()).orElseThrow().runnerOutputSummary()).isEqualTo("running");
         assertThatThrownBy(()->tasks.transition(first.id(),DeveloperAgentTaskStatus.TESTING,DeveloperAgentTaskStatus.AWAITING_REVIEW,"stale",List.of("code.java"),true,true,true,"ci", "stale" )).isInstanceOf(IllegalStateException.class);
+        DeveloperAgentTask unchanged = tasks.findById(first.id()).orElseThrow();
+        assertThat(unchanged.status()).isEqualTo(DeveloperAgentTaskStatus.TESTING);
+        assertThat(unchanged.leaseToken()).isEqualTo(lease);
         tasks.transition(first.id(),DeveloperAgentTaskStatus.TESTING,DeveloperAgentTaskStatus.AWAITING_REVIEW,lease,List.of("code.java","test.java"),true,true,true,"ci://1","done");
         tasks.approve(first.id(),"boss");
         assertThat(tasks.findById(first.id()).orElseThrow().status()).isEqualTo(DeveloperAgentTaskStatus.APPROVED);
@@ -48,6 +51,20 @@ class JdbcDeveloperAgentTaskRepositoryIntegrationTest extends MySqlContainerTest
         GapIssueCandidate c=candidates.upsert(candidate("reclaim-"+uniqueSuffix())); DeveloperAgentTask t=tasks.createIfAbsent(task(c.id(),"reclaim-key-"+uniqueSuffix()),"boss");
         String lease=tasks.claim(t.id(),Instant.now()).orElseThrow(); jdbc.update("UPDATE developer_agent_task SET updated_at=? WHERE id=?",LocalDateTime.now(ZoneOffset.UTC).minusMinutes(20),t.id()); assertThat(tasks.reclaimExpired(Instant.now().minus(Duration.ofMinutes(10)))).isEqualTo(1); assertThat(tasks.findById(t.id()).orElseThrow().failureType()).isEqualTo("LEASE_EXPIRED"); assertThat(tasks.findById(t.id()).orElseThrow().failureSummary()).isNotBlank();
         String retry=tasks.claim(t.id(),Instant.now()).orElseThrow(); tasks.transition(t.id(),DeveloperAgentTaskStatus.RUNNING,DeveloperAgentTaskStatus.TESTING,retry,List.of("code"),true,false,false,null,"out"); jdbc.update("UPDATE developer_agent_task SET updated_at=? WHERE id=?",LocalDateTime.now(ZoneOffset.UTC).minusMinutes(20),t.id()); assertThat(tasks.reclaimExpired(Instant.now().minus(Duration.ofMinutes(10)))).isEqualTo(1); assertThat(tasks.findById(t.id()).orElseThrow().status()).isEqualTo(DeveloperAgentTaskStatus.FAILED);
+    }
+
+    @Test void awaitingReviewWithoutCompleteEvidenceCannotBeApproved() {
+        GapIssueCandidate c = candidates.upsert(candidate("incomplete-" + uniqueSuffix()));
+        DeveloperAgentTask t = tasks.createIfAbsent(task(c.id(), "incomplete-key-" + uniqueSuffix()), "boss");
+        String lease = tasks.claim(t.id(), Instant.now()).orElseThrow();
+        tasks.transition(t.id(), DeveloperAgentTaskStatus.RUNNING, DeveloperAgentTaskStatus.TESTING,
+                lease, List.of("code.java", "test.java"), true, false, false, null, "out");
+        tasks.transition(t.id(), DeveloperAgentTaskStatus.TESTING, DeveloperAgentTaskStatus.AWAITING_REVIEW,
+                lease, List.of("code.java", "test.java"), true, true, true, null, "out");
+        assertThatThrownBy(() -> tasks.approve(t.id(), "boss"))
+                .isInstanceOf(IllegalStateException.class);
+        assertThat(tasks.findById(t.id()).orElseThrow().status())
+                .isEqualTo(DeveloperAgentTaskStatus.AWAITING_REVIEW);
     }
 
     private GapIssueCandidate candidate(String key){return new GapIssueCandidate(0,key,key,BusinessModule.GENERAL,GapSeverity.LOW,"title",List.of("scenario"),"expected","missing",List.of(),GapIssueStatus.SENT,1L,"https://issue",null,null,null,0,null,null,null);}
