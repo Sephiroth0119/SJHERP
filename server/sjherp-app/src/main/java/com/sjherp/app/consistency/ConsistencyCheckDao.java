@@ -634,10 +634,10 @@ public class ConsistencyCheckDao {
         return jdbc.query("SELECT v.doc_no, v.status, v.reversal_of_id, "
                 + "(SELECT COUNT(*) FROM audit_log a WHERE a.tenant_id = v.tenant_id AND "
                 + "((v.status = 'APPROVED' AND v.reversal_of_id IS NULL AND a.target_type='voucher' AND a.target_code=v.doc_no AND a.action='voucher.post') "
-                + " OR (v.status = 'APPROVED' AND v.reversal_of_id IS NOT NULL AND ((a.target_type='voucher' AND a.target_code=v.doc_no AND a.action='voucher.reverse') "
-                + " OR (a.target_type='document' AND a.target_code=v.doc_no AND a.action='document.status_changed'))) "
-                + " OR (v.status = 'REVERSED' AND ((a.target_type='voucher' AND a.target_code=v.doc_no AND a.action='voucher.reverse') "
-                + " OR (a.target_type='document' AND a.target_code=v.doc_no AND a.action='document.status_changed'))))) audit_count "
+                + " OR (v.status = 'APPROVED' AND v.reversal_of_id IS NOT NULL AND a.target_type='voucher' "
+                + " AND a.target_code=v.doc_no AND a.action='voucher.reverse') "
+                + " OR (v.status = 'REVERSED' AND a.target_type='document' AND a.target_code=v.doc_no "
+                + " AND a.action='document.status_changed' AND a.summary LIKE '%APPROVED%REVERSED%'))) audit_count "
                 + "FROM voucher v WHERE v.tenant_id=0 AND v.status IN ('APPROVED','REVERSED') ORDER BY v.id", (rs, n) -> new AuditIntegrityRow(
                         rs.getString("doc_no"), rs.getString("status"), rs.getString("reversal_of_id"), rs.getLong("audit_count")));
     }

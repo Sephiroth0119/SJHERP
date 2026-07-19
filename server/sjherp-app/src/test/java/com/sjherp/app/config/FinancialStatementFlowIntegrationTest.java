@@ -3,7 +3,8 @@ package com.sjherp.app.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.any;
 
 import java.math.BigDecimal;
@@ -463,6 +464,7 @@ class FinancialStatementFlowIntegrationTest {
 
         // M6-T06 验收：先确认干净基线，再只污染 1122 控制科目侧；凭证仍自平衡，下一周期必须揪出 GL_DETAIL。
         var baseline = consistencyCheckRunner.runScheduled();
+        assertThat(baseline.clean()).isTrue();
         assertThat(baseline.findings()).noneMatch(f -> f.checkType().equals(ConsistencyCheckType.GL_DETAIL.code()));
         assertThat(baseline.findings()).noneMatch(f -> f.checkType().equals(ConsistencyCheckType.VOUCHER_BALANCE.code()));
         Long voucherId = jdbc.queryForObject("SELECT vl.voucher_id FROM voucher_line vl JOIN voucher v ON v.id = vl.voucher_id "
@@ -471,6 +473,7 @@ class FinancialStatementFlowIntegrationTest {
                 Long.class, voucherId);
         Long offsetLineId = jdbc.queryForObject("SELECT vl.id FROM voucher_line vl WHERE vl.voucher_id = ? AND vl.account_code <> '1122' "
                 + "AND vl.credit > 0 LIMIT 1", Long.class, voucherId);
+        clearInvocations(notificationChannel);
         try {
             jdbc.update("UPDATE voucher_line SET debit = debit + 1.00 WHERE id = ?", controlLineId);
             jdbc.update("UPDATE voucher_line SET credit = credit + 1.00 WHERE id = ?", offsetLineId);
@@ -482,12 +485,12 @@ class FinancialStatementFlowIntegrationTest {
             assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM consistency_check_run WHERE run_no = ?", Long.class, run.runNo())).isEqualTo(1L);
             assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM consistency_check_break WHERE run_id = "
                     + "(SELECT id FROM consistency_check_run WHERE run_no = ?)", Long.class, run.runNo())).isGreaterThan(0L);
+            verify(notificationChannel).send(argThat(n -> n.runNo().equals(run.runNo())));
         } finally {
             jdbc.update("UPDATE voucher_line SET debit = debit - 1.00 WHERE id = ?", controlLineId);
             jdbc.update("UPDATE voucher_line SET credit = credit - 1.00 WHERE id = ?", offsetLineId);
             jdbc.update("UPDATE voucher SET total_amount = total_amount - 1.00 WHERE id = ?", voucherId);
         }
-        verify(notificationChannel, atLeastOnce()).send(any());
     }
 
     // ---------------------------------------------------------------
