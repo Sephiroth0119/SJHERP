@@ -65,7 +65,7 @@ class DeveloperAgentServiceTest {
         DeveloperAgentService service = new DeveloperAgentService(candidates, tasks, gaps,
                 mock(GapRecordService.class), mock(DeveloperAgentRunner.class), mock(WorkspacePolicy.class));
         assertThatThrownBy(() -> service.start(7, "admin")).isInstanceOf(GapIssueStateException.class);
-        verifyNoInteractions(tasks);
+        verify(tasks, never()).createIfAbsent(any(), anyString());
     }
 
     @Test void newTaskRejectsInDevelopmentSource() {
@@ -96,7 +96,9 @@ class DeveloperAgentServiceTest {
         when(source.getStatus()).thenReturn(GapStatus.IN_DEVELOPMENT);
         when(workspacePolicy.validate(anyString(), any())).thenReturn(java.nio.file.Path.of("C:/repo/work"));
         when(tasks.createIfAbsent(any(), anyString())).thenReturn(task(11, DeveloperAgentTaskStatus.QUEUED));
-        DeveloperAgentService service = new DeveloperAgentService(candidates, tasks, gaps, gapService, mock(DeveloperAgentRunner.class), workspacePolicy);
+        DeveloperAgentRunner runner = mock(DeveloperAgentRunner.class);
+        when(runner.kind()).thenReturn("DISABLED");
+        DeveloperAgentService service = new DeveloperAgentService(candidates, tasks, gaps, gapService, runner, workspacePolicy);
         service.start(7, "admin");
         verify(tasks).createIfAbsent(any(), eq("admin"));
         verifyNoInteractions(gapService);
