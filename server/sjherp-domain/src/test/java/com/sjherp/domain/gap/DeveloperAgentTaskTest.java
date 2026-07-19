@@ -3,11 +3,12 @@ package com.sjherp.domain.gap;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 import org.junit.jupiter.api.Test;
+import java.util.List;
 
 class DeveloperAgentTaskTest {
     private DeveloperAgentTask task() {
         return new DeveloperAgentTask(1, 2, "k", DeveloperAgentTaskStatus.QUEUED,
-                "codex/dev/k", "C:/safe/k", "FAKE", null, 0, false, false);
+                "codex/dev/k", "C:/safe/k", "FAKE", null, 0, List.of("code", "tests"), false, false, false, null, false);
     }
 
     @Test void onlyGreenCiCanBeApproved() {
