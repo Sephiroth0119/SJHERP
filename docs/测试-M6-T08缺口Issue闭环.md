@@ -1,6 +1,6 @@
 # M6-T08 缺口→GitHub Issue 测试说明
 
-状态：进行中。本文记录提交前已执行的本地验证；MySQL 8.4 Testcontainers 由 GitHub CI 作为最终真库门禁。
+状态：已完成（2026-07-19）。本地 Java 21 全量测试（70 / 848 / 60 / 1371）和前端生产构建通过；PR #13 的后端、前端及 MySQL 8.4 Testcontainers CI 均成功，独立终审 Ready Yes。
 
 ## 回归范围
 
