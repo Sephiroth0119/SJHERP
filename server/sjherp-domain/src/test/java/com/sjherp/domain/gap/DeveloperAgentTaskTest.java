@@ -8,7 +8,7 @@ import java.util.List;
 class DeveloperAgentTaskTest {
     private DeveloperAgentTask task() {
         return new DeveloperAgentTask(1, 2, "k", DeveloperAgentTaskStatus.QUEUED,
-                "codex/dev/k", "C:/safe/k", "FAKE", null, 0, List.of("code", "tests"), false, false, false, null, false);
+                "codex/dev/k", "C:/safe/k", "FAKE", null, 0, List.of("code", "tests"), false, false, false, null, false, null, null, null);
     }
 
     @Test void onlyGreenCiCanBeApproved() {

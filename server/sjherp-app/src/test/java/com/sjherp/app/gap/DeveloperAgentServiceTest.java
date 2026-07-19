@@ -30,6 +30,6 @@ class DeveloperAgentServiceTest {
         assertThatThrownBy(()->service.start(7,"admin")).isInstanceOf(GapIssueStateException.class);
         verifyNoInteractions(tasks);
     }
-    private static DeveloperAgentTask task(long id, DeveloperAgentTaskStatus status){return new DeveloperAgentTask(id,2,"k",status,"codex/dev/k","C:/repo/k","FAKE","lease-1",1,List.of("pending"),false,false,false,null,false);}
+    private static DeveloperAgentTask task(long id, DeveloperAgentTaskStatus status){return new DeveloperAgentTask(id,2,"k",status,"codex/dev/k","C:/repo/k","FAKE","lease-1",1,List.of("pending"),false,false,false,null,false,null,null,null);}
     private static GapIssueCandidate candidate(GapIssueStatus status){return new GapIssueCandidate(7,"k","k",BusinessModule.GENERAL,GapSeverity.LOW,"t",List.of("s"),"e","m",List.of("GAP-1"),status,1L,"url",null,null,null,0,null,null,null);}
 }
