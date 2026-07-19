@@ -21,7 +21,7 @@ import com.sjherp.domain.identity.Role;
 import com.sjherp.domain.identity.UserRepository;
 
 @WebMvcTest(GapIssueController.class)
-@Import({SecurityConfig.class, GapExceptionHandler.class})
+@Import({SecurityConfig.class, PermissionGuard.class})
 class GapIssueControllerPermissionTest {
     @Autowired MockMvc mvc;
     @MockitoBean GapIssueService service;
