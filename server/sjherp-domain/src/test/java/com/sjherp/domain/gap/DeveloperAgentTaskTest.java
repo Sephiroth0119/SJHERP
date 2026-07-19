@@ -22,4 +22,16 @@ class DeveloperAgentTaskTest {
         assertThatThrownBy(() -> task().transitionTo(DeveloperAgentTaskStatus.APPROVED))
                 .isInstanceOf(IllegalStateException.class);
     }
+
+    @Test void auditTargetExposesSafeIdentityAndSummary() {
+        DeveloperAgentTask task = task();
+        assertThat(task.auditTargetId()).isEqualTo(1L);
+        assertThat(task.auditTargetCode()).isEqualTo("k");
+        assertThat(task.auditSummary()).contains("candidate=2", "status=QUEUED", "runner=FAKE");
+        assertThat(task.auditSummary()).doesNotContain("C:/safe/k", "lease", "ciEvidence");
+        DeveloperAgentTask draft = new DeveloperAgentTask(0, 2, "draft", DeveloperAgentTaskStatus.QUEUED,
+                "codex/dev/draft", "C:/safe/draft", "FAKE", "secret-token", 0, List.of(), false, false, false,
+                "ci://secret", false, null, null, null);
+        assertThat(draft.auditTargetId()).isNull();
+    }
 }
