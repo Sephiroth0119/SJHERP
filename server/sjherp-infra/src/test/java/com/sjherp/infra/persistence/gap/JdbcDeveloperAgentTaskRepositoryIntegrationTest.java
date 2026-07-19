@@ -40,9 +40,30 @@ class JdbcDeveloperAgentTaskRepositoryIntegrationTest extends MySqlContainerTest
         assertThatThrownBy(() -> tasks.markFailed(t.id(),DeveloperAgentTaskStatus.RUNNING,"stale","X","bad"))
                 .isInstanceOf(IllegalStateException.class);
         assertThat(tasks.findById(t.id()).orElseThrow().leaseToken()).isEqualTo(lease);
-        tasks.markFailed(t.id(),DeveloperAgentTaskStatus.RUNNING,lease,"X","bad");
-        assertThat(tasks.findById(t.id()).orElseThrow().failureSummary()).isEqualTo("bad");
-        for(int i=0;i<2;i++){String next=tasks.claim(t.id(),Instant.now()).orElseThrow();tasks.markFailed(t.id(),DeveloperAgentTaskStatus.RUNNING,next,"X","bad");}
+        tasks.markFailed(t.id(), DeveloperAgentTaskStatus.RUNNING, lease, "X", "bad",
+                List.of("generated.java", "generated-test.java"), true, false, false,
+                "ci://failed", "runner output");
+        DeveloperAgentTask failed = tasks.findById(t.id()).orElseThrow();
+        assertThat(failed.failureType()).isEqualTo("X");
+        assertThat(failed.failureSummary()).isEqualTo("bad");
+        assertThat(failed.generatedArtifacts()).containsExactly("generated.java", "generated-test.java");
+        assertThat(failed.targetedTestsGreen()).isTrue();
+        assertThat(failed.fullTestsGreen()).isFalse();
+        assertThat(failed.ciGreen()).isFalse();
+        assertThat(failed.ciEvidence()).isEqualTo("ci://failed");
+        assertThat(failed.runnerOutputSummary()).isEqualTo("runner output");
+        String retry = tasks.claim(t.id(), Instant.now()).orElseThrow();
+        DeveloperAgentTask reset = tasks.findById(t.id()).orElseThrow();
+        assertThat(reset.generatedArtifacts()).isEmpty();
+        assertThat(reset.targetedTestsGreen()).isFalse();
+        assertThat(reset.fullTestsGreen()).isFalse();
+        assertThat(reset.ciGreen()).isFalse();
+        assertThat(reset.ciEvidence()).isNull();
+        assertThat(reset.failureType()).isNull();
+        assertThat(reset.failureSummary()).isNull();
+        assertThat(reset.runnerOutputSummary()).isNull();
+        tasks.markFailed(t.id(),DeveloperAgentTaskStatus.RUNNING,retry,"X","bad");
+        for(int i=0;i<1;i++){String next=tasks.claim(t.id(),Instant.now()).orElseThrow();tasks.markFailed(t.id(),DeveloperAgentTaskStatus.RUNNING,next,"X","bad");}
         assertThat(tasks.findById(t.id()).orElseThrow().attemptCount()).isEqualTo(3);
         assertThat(tasks.claim(t.id(),Instant.now())).isEmpty();
     }
