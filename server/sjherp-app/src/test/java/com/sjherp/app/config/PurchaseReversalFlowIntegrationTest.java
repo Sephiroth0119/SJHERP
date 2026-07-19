@@ -290,11 +290,11 @@ class PurchaseReversalFlowIntegrationTest {
                 + "AND status = 'REVERSED' LIMIT 1", Long.class, pinvNo);
         String originalVoucherNo = jdbc.queryForObject("SELECT doc_no FROM voucher WHERE id = ?", String.class, originalVoucherId);
         String reversalVoucherNo = jdbc.queryForObject("SELECT doc_no FROM voucher WHERE tenant_id = 0 AND reversal_of_id = ? "
-                + "AND status = 'APPROVED' LIMIT 1", String.class, originalVoucherId);
+                + "AND status = 'APPROVED' LIMIT 1", String.class, originalVoucherNo);
         List<String> voucherNos = List.of(originalVoucherNo, reversalVoucherNo);
         assertThat(voucherNos).as("采购发票原凭证与红字凭证").hasSize(2);
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM voucher WHERE id = ? AND reversal_of_id = ?", Long.class,
-                jdbc.queryForObject("SELECT id FROM voucher WHERE doc_no = ?", Long.class, reversalVoucherNo), originalVoucherId)).isEqualTo(1L);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM voucher WHERE doc_no = ? AND reversal_of_id = ?", Long.class,
+                reversalVoucherNo, originalVoucherNo)).isEqualTo(1L);
         assertThat(reversalReport.breaks()).noneMatch(b -> b.severity() == ConsistencySeverity.ERROR
                 && b.checkType() == ConsistencyCheckType.GL_DETAIL && "220202".equals(b.key()));
         assertThat(reversalReport.breaks()).noneMatch(b -> b.severity() == ConsistencySeverity.ERROR
