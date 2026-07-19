@@ -27,18 +27,18 @@ public class JdbcGapIssueCandidateRepository implements GapIssueCandidateReposit
     private Optional<GapIssueCandidate> findByKey(String key){return jdbc.query("SELECT * FROM gap_issue_candidate WHERE idempotency_key=?",(rs,n)->map(rs),key).stream().findFirst();}
     @Override public List<GapIssueCandidate> findAll(){return jdbc.query("SELECT * FROM gap_issue_candidate ORDER BY id",(rs,n)->map(rs));}
     @Override public Optional<GapIssueCandidate> findById(long id){return jdbc.query("SELECT * FROM gap_issue_candidate WHERE id=?",(rs,n)->map(rs),id).stream().findFirst();}
-    @Override public boolean claimForSend(long id){return jdbc.update("UPDATE gap_issue_candidate SET status='SENDING',attempt_count=attempt_count+1,sending_started_at=?,updated_at=? WHERE id=? AND status IN ('APPROVED','FAILED') AND issue_number IS NULL",LocalDateTime.now(ZoneOffset.UTC),LocalDateTime.now(ZoneOffset.UTC),id)==1;}
+    @Override public Optional<String> claimForSend(long id){String token=java.util.UUID.randomUUID().toString();int changed=jdbc.update("UPDATE gap_issue_candidate SET status='SENDING',attempt_count=attempt_count+1,sending_started_at=?,lease_token=?,updated_at=? WHERE tenant_id=0 AND id=? AND status IN ('APPROVED','FAILED') AND issue_number IS NULL",LocalDateTime.now(ZoneOffset.UTC),token,LocalDateTime.now(ZoneOffset.UTC),id);return changed==1?Optional.of(token):Optional.empty();}
     @Override public int reclaimExpiredSending(java.time.Instant cutoff){return jdbc.update("UPDATE gap_issue_candidate SET status='FAILED',failure_type='LEASE_EXPIRED',updated_at=? WHERE status='SENDING' AND sending_started_at<?",LocalDateTime.now(ZoneOffset.UTC),LocalDateTime.ofInstant(cutoff,ZoneOffset.UTC));}
     @Override public void markApproved(long id,String op){
         int changed=jdbc.update("UPDATE gap_issue_candidate SET status='APPROVED',reviewed_by=?,reviewed_at=?,updated_at=? WHERE id=? AND status IN ('PENDING','FAILED')",op,LocalDateTime.now(ZoneOffset.UTC),LocalDateTime.now(ZoneOffset.UTC),id);
         if(changed!=1) throw new IllegalStateException("候选不允许审核或已被并发处理");
     }
-    @Override public void markSent(long id,long no,String url){
-        int changed=jdbc.update("UPDATE gap_issue_candidate SET status='SENT',issue_number=?,issue_url=?,failure_type=NULL,updated_at=? WHERE id=? AND status='SENDING'",no,url,LocalDateTime.now(ZoneOffset.UTC),id);
+    @Override public void markSent(long id,String token,long no,String url){
+        int changed=jdbc.update("UPDATE gap_issue_candidate SET status='SENT',issue_number=?,issue_url=?,failure_type=NULL,sending_started_at=NULL,lease_token=NULL,updated_at=? WHERE tenant_id=0 AND id=? AND status='SENDING' AND lease_token=?",no,url,LocalDateTime.now(ZoneOffset.UTC),id,token);
         if(changed!=1) throw new IllegalStateException("候选不在发送状态");
     }
-    @Override public void markFailed(long id,String type){
-        int changed=jdbc.update("UPDATE gap_issue_candidate SET status='FAILED',failure_type=?,updated_at=? WHERE id=? AND status='SENDING'",type,LocalDateTime.now(ZoneOffset.UTC),id);
+    @Override public void markFailed(long id,String token,String type){
+        int changed=jdbc.update("UPDATE gap_issue_candidate SET status='FAILED',failure_type=?,sending_started_at=NULL,lease_token=NULL,updated_at=? WHERE tenant_id=0 AND id=? AND status='SENDING' AND lease_token=?",type,LocalDateTime.now(ZoneOffset.UTC),id,token);
         if(changed!=1) throw new IllegalStateException("候选不在发送状态");
     }
     private GapIssueCandidate map(java.sql.ResultSet r)throws java.sql.SQLException{return new GapIssueCandidate(r.getLong("id"),r.getString("idempotency_key"),r.getString("cluster_key"),BusinessModule.valueOf(r.getString("business_module")),GapSeverity.valueOf(r.getString("severity")),r.getString("title"),read(r.getString("scenario_samples")),r.getString("expected_behavior"),r.getString("missing_capability"),sourceNos(r.getLong("id"),null),GapIssueStatus.valueOf(r.getString("status")),(Long)r.getObject("issue_number"),r.getString("issue_url"),r.getString("reviewed_by"),instant(r.getTimestamp("reviewed_at")),r.getString("failure_type"),r.getInt("attempt_count"),instant(r.getTimestamp("created_at")),instant(r.getTimestamp("updated_at")),instant(r.getTimestamp("sending_started_at")));}

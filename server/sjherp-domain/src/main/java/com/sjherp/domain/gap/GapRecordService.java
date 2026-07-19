@@ -58,6 +58,14 @@ public class GapRecordService {
         return repository.findById(id)
                 .orElseThrow(() -> new GapRecordNotFoundException(id));
     }
+    @Audited(action = "gap.change_status", targetType = "gap")
+    public GapRecord transitionStatusByGapNo(String gapNo, GapStatus target, String operator) {
+        GapRecord record = repository.findByGapNo(gapNo)
+                .orElseThrow(() -> new GapRecordNotFoundException(gapNo));
+        record.transitionTo(target, operator);
+        repository.save(record);
+        return record;
+    }
 
     /** 分页查询（按状态/模块过滤） */
     public PageResult<GapRecord> search(GapRecordQuery query) {
