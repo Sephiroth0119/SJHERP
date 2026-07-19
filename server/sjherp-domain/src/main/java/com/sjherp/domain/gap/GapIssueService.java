@@ -16,11 +16,20 @@ public class GapIssueService {
     private final GapRecordRepository gaps;
     private final GapIssueCandidateRepository candidates;
     private final GitHubIssueClient github;
+    private final GapRecordService gapService;
     private final boolean enabled;
     public GapIssueService(GapRecordRepository gaps, GapIssueCandidateRepository candidates,
-                           GitHubIssueClient github, boolean enabled) {
+                           GitHubIssueClient github, boolean enabled, GapRecordService gapService) {
         this.gaps=Objects.requireNonNull(gaps); this.candidates=Objects.requireNonNull(candidates);
-        this.github=Objects.requireNonNull(github); this.enabled=enabled;
+        this.github=Objects.requireNonNull(github); this.enabled=enabled; this.gapService=Objects.requireNonNull(gapService);
+    }
+    public GapIssueService(GapRecordRepository gaps, GapIssueCandidateRepository candidates,
+                           GitHubIssueClient github, boolean enabled) {
+        this.gaps = Objects.requireNonNull(gaps);
+        this.candidates = Objects.requireNonNull(candidates);
+        this.github = Objects.requireNonNull(github);
+        this.enabled = enabled;
+        this.gapService = null;
     }
     @Audited(action="gap.issue.cluster", targetType="gap_issue")
     public List<GapIssueCandidate> cluster() {
@@ -54,12 +63,16 @@ public class GapIssueService {
     public GapIssueCandidate deliver(long id){
         if(!enabled) throw new IllegalStateException("GitHub Issue 外部写入已关闭");
         var c=candidates.findById(id).orElseThrow(); if(c.status()!=GapIssueStatus.APPROVED && c.status()!=GapIssueStatus.FAILED) throw new IllegalStateException("候选未审核通过");
-        if(c.issueNumber()!=null) return c; if(!candidates.claimForSend(id)) return candidates.findById(id).orElseThrow();
+        if(c.issueNumber()!=null) return c; var lease=candidates.claimForSend(id); if(lease.isEmpty()) return candidates.findById(id).orElseThrow();
         String marker = "SJHERP-GAP-TRACE:" + c.idempotencyKey();
         try { var existing = github.findByTraceMarker(marker);
             var r = existing.orElseGet(() -> github.create(new GitHubIssueClient.IssueRequest("[SJHERP]["+c.businessModule()+"]["+c.severity()+"] "+c.title(),List.of("sjherp-gap",c.businessModule().name().toLowerCase(Locale.ROOT),c.severity().name().toLowerCase(Locale.ROOT)),body(c)+"\n\n"+marker)));
-            candidates.markSent(id,r.number(),r.url()); }
-        catch(RuntimeException ex){ candidates.markFailed(id,ex.getClass().getSimpleName()); throw ex; }
+            candidates.markSent(id,lease.get(),r.number(),r.url());
+            if (gapService != null) for (String gapNo : c.sourceGapNos()) {
+                gapService.transitionStatusByGapNo(gapNo, GapStatus.TRIAGED, "system:gap-issue");
+            }
+        }
+        catch(RuntimeException ex){ candidates.markFailed(id,lease.get(),ex.getClass().getSimpleName()); throw ex; }
         return candidates.findById(id).orElseThrow();
     }
     static String clusterKey(GapRecord g){
