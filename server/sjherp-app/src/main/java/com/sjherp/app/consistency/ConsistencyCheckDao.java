@@ -599,7 +599,7 @@ public class ConsistencyCheckDao {
                 + "ORDER BY x.work_order_doc_no", PRODUCTION_INVENTORY_GL_MAPPER);
     }
 
-    /** M6-T06：控制科目余额 = 业务明细账未核销余额；双向 UNION 覆盖孤儿侧。 */
+    /** M6-T06：控制科目总额与未核销 AR/AP 明细总额勾稽；单据级来源由规则4/5与核销 rollup覆盖。 */
     @Transactional(readOnly = true)
     public List<GlDetailRow> glDetailMatches() {
         return jdbc.query("SELECT x.account_code, SUM(x.detail_net) AS detail_net, "
@@ -612,8 +612,6 @@ public class ConsistencyCheckDao {
                 + " FROM accounts_receivable ar WHERE ar.tenant_id = 0 AND ar.status IN ('OPEN','PARTIAL') "
                 + " UNION ALL SELECT '220202', -COALESCE(SUM(ap.amount - ap.settled_amount),0) "
                 + " FROM accounts_payable ap WHERE ap.tenant_id = 0 AND ap.status IN ('OPEN','PARTIAL') "
-                + " UNION ALL SELECT '1122', 0 FROM voucher_line WHERE tenant_id = 0 AND account_code = '1122'"
-                + " UNION ALL SELECT '220202', 0 FROM voucher_line WHERE tenant_id = 0 AND account_code = '220202'"
                 + ") x GROUP BY x.account_code ORDER BY x.account_code", (rs, n) -> new GlDetailRow(rs.getString("account_code"),
                         nz(rs.getBigDecimal("detail_net")), nz(rs.getBigDecimal("ledger_net"))));
     }

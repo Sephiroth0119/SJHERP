@@ -3,6 +3,7 @@ package com.sjherp.app.config;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.ArgumentMatchers.any;
 
 import java.math.BigDecimal;
@@ -460,17 +461,32 @@ class FinancialStatementFlowIntegrationTest {
                 .as("关账后权益合计与关账前一致（损益结转为权益内部腾挪）")
                 .isEqualByComparingTo(new BigDecimal(bsBefore.totalEquity()));
 
-        // M6-T06 验收：人为篡改 1122 控制科目一侧，下个检查周期必须揪出真实 GL_DETAIL break。
-        jdbc.update("UPDATE voucher_line SET debit = debit + 1.00 "
-                + "WHERE tenant_id = 0 AND account_code = '1122' LIMIT 1");
-        var run = consistencyCheckRunner.runScheduled();
-        assertThat(run.clean()).isFalse();
-        assertThat(run.findings()).anyMatch(f -> f.checkType().equals(ConsistencyCheckType.GL_DETAIL.code()));
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM consistency_check_run WHERE run_no = ?",
-                Long.class, run.runNo())).isEqualTo(1L);
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM consistency_check_break WHERE run_no = ?",
-                Long.class, run.runNo())).isGreaterThan(0L);
-        verify(notificationChannel).send(any());
+        // M6-T06 验收：先确认干净基线，再只污染 1122 控制科目侧；凭证仍自平衡，下一周期必须揪出 GL_DETAIL。
+        var baseline = consistencyCheckRunner.runScheduled();
+        assertThat(baseline.findings()).noneMatch(f -> f.checkType().equals(ConsistencyCheckType.GL_DETAIL.code()));
+        assertThat(baseline.findings()).noneMatch(f -> f.checkType().equals(ConsistencyCheckType.VOUCHER_BALANCE.code()));
+        Long voucherId = jdbc.queryForObject("SELECT vl.voucher_id FROM voucher_line vl JOIN voucher v ON v.id = vl.voucher_id "
+                + "WHERE vl.tenant_id = 0 AND vl.account_code = '1122' AND v.status IN ('APPROVED','REVERSED') LIMIT 1", Long.class);
+        Long controlLineId = jdbc.queryForObject("SELECT vl.id FROM voucher_line vl WHERE vl.voucher_id = ? AND vl.account_code = '1122' LIMIT 1",
+                Long.class, voucherId);
+        Long offsetLineId = jdbc.queryForObject("SELECT vl.id FROM voucher_line vl WHERE vl.voucher_id = ? AND vl.account_code <> '1122' "
+                + "AND vl.credit > 0 LIMIT 1", Long.class, voucherId);
+        try {
+            jdbc.update("UPDATE voucher_line SET debit = debit + 1.00 WHERE id = ?", controlLineId);
+            jdbc.update("UPDATE voucher_line SET credit = credit + 1.00 WHERE id = ?", offsetLineId);
+            jdbc.update("UPDATE voucher SET total_amount = total_amount + 1.00 WHERE id = ?", voucherId);
+            var run = consistencyCheckRunner.runScheduled();
+            assertThat(run.clean()).isFalse();
+            assertThat(run.findings()).anyMatch(f -> f.checkType().equals(ConsistencyCheckType.GL_DETAIL.code()));
+            assertThat(run.findings()).noneMatch(f -> f.checkType().equals(ConsistencyCheckType.VOUCHER_BALANCE.code()));
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM consistency_check_run WHERE run_no = ?", Long.class, run.runNo())).isEqualTo(1L);
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM consistency_check_break WHERE run_no = ?", Long.class, run.runNo())).isGreaterThan(0L);
+        } finally {
+            jdbc.update("UPDATE voucher_line SET debit = debit - 1.00 WHERE id = ?", controlLineId);
+            jdbc.update("UPDATE voucher_line SET credit = credit - 1.00 WHERE id = ?", offsetLineId);
+            jdbc.update("UPDATE voucher SET total_amount = total_amount - 1.00 WHERE id = ?", voucherId);
+        }
+        verify(notificationChannel, atLeastOnce()).send(any());
     }
 
     // ---------------------------------------------------------------
