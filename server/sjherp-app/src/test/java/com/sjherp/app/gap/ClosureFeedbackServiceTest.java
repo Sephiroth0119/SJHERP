@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.sjherp.domain.gap.*;
 import org.junit.jupiter.api.Test;
+import com.sjherp.domain.common.audit.Audited;
 
 class ClosureFeedbackServiceTest {
     @Test
@@ -18,7 +19,7 @@ class ClosureFeedbackServiceTest {
                 mock(com.sjherp.domain.notification.SystemNotificationRepository.class),
                 mock(com.sjherp.agent.session.AgentSessionRepository.class));
 
-        assertThatThrownBy(() -> service.confirm(7, new ClosureEvidence("PR-1", "已解决", "admin")))
+        assertThatThrownBy(() -> service.confirm(7, new ClosureEvidence("PR-1", "已解决"), "admin"))
                 .isInstanceOf(DeveloperAgentTaskStateException.class);
         verifyNoInteractions(gaps);
     }
@@ -43,9 +44,17 @@ class ClosureFeedbackServiceTest {
         when(closures.claim(anyLong(), anyLong(), anyString(), anyString(), anyString())).thenReturn(false);
         ClosureFeedbackService service = service(tasks, closures);
 
-        service.confirm(7, new ClosureEvidence("commit-1", "已解决", "admin"));
+        service.confirm(7, new ClosureEvidence("commit-1", "已解决"), "admin");
 
         verify(closures).claim(eq(7L), eq(8L), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void auditedMethodCarriesExplicitOperatorAndTaskTarget() throws Exception {
+        var method = ClosureFeedbackService.class.getMethod("confirm", long.class, ClosureEvidence.class, String.class);
+        assertThat(method.getParameterTypes()[2]).isEqualTo(String.class);
+        assertThat(method.getAnnotation(Audited.class).action()).isEqualTo("developer.task.confirm_resolution");
+        assertThat(method.getAnnotation(Audited.class).targetType()).isEqualTo("closure_feedback");
     }
 
     private static ClosureFeedbackService service(DeveloperAgentTaskRepository tasks, ClosureFeedbackRepository closures) {

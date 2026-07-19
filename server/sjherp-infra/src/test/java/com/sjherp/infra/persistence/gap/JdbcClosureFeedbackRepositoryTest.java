@@ -11,10 +11,11 @@ class JdbcClosureFeedbackRepositoryTest {
     void claimUsesUniqueKeyInsertAndDistinguishesWinnerFromDuplicate() {
         JdbcTemplate jdbc = mock(JdbcTemplate.class);
         JdbcClosureFeedbackRepository repository = new JdbcClosureFeedbackRepository(jdbc);
-        when(jdbc.update(contains("INSERT IGNORE"), any(), any(), any(), any(), any(), any())).thenReturn(1, 0);
+        when(jdbc.update(contains("INSERT INTO"), any(), any(), any(), any(), any(), any()))
+                .thenReturn(1).thenThrow(new org.springframework.dao.DuplicateKeyException("duplicate"));
 
         assertThat(repository.claim(7, 8, "commit-1", "done", "admin")).isTrue();
         assertThat(repository.claim(7, 8, "commit-1", "done", "admin")).isFalse();
-        verify(jdbc, times(2)).update(contains("INSERT IGNORE"), any(), any(), any(), any(), any(), any());
+        verify(jdbc, times(2)).update(contains("INSERT INTO"), any(), any(), any(), any(), any(), any());
     }
 }

@@ -12,5 +12,5 @@ import jakarta.validation.constraints.Size;
 public class ClosureFeedbackController {
  private final ClosureFeedbackService service; public ClosureFeedbackController(ClosureFeedbackService service){this.service=service;}
  public record Request(@NotBlank @Size(max=500) String reference, @NotBlank @Size(max=2000) String summary){}
- @PostMapping("/{id}/confirm-resolution") public void confirm(@PathVariable long id,@Valid @RequestBody Request request){service.confirm(id,new ClosureEvidence(request.reference(),request.summary(),CurrentUser.operator()));}
+ @PostMapping("/{id}/confirm-resolution") public void confirm(@PathVariable long id,@Valid @RequestBody Request request){service.confirm(id,new ClosureEvidence(request.reference(),request.summary()),CurrentUser.operator());}
 }
