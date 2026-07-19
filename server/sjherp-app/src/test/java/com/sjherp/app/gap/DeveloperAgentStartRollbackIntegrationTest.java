@@ -79,7 +79,7 @@ class DeveloperAgentStartRollbackIntegrationTest {
         doAnswer(invocation -> {
             if (invocation.getArgument(0, String.class).equals(secondGapNo)
                     && secondReads.incrementAndGet() > 1) return java.util.Optional.empty();
-            return ((JdbcGapRecordRepository) context.getBean("realGapRepository")).findByGapNo(invocation.getArgument(0, String.class));
+            return invocation.callRealMethod();
         }).when(gaps).findByGapNo(org.mockito.ArgumentMatchers.anyString());
 
         DeveloperAgentService service = context.getBean(DeveloperAgentService.class);
@@ -127,8 +127,7 @@ class DeveloperAgentStartRollbackIntegrationTest {
         @Bean AuditAspect auditAspect(TransactionAwareAuditWriter writer, AuditMetrics metrics) { return new AuditAspect(writer, metrics); }
         @Bean GapIssueCandidateRepository candidateRepository() { return mock(GapIssueCandidateRepository.class); }
         @Bean DeveloperAgentTaskRepository taskRepository(JdbcTemplate jdbc, ObjectMapper json) { return new JdbcDeveloperAgentTaskRepository(jdbc, json); }
-        @Bean(name = "realGapRepository") JdbcGapRecordRepository realGapRepository(JdbcTemplate jdbc) { return new JdbcGapRecordRepository(jdbc); }
-        @Bean GapRecordRepository gapRepository(JdbcGapRecordRepository real) { return spy(real); }
+        @Bean GapRecordRepository gapRepository(JdbcTemplate jdbc) { return spy(new JdbcGapRecordRepository(jdbc)); }
         @Bean DocumentNumberGenerator numberGenerator() { return new DocumentNumberGenerator() { public String generate(DocumentNumberRule rule) { return "TEST-1"; } public String generate(DocumentNumberRule rule, java.time.YearMonth month) { return "TEST-1"; } }; }
         @Bean GapRecordService gapService(GapRecordRepository repository, DocumentNumberGenerator generator) { return new GapRecordService(repository, generator); }
         @Bean DeveloperAgentRunner runner() { return new DisabledDeveloperAgentRunner(); }

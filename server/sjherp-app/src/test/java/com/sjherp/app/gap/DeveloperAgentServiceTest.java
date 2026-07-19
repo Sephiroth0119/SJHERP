@@ -83,6 +83,24 @@ class DeveloperAgentServiceTest {
         service.run(9, "admin");
         verify(failures).fail(eq(9L), eq(DeveloperAgentTaskStatus.RUNNING), eq("lease-1"), eq("QUALITY_GATE"), anyString(), eq(result.generatedArtifacts()), eq(false), eq(true), eq(false), eq("ci://failed"), eq("runner-output"), eq("admin"));
     }
+
+    @Test void ciFailureForwardsEvidenceWithTestingLease() {
+        GapIssueCandidateRepository candidates = mock(GapIssueCandidateRepository.class);
+        DeveloperAgentTaskRepository tasks = mock(DeveloperAgentTaskRepository.class);
+        DeveloperAgentRunner runner = mock(DeveloperAgentRunner.class);
+        DeveloperAgentFailureService failures = mock(DeveloperAgentFailureService.class);
+        when(runner.available()).thenReturn(true);
+        when(tasks.claim(eq(9L), any())).thenReturn(Optional.of("lease-1"));
+        when(tasks.findById(9)).thenReturn(Optional.of(task(9, DeveloperAgentTaskStatus.RUNNING)));
+        when(candidates.findById(2)).thenReturn(Optional.of(candidate(GapIssueStatus.SENT)));
+        DeveloperAgentRunner.Result result = new DeveloperAgentRunner.Result(List.of("code", "tests"), true, true, false, "ci://red", "runner-output");
+        when(runner.run(any())).thenReturn(result);
+        DeveloperAgentService service = new DeveloperAgentService(candidates, tasks, mock(GapRecordRepository.class), mock(GapRecordService.class), runner, mock(WorkspacePolicy.class), failures);
+        service.run(9, "admin");
+        InOrder order = inOrder(tasks, failures);
+        order.verify(tasks).transition(eq(9L), eq(DeveloperAgentTaskStatus.RUNNING), eq(DeveloperAgentTaskStatus.TESTING), eq("lease-1"), eq(result.generatedArtifacts()), eq(true), eq(false), eq(false), isNull(), eq("runner-output"));
+        order.verify(failures).fail(eq(9L), eq(DeveloperAgentTaskStatus.TESTING), eq("lease-1"), eq("QUALITY_GATE"), anyString(), eq(result.generatedArtifacts()), eq(true), eq(true), eq(false), eq("ci://red"), eq("runner-output"), eq("admin"));
+    }
     @Test void approveAndCancelWrapRepositoryStateErrors(){DeveloperAgentTaskRepository tasks=mock(DeveloperAgentTaskRepository.class);when(tasks.findById(1)).thenReturn(Optional.of(task(1,DeveloperAgentTaskStatus.AWAITING_REVIEW)));doThrow(new IllegalStateException("bad")).when(tasks).approve(1,"admin");doThrow(new IllegalStateException("bad")).when(tasks).cancel(1,"admin");var service=new DeveloperAgentService(mock(GapIssueCandidateRepository.class),tasks,mock(GapRecordRepository.class),mock(GapRecordService.class),mock(DeveloperAgentRunner.class),mock(WorkspacePolicy.class));org.assertj.core.api.Assertions.assertThatThrownBy(()->service.approve(1,"admin")).isInstanceOf(DeveloperAgentTaskStateException.class);org.assertj.core.api.Assertions.assertThatThrownBy(()->service.cancel(1,"admin")).isInstanceOf(DeveloperAgentTaskStateException.class);}
     private static DeveloperAgentTask task(long id, DeveloperAgentTaskStatus status){return new DeveloperAgentTask(id,2,"k",status,"codex/dev/k","C:/repo/k","FAKE","lease-1",1,List.of("pending"),false,false,false,null,false,null,null,null);}
     private static GapIssueCandidate candidate(GapIssueStatus status){return new GapIssueCandidate(7,"k","k",BusinessModule.GENERAL,GapSeverity.LOW,"t",List.of("s"),"e","m",List.of("GAP-1"),status,1L,"url",null,null,null,0,null,null,null);}
