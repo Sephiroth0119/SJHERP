@@ -151,6 +151,9 @@ public class GapIssueService {
             if (exception instanceof GapIssueStateException stateException) {
                 throw stateException;
             }
+            if (exception instanceof GapIssueDisabledException disabledException) {
+                throw disabledException;
+            }
             if (exception instanceof GitHubIssueGatewayException gatewayException) {
                 throw gatewayException;
             }
