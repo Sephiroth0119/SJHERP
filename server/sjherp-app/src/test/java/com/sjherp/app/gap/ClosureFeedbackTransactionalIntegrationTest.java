@@ -148,7 +148,7 @@ class ClosureFeedbackTransactionalIntegrationTest {
         long candidate = candidateKeys.getKey().longValue();
         KeyHolder taskKeys = new GeneratedKeyHolder();
         jdbc.update(connection -> {
-            var ps = connection.prepareStatement("INSERT INTO developer_agent_task(tenant_id,candidate_id,idempotency_key,status,branch_name,workspace_path,runner_kind,generated_artifacts,created_by,created_at,updated_at) VALUES(0,?,?, 'APPROVED','branch','workspace','REST','[]','admin',UTC_TIMESTAMP(6),UTC_TIMESTAMP(6))", java.sql.Statement.RETURN_GENERATED_KEYS);
+            var ps = connection.prepareStatement("INSERT INTO developer_agent_task(tenant_id,candidate_id,idempotency_key,status,branch_name,workspace_path,runner_kind,lease_token,attempt_count,ci_green,human_approved,generated_artifacts,targeted_tests_green,full_tests_green,ci_evidence,runner_output_summary,created_by,created_at,updated_at) VALUES(0,?,?, 'APPROVED','branch','workspace','REST',NULL,1,TRUE,TRUE,JSON_ARRAY('closure-feedback'),TRUE,TRUE,'ci://closure-feedback','closure feedback integration fixture','admin',UTC_TIMESTAMP(6),UTC_TIMESTAMP(6))", java.sql.Statement.RETURN_GENERATED_KEYS);
             ps.setLong(1, candidate); ps.setString(2, "task-"+suffix); return ps;
         }, taskKeys);
         long task = taskKeys.getKey().longValue();
