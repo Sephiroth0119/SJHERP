@@ -8,6 +8,8 @@
  */
 
 /** localStorage 键：JWT token */
+import { isUsableToken } from '../security/token.ts';
+
 const TOKEN_STORAGE_KEY = 'sjherp.auth.token';
 
 /** localStorage 键：当前用户展示信息（displayName/roles，刷新页面后免请求渲染） */
@@ -39,11 +41,14 @@ export class ApiError extends Error {
 // ============================================================
 
 export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_STORAGE_KEY);
+  const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+  if (!token || isUsableToken(token)) return token;
+  clearAuth();
+  return null;
 }
 
 export function setToken(token: string): void {
-  localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  localStorage.setItem(TOKEN_STORAGE_KEY, token.trim());
 }
 
 export function getStoredUser(): AuthUser | null {

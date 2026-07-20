@@ -22,6 +22,8 @@ import {
 } from './api/http';
 import { fetchMe, formatRoles } from './api/authApi';
 import { CHAT_SESSION_STORAGE_KEY } from './api/chatApi';
+import { canAccessModule } from './security/access';
+import { guardModule } from './security/routeGuard';
 
 export function App() {
   // 有 token 即先按已登录渲染（展示信息取本地缓存），后台 me 校验兜底
@@ -59,25 +61,24 @@ export function App() {
     setUser(null);
   }, []);
 
-  const canManageMemory = user?.roles.some(
-    (role) => role === 'ADMIN' || role === 'BOSS',
-  ) ?? false;
+  const roles = user?.roles ?? [];
+  const canManageMemory = canAccessModule('memory', roles);
 
   useEffect(() => {
-    if (activeModule === 'memory' && !canManageMemory) {
-      setActiveModule('agent');
-    }
-  }, [activeModule, canManageMemory]);
+    const guarded = guardModule(activeModule, roles);
+    if (guarded !== activeModule) setActiveModule(guarded);
+  }, [activeModule, user?.roles]);
 
   if (!user) {
     return <LoginPage onLogin={setUser} />;
   }
 
-  const activeItem = MODULE_NAV_ITEMS.find((item) => item.key === activeModule);
+  const guardedModule = guardModule(activeModule, user.roles);
+  const activeItem = MODULE_NAV_ITEMS.find((item) => item.key === guardedModule);
 
   return (
     <div className="app-layout">
-      <Sidebar active={activeModule} onSelect={setActiveModule} roles={user.roles} />
+      <Sidebar active={guardedModule} onSelect={setActiveModule} roles={user.roles} />
       <main className="app-main">
         <header className="app-topbar">
           <NotificationBell />
@@ -89,9 +90,9 @@ export function App() {
             退出
           </button>
         </header>
-        {activeModule === 'memory' && canManageMemory ? (
+        {guardedModule === 'memory' && canManageMemory ? (
           <MemoryGovernancePage />
-        ) : activeModule === 'agent' || !activeItem || activeModule === 'memory' ? (
+        ) : guardedModule === 'agent' || !activeItem || guardedModule === 'memory' ? (
           <ChatPanel />
         ) : (
           <ModulePlaceholder module={activeItem} />
