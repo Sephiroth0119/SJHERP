@@ -69,6 +69,12 @@ body {
   color: var(--color-text-muted);
 }
 
+.app-token-warning {
+  color: #b45309;
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .app-topbar-logout {
   appearance: none;
   padding: 5px 14px;

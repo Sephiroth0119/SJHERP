@@ -9,11 +9,11 @@ import { USE_MOCK } from '../api/chatApi';
 interface SidebarProps {
   active: ModuleKey;
   onSelect: (key: ModuleKey) => void;
-  roles: string[];
+  permissions: string[];
 }
 
-export function Sidebar({ active, onSelect, roles }: SidebarProps) {
-  const visibleItems = filterNavItems(MODULE_NAV_ITEMS, roles);
+export function Sidebar({ active, onSelect, permissions }: SidebarProps) {
+  const visibleItems = filterNavItems(MODULE_NAV_ITEMS, permissions);
 
   return (
     <aside className="sidebar">

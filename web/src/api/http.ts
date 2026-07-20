@@ -20,6 +20,26 @@ export interface AuthUser {
   username: string;
   displayName: string;
   roles: string[];
+  permissions: string[];
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean)
+    : [];
+}
+
+/** Normalize cached/API data so unknown fields never grant client-side access. */
+export function normalizeAuthUser(value: unknown): AuthUser | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.username !== 'string' || typeof candidate.displayName !== 'string') return null;
+  return {
+    username: candidate.username,
+    displayName: candidate.displayName,
+    roles: stringArray(candidate.roles),
+    permissions: stringArray(candidate.permissions),
+  };
 }
 
 /**
@@ -55,7 +75,7 @@ export function getStoredUser(): AuthUser | null {
   const raw = localStorage.getItem(USER_STORAGE_KEY);
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as AuthUser;
+    return normalizeAuthUser(JSON.parse(raw));
   } catch {
     return null;
   }

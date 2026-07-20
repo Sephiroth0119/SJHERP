@@ -78,7 +78,10 @@ class AuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.token").isNotEmpty())
                 .andExpect(jsonPath("$.displayName").value("爱丽丝"))
-                .andExpect(jsonPath("$.roles[0]").value("SALES"));
+                .andExpect(jsonPath("$.roles[0]").value("SALES"))
+                .andExpect(jsonPath("$.permissions").isArray())
+                .andExpect(jsonPath("$.permissions", org.hamcrest.Matchers.hasItem("sales:order")))
+                .andExpect(jsonPath("$.permissions", org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("memory:manage"))));
     }
 
     @Test
@@ -123,7 +126,10 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.userId").value(42))
                 .andExpect(jsonPath("$.username").value("alice"))
                 .andExpect(jsonPath("$.displayName").value("爱丽丝"))
-                .andExpect(jsonPath("$.roles[0]").value("SALES"));
+                .andExpect(jsonPath("$.roles[0]").value("SALES"))
+                .andExpect(jsonPath("$.permissions").isArray())
+                .andExpect(jsonPath("$.permissions", org.hamcrest.Matchers.hasItem("sales:order")))
+                .andExpect(jsonPath("$.permissions", org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("memory:manage"))));
     }
 
     @Test

@@ -16,11 +16,24 @@ function decodePayload(token: string): Record<string, unknown> | null {
   }
 }
 
+export function tokenExpiresAt(token: string): number | null {
+  const expiration = decodePayload(token)?.exp;
+  return typeof expiration === 'number' && Number.isFinite(expiration)
+    ? expiration * 1000
+    : null;
+}
+
 /** Frontend expiry hint only; signature and authorization remain backend responsibilities. */
 export function isUsableToken(token: string, nowMs = Date.now()): boolean {
-  if (token.trim() === '') return false;
-  const expiration = decodePayload(token)?.exp;
-  return typeof expiration === 'number'
-    && Number.isFinite(expiration)
-    && expiration * 1000 > nowMs;
+  const expiresAt = tokenExpiresAt(token);
+  return expiresAt !== null && expiresAt > nowMs;
+}
+
+export function isTokenExpiringSoon(
+  token: string,
+  nowMs = Date.now(),
+  thresholdMs = 15 * 60 * 1000,
+): boolean {
+  const expiresAt = tokenExpiresAt(token);
+  return expiresAt !== null && expiresAt > nowMs && expiresAt - nowMs <= thresholdMs;
 }
