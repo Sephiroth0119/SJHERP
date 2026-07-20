@@ -109,12 +109,12 @@ API Key **绝不写进任何会被 git 跟踪的文件**，二选一：
 - **初始管理员**：用户名 `admin`，密码 `Admin@2026`（V6 迁移种子数据）。
   **生产/正式环境部署后必须立即登录修改该密码**（管理员可在用户管理 API 重置）。
 - **登录**：`POST /api/auth/login`，请求体 `{"username","password"}`，响应
-  `{"token","displayName","roles"}`；token 为 JWT（HS256），有效期 12 小时。
+  `{"token","displayName","roles","permissions"}`；`permissions` 是后端 `RolePermissions` 按当前角色实时导出的权限码集合，token 为 JWT（HS256），有效期 12 小时。
 - **JWT 密钥**：`application.yml` 中的默认值仅限本地开发，生产环境必须用环境变量
   `SJHERP_JWT_SECRET`（≥ 32 字节随机串）覆盖，否则任何人都能伪造登录态。
 - **用户管理**（仅 ADMIN 角色）：`/api/identity/users`（列表/新建、`{id}/roles` 改角色、
   `{id}/enable|disable` 启停、`{id}/password` 重置密码）。用户不可删除，离职即停用。
-- **当前用户**：`GET /api/auth/me`。前端登录页 + 右上角退出已对接，token 存 localStorage。
+- **当前用户**：`GET /api/auth/me`，返回当前用户及 `permissions` 权限码集合。前端登录页、token 生命周期提示、按权限菜单/路由守卫与右上角退出已对接，token 存 localStorage。
 
 ### 后端
 

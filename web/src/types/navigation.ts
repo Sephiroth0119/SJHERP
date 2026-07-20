@@ -1,5 +1,3 @@
-import type { PermissionCode } from '../security/permissions.ts';
-
 export type ModuleKey =
   | 'agent' | 'purchase' | 'sales' | 'inventory' | 'production' | 'finance' | 'memory';
 
@@ -8,7 +6,7 @@ export interface ModuleNavItem {
   label: string;
   description: string;
   /** A module is visible when the user has at least one of these permissions. */
-  requiredPermissions?: readonly PermissionCode[];
+  requiredPermissions?: readonly string[];
 }
 
 export const MODULE_NAV_ITEMS: readonly ModuleNavItem[] = [

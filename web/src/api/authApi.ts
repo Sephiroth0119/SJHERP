@@ -11,6 +11,8 @@ export interface LoginResult {
   token: string;
   displayName: string;
   roles: string[];
+  /** Optional keeps old deployments readable; missing permissions deny protected menus. */
+  permissions?: string[];
 }
 
 /** GET /api/auth/me 的响应体 */
@@ -19,6 +21,8 @@ export interface MeResult {
   username: string;
   displayName: string;
   roles: string[];
+  /** Optional keeps old deployments readable; missing permissions deny protected menus. */
+  permissions?: string[];
 }
 
 /** 角色枚举 → 中文名（与后端 Role 枚举一致） */
@@ -47,7 +51,12 @@ export async function login(username: string, password: string): Promise<AuthUse
     skipUnauthorizedHandler: true,
   });
   setToken(result.token);
-  const user: AuthUser = { username, displayName: result.displayName, roles: result.roles };
+  const user: AuthUser = {
+    username,
+    displayName: result.displayName,
+    roles: result.roles,
+    permissions: result.permissions ?? [],
+  };
   setStoredUser(user);
   return user;
 }
