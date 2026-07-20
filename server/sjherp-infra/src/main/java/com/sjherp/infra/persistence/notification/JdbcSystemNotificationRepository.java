@@ -61,7 +61,7 @@ public class JdbcSystemNotificationRepository implements SystemNotificationRepos
     public boolean saveIfAbsent(SystemNotification notification) {
         Objects.requireNonNull(notification, "notification must not be null");
         try { jdbc.update("""
-                INSERT IGNORE INTO system_notification (
+                INSERT INTO system_notification (
                     tenant_id, recipient_user_id, category, severity, title, content,
                     source_type, source_ref, read_at, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)

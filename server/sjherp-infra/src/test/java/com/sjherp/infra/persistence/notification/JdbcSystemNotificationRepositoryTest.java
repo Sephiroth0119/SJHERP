@@ -1,6 +1,7 @@
 package com.sjherp.infra.persistence.notification;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -9,6 +10,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.dao.DuplicateKeyException;
 
 import com.sjherp.domain.notification.SystemNotification;
 import com.sjherp.domain.notification.SystemNotificationQuery;
@@ -52,6 +54,35 @@ class JdbcSystemNotificationRepositoryTest {
         assertThat(jdbc.queryArguments[3]).isInstanceOf(Long.class);
     }
 
+    @Test
+    void saveIfAbsentUsesStrictInsertWithoutIgnore() {
+        CapturingJdbcTemplate jdbc = new CapturingJdbcTemplate();
+
+        assertThat(new JdbcSystemNotificationRepository(jdbc).saveIfAbsent(newNotification(7))).isTrue();
+
+        assertThat(jdbc.updateSql).contains("INSERT INTO system_notification")
+                .doesNotContainIgnoringCase("INSERT IGNORE");
+    }
+
+    @Test
+    void saveIfAbsentTurnsOnlyDuplicateKeyIntoFalse() {
+        CapturingJdbcTemplate jdbc = new CapturingJdbcTemplate();
+        jdbc.failure = new DuplicateKeyException("duplicate source");
+
+        assertThat(new JdbcSystemNotificationRepository(jdbc).saveIfAbsent(newNotification(7))).isFalse();
+    }
+
+    @Test
+    void saveIfAbsentPropagatesNonDuplicateDatabaseFailures() {
+        CapturingJdbcTemplate jdbc = new CapturingJdbcTemplate();
+        IllegalStateException failure = new IllegalStateException("foreign key failure");
+        jdbc.failure = failure;
+
+        assertThatThrownBy(() -> new JdbcSystemNotificationRepository(jdbc)
+                .saveIfAbsent(newNotification(7)))
+                .isSameAs(failure);
+    }
+
     private static SystemNotification notification(long id, long recipientId, Instant readAt) {
         return SystemNotification.restore(id, 0, recipientId,
                 SystemNotification.Category.CONSISTENCY, SystemNotification.Severity.ERROR,
@@ -60,14 +91,23 @@ class JdbcSystemNotificationRepositoryTest {
                 Instant.parse("2026-07-19T00:00:00Z"));
     }
 
+    private static SystemNotification newNotification(long recipientId) {
+        return SystemNotification.create(0, recipientId, SystemNotification.Category.CONSISTENCY,
+                SystemNotification.Severity.ERROR, "test notification", "content",
+                SystemNotification.SourceType.CONSISTENCY_REPORT, "source-test",
+                Instant.parse("2026-07-19T00:00:00Z"));
+    }
+
     private static final class CapturingJdbcTemplate extends JdbcTemplate {
         private String updateSql;
         private String querySql;
         private Object[] updateArguments;
         private Object[] queryArguments;
+        private RuntimeException failure;
 
         @Override
         public int update(String sql, Object... args) {
+            if (failure != null) throw failure;
             updateSql = sql;
             updateArguments = args;
             return 1;
