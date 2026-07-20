@@ -77,7 +77,7 @@ class ClosureFeedbackTransactionalIntegrationTest {
         jdbc.update("DELETE FROM gap_issue_source"); jdbc.update("DELETE FROM developer_agent_task"); jdbc.update("DELETE FROM gap_issue_candidate");
         jdbc.update("DELETE FROM gap_record"); jdbc.update("DELETE FROM agent_session");
         jdbc.update("DELETE FROM sys_user WHERE id IN (11,12)");
-        context.getBean(FailingMemoryWriteChannel.class).fail.set(false);
+        FailingMemoryWriteChannel.FAIL.set(false);
         suffix = Long.toString(System.nanoTime(), 36);
     }
 
@@ -96,7 +96,7 @@ class ClosureFeedbackTransactionalIntegrationTest {
 
     @Test void downstreamFailureRollsBackClaimGapsMemoryNotificationsAndAudit() {
         Fixture f = fixture();
-        context.getBean(FailingMemoryWriteChannel.class).fail.set(true);
+        FailingMemoryWriteChannel.FAIL.set(true);
         assertThatThrownBy(() -> context.getBean(ClosureFeedbackService.class).confirm(f.taskId,
                 new ClosureEvidence("ci://fail", "fail"), "admin")).isInstanceOf(IllegalStateException.class);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM closure_feedback", Integer.class)).isZero();
@@ -104,7 +104,7 @@ class ClosureFeedbackTransactionalIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM memory_entry", Integer.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM system_notification", Integer.class)).isZero();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_log", Integer.class)).isZero();
-        context.getBean(FailingMemoryWriteChannel.class).fail.set(false);
+        FailingMemoryWriteChannel.FAIL.set(false);
         context.getBean(ClosureFeedbackService.class).confirm(f.taskId,
                 new ClosureEvidence("ci://retry", "recovered"), "admin");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM closure_feedback", Integer.class)).isEqualTo(1);
@@ -182,7 +182,7 @@ class ClosureFeedbackTransactionalIntegrationTest {
         @Bean ClosureFeedbackService closureFeedbackService(DeveloperAgentTaskRepository t,GapIssueCandidateRepository c,GapRecordRepository g,ClosureFeedbackRepository f,MemoryWriteChannel m,SystemNotificationRepository n,AgentSessionRepository s) { return new ClosureFeedbackService(t,c,g,f,m,n,s); }
     }
     static class FailingMemoryWriteChannel extends MemoryWriteChannel {
-        final AtomicBoolean fail = new AtomicBoolean(); FailingMemoryWriteChannel(MemoryService s) { super(s); }
-        @Override public com.sjherp.domain.memory.MemoryEntry approveAndWrite(com.sjherp.domain.memory.StructuredMemoryCandidate c,String o) { if (fail.get()) throw new IllegalStateException("downstream failure"); return super.approveAndWrite(c,o); }
+        static final AtomicBoolean FAIL = new AtomicBoolean(); FailingMemoryWriteChannel(MemoryService s) { super(s); }
+        @Override public com.sjherp.domain.memory.MemoryEntry approveAndWrite(com.sjherp.domain.memory.StructuredMemoryCandidate c,String o) { if (FAIL.get()) throw new IllegalStateException("downstream failure"); return super.approveAndWrite(c,o); }
     }
 }
