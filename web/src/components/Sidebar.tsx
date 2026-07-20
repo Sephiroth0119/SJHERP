@@ -2,6 +2,7 @@
  * 左侧导航：Agent 主入口 + 传统业务入口（采购/销售/库存/生产/财务）。
  */
 import { MODULE_NAV_ITEMS, type ModuleKey } from '../types/navigation';
+import { filterNavItems } from '../security/access';
 import { AGENT_PROTOCOL_VERSION } from '../types/agent';
 import { USE_MOCK } from '../api/chatApi';
 
@@ -12,9 +13,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ active, onSelect, roles }: SidebarProps) {
-  const visibleItems = MODULE_NAV_ITEMS.filter(
-    (item) => !item.requiredRoles || item.requiredRoles.some((role) => roles.includes(role)),
-  );
+  const visibleItems = filterNavItems(MODULE_NAV_ITEMS, roles);
 
   return (
     <aside className="sidebar">
