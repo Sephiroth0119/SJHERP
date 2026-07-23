@@ -23,7 +23,7 @@ import jakarta.validation.constraints.NotBlank;
 /**
  * 认证 API（M2-T05）：
  * <ul>
- *   <li>POST /api/auth/login → 200 {"token", "displayName", "roles"}；失败 401 {"error"}</li>
+ *   <li>POST /api/auth/login → 200 {"token", "displayName", "roles", "permissions"}；失败 401 {"error"}</li>
  *   <li>GET  /api/auth/me → 200 当前登录用户（须带 Bearer token）</li>
  * </ul>
  */
