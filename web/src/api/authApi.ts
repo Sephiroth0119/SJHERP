@@ -1,8 +1,8 @@
 /**
  * 认证 API 封装（M2-T05）：
  *
- * - POST /api/auth/login → 200 { token, displayName, roles }；失败 401 { error }
- * - GET  /api/auth/me    → 200 { userId, username, displayName, roles }
+ * - POST /api/auth/login → 200 { token, displayName, roles, permissions }；失败 401 { error }
+ * - GET  /api/auth/me    → 200 { userId, username, displayName, roles, permissions }
  */
 import { request, setStoredUser, setToken, type AuthUser } from './http';
 

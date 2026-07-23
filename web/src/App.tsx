@@ -21,7 +21,6 @@ import {
   type AuthUser,
 } from './api/http';
 import { fetchMe, formatRoles } from './api/authApi';
-import { CHAT_SESSION_STORAGE_KEY } from './api/chatApi';
 import { canAccessModule } from './security/access';
 import { isTokenExpiringSoon } from './security/token';
 import { guardModule, moduleFromHash, routeForModule } from './security/routeGuard';
@@ -61,12 +60,16 @@ export function App() {
   /** 退出登录：清 token/用户信息与当前聊天会话 id（避免下个登录者串会话） */
   const handleLogout = useCallback(() => {
     clearAuth();
-    localStorage.removeItem(CHAT_SESSION_STORAGE_KEY);
     setUser(null);
   }, []);
 
   const permissions = user?.permissions ?? [];
   const canManageMemory = canAccessModule('memory', permissions);
+  const selectModule = useCallback((module: ModuleKey) => {
+    const guarded = guardModule(module, permissions);
+    setActiveModule(guarded);
+    window.history.replaceState(null, '', routeForModule(guarded));
+  }, [permissions]);
 
   useEffect(() => {
     if (!user) return;
@@ -100,11 +103,6 @@ export function App() {
 
   const guardedModule = guardModule(activeModule, permissions);
   const activeItem = MODULE_NAV_ITEMS.find((item) => item.key === guardedModule);
-  const selectModule = useCallback((module: ModuleKey) => {
-    const guarded = guardModule(module, permissions);
-    setActiveModule(guarded);
-    window.history.replaceState(null, '', routeForModule(guarded));
-  }, [permissions]);
   const tokenWarning = isTokenExpiringSoon(getToken() ?? '', nowMs);
 
   return (

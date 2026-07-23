@@ -14,12 +14,13 @@
 import { AGENT_PROTOCOL_VERSION, type AgentReply } from '../types/agent';
 import { GREETING_REPLY, getMockReply } from '../mock/mockAgent';
 import { ApiError, request } from './http';
+import { CHAT_SESSION_STORAGE_KEY as SESSION_STORAGE_KEY } from './session';
 
 /** 是否启用 mock 模式（默认 false，走真实后端） */
 export const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
 
 /** localStorage 键：当前聊天会话 id（退出登录时一并清除，避免串到他人会话） */
-export const CHAT_SESSION_STORAGE_KEY = 'sjherp.chat.sessionId';
+export const CHAT_SESSION_STORAGE_KEY = SESSION_STORAGE_KEY;
 
 /** POST /api/chat/sessions 的响应体 */
 export interface ChatSessionCreated {

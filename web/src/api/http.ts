@@ -9,11 +9,11 @@
 
 /** localStorage 键：JWT token */
 import { isUsableToken } from '../security/token.ts';
-
-const TOKEN_STORAGE_KEY = 'sjherp.auth.token';
-
-/** localStorage 键：当前用户展示信息（displayName/roles，刷新页面后免请求渲染） */
-const USER_STORAGE_KEY = 'sjherp.auth.user';
+import {
+  endFrontendSession,
+  TOKEN_STORAGE_KEY,
+  USER_STORAGE_KEY,
+} from './session.ts';
 
 /** 当前登录用户的前端展示信息 */
 export interface AuthUser {
@@ -63,7 +63,7 @@ export class ApiError extends Error {
 export function getToken(): string | null {
   const token = localStorage.getItem(TOKEN_STORAGE_KEY);
   if (!token || isUsableToken(token)) return token;
-  clearAuth();
+  endFrontendSession();
   return null;
 }
 
@@ -87,8 +87,7 @@ export function setStoredUser(user: AuthUser): void {
 
 /** 清除本地登录态（退出 / 401 拦截时调用） */
 export function clearAuth(): void {
-  localStorage.removeItem(TOKEN_STORAGE_KEY);
-  localStorage.removeItem(USER_STORAGE_KEY);
+  endFrontendSession();
 }
 
 // ============================================================
@@ -149,7 +148,7 @@ export async function request<T>(path: string, init?: RequestInitLite): Promise<
     }
     if (response.status === 401 && !init?.skipUnauthorizedHandler) {
       // 登录已过期 / 用户被停用：清登录态并通知 App 跳登录页
-      clearAuth();
+      endFrontendSession();
       unauthorizedHandler?.();
     }
     throw new ApiError(message, response.status);
