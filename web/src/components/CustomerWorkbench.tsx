@@ -59,6 +59,7 @@ export function CustomerWorkbench({ permissions }: { permissions: string[] }) {
 
   const applySearch = () => {
     setKeyword(draftKeyword); setStatus(draftStatus); setPage(1);
+    setRefreshKey((key) => key + 1);
   };
   const choose = (customer: Customer) => {
     const requestId = ++detailRequest.current;
