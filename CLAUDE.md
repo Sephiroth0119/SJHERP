@@ -109,5 +109,3 @@ SJHERP/
 **M6-T05 检查 Agent 框架、M6-T06 核心规则与 M6-T07 报告 Agent 化已完成（2026-07-19）**：保留 `ConsistencyCheckService`/`ConsistencyCheckDao` 确定性规则并整体注册为 `CORE_SQL_ASSERTIONS`；统一 `SCHEDULED`、`MANUAL_API`、`AGENT` 三个显式运行来源，规则固定 SQL-first，T05 默认无生产 LLM 规则/无模型调用，分析失败 fail-open 且保留确定性结果。V33 新增 `consistency_check_run`、`consistency_check_break`、`system_notification`：每次显式运行都保存摘要，仅存在差异时保存明细；干净成功不通知，差异或确定性失败仅通知启用中的 ADMIN/BOSS。M6-T06 补齐 `GL_DETAIL`、`VOUCHER_BALANCE`、`AUDIT_INTEGRITY` 严格规则20审计矩阵。M6-T07 新增 `query_consistency_report` NORMAL 工具，所有已登录用户可按运行号/UTC日期/相对天数/最近一次召回完整报告并解释；ERROR 完成报告向启用 ADMIN/BOSS 的 ACTIVE 会话幂等追加 P0 摘要提醒。报告运行/管理历史仍仅 ADMIN/BOSS；个人通知按当前登录用户归属；报告、差异、通知无物理删除入口；不新增迁移或前端。Java 21 聚焦/全量后端与前端构建、GitHub CI MySQL 8.4 + Qdrant 真库门禁为交付验证项。业务说明见 docs/业务-数据一致性校验.md，设计真源见 docs/superpowers/specs/2026-07-19-m6-report-agent-design.md。
 
 0→1 完整计划见 **docs/产品路线图-0到1.md**（任务编号制，分配 subagent 时引用编号；该文档是计划的单一真源）。当前推进位置与已知技术债以该文档为准。
-
-M7-T02 进行中（T02a 客户档案工作台已实现/待 CI 验收）。本记录不宣称 M7-T02 整体完成；详见 docs/测试-M7-T02a客户档案工作台.md。
