@@ -10,6 +10,7 @@ import { ChatPanel } from './components/chat/ChatPanel';
 import { LoginPage } from './components/LoginPage';
 import { ModulePlaceholder } from './components/ModulePlaceholder';
 import { MemoryGovernancePage } from './components/memory/MemoryGovernancePage';
+import { CustomerWorkbench } from './components/CustomerWorkbench';
 import { NotificationBell } from './components/NotificationBell';
 import { MODULE_NAV_ITEMS, type ModuleKey } from './types/navigation';
 import {
@@ -120,7 +121,9 @@ export function App() {
             退出
           </button>
         </header>
-        {guardedModule === 'memory' && canManageMemory ? (
+        {guardedModule === 'sales' ? (
+          <CustomerWorkbench permissions={permissions} />
+        ) : guardedModule === 'memory' && canManageMemory ? (
           <MemoryGovernancePage />
         ) : guardedModule === 'agent' || !activeItem || guardedModule === 'memory' ? (
           <ChatPanel />
