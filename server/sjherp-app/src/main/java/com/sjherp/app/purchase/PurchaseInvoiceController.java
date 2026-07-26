@@ -15,10 +15,14 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.sjherp.app.purchase.PurchaseDtos.CreatePurchaseInvoiceRequest;
 import com.sjherp.app.purchase.PurchaseDtos.PageResponse;
+import com.sjherp.app.purchase.PurchaseDtos.PurchaseInvoiceReceiptOptionResponse;
 import com.sjherp.app.purchase.PurchaseDtos.PurchaseInvoiceResponse;
 import com.sjherp.app.security.CurrentUser;
 import com.sjherp.domain.common.DocumentStatus;
 import com.sjherp.domain.purchase.PurchaseInvoiceQuery;
+import com.sjherp.domain.purchase.PurchaseReceipt;
+import com.sjherp.domain.purchase.PurchaseReceiptNotFoundException;
+import com.sjherp.domain.purchase.PurchaseReceiptQuery;
 
 import jakarta.validation.Valid;
 
@@ -28,6 +32,8 @@ import jakarta.validation.Valid;
  *   <li>POST /api/purchase/invoices → 201 建单（引用采购入库单，自动 PINV- 编号）；</li>
  *   <li>POST /api/purchase/invoices/{docNo}/approve → 200 审核（DRAFT→APPROVED）；</li>
  *   <li>POST /api/purchase/invoices/{docNo}/post → 200 过账（生成应付账款）；</li>
+ *   <li>GET  /api/purchase/invoices/receipt-options → 200 已过账且仍可开票的入库单候选；</li>
+ *   <li>GET  /api/purchase/invoices/receipt-options/{docNo} → 200 候选入库单未开完行详情；</li>
  *   <li>GET  /api/purchase/invoices/{docNo} → 200 单据详情（不存在 404）；</li>
  *   <li>GET  /api/purchase/invoices?supplierId=&purchaseReceiptNo=&status=&page=&size= → 200 分页。</li>
  * </ul>
@@ -42,9 +48,12 @@ import jakarta.validation.Valid;
 public class PurchaseInvoiceController {
 
     private final PurchaseInvoiceAppService purchaseInvoiceAppService;
+    private final PurchaseReceiptAppService purchaseReceiptAppService;
 
-    public PurchaseInvoiceController(PurchaseInvoiceAppService purchaseInvoiceAppService) {
+    public PurchaseInvoiceController(PurchaseInvoiceAppService purchaseInvoiceAppService,
+                                     PurchaseReceiptAppService purchaseReceiptAppService) {
         this.purchaseInvoiceAppService = purchaseInvoiceAppService;
+        this.purchaseReceiptAppService = purchaseReceiptAppService;
     }
 
     /** 建单（草稿，自动编号） */
@@ -67,6 +76,28 @@ public class PurchaseInvoiceController {
     @PostMapping("/{docNo}/post")
     public PurchaseInvoiceResponse post(@PathVariable String docNo) {
         return PurchaseInvoiceResponse.from(purchaseInvoiceAppService.post(docNo, CurrentUser.operator()));
+    }
+
+    /**
+     * 发票建单入库单候选：在 purchase:invoice 权限边界内复用入库只读服务，
+     * 仅返回 COMPLETED 且仍有未开完行的入库单；不授予 purchase:receipt 或任何入库写能力。
+     */
+    @GetMapping("/receipt-options")
+    public PageResponse<PurchaseInvoiceReceiptOptionResponse> receiptOptions(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return PageResponse.fromInvoiceReceiptOptions(purchaseReceiptAppService.search(
+                new PurchaseReceiptQuery(null, null, DocumentStatus.COMPLETED, true, page, size)));
+    }
+
+    /** 发票建单入库单候选详情：状态变化、已冲销或全部开完时按不可用返回 404。 */
+    @GetMapping("/receipt-options/{docNo}")
+    public PurchaseInvoiceReceiptOptionResponse receiptOption(@PathVariable String docNo) {
+        PurchaseReceipt receipt = purchaseReceiptAppService.get(docNo);
+        if (!PurchaseInvoiceReceiptOptionResponse.isInvoiceable(receipt)) {
+            throw new PurchaseReceiptNotFoundException(docNo);
+        }
+        return PurchaseInvoiceReceiptOptionResponse.from(receipt);
     }
 
     /**
