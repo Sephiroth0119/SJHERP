@@ -15,6 +15,7 @@ import { NotificationBell } from './components/NotificationBell';
 import { SupplierWorkbench, WarehouseWorkbench } from './components/MasterDataWorkbench';
 import { ProductWorkbench } from './components/ProductWorkbench';
 import { PurchaseOrderWorkbench } from './components/PurchaseOrderWorkbench';
+import { SalesOrderWorkbench } from './components/SalesOrderWorkbench';
 import { MODULE_NAV_ITEMS, type ModuleKey } from './types/navigation';
 import {
   clearAuth,
@@ -125,7 +126,7 @@ export function App() {
           </button>
         </header>
         {guardedModule === 'sales' ? (
-          <CustomerWorkbench permissions={permissions} />
+          <SalesWorkbench permissions={permissions} />
         ) : guardedModule === 'purchase' ? (
           <PurchaseWorkbench permissions={permissions} />
         ) : guardedModule === 'inventory' ? (
@@ -140,6 +141,22 @@ export function App() {
       </main>
     </div>
   );
+}
+
+function SalesWorkbench({ permissions }: { permissions: string[] }) {
+  const [tab, setTab] = useState<'customer' | 'order'>('customer');
+  const canUseSalesOrders = permissions.includes('sales:order');
+  const activeTab = tab === 'order' && canUseSalesOrders ? 'order' : 'customer';
+
+  return <>
+    <div className="memory-tabs purchase-workbench-tabs" role="tablist" aria-label="销售工作台">
+      <button type="button" role="tab" aria-selected={activeTab === 'customer'} className={activeTab === 'customer' ? 'memory-tab-active' : ''} onClick={() => setTab('customer')}>客户档案</button>
+      {canUseSalesOrders && <button type="button" role="tab" aria-selected={activeTab === 'order'} className={activeTab === 'order' ? 'memory-tab-active' : ''} onClick={() => setTab('order')}>销售订单</button>}
+    </div>
+    {activeTab === 'order'
+      ? <SalesOrderWorkbench />
+      : <CustomerWorkbench permissions={permissions} />}
+  </>;
 }
 
 function PurchaseWorkbench({ permissions }: { permissions: string[] }) {
