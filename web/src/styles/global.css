@@ -763,6 +763,7 @@ body {
 }
 
 .customer-page { flex: 1; min-height: 0; overflow: auto; padding: 24px; }
+.inventory-workbench-tabs { margin: 14px 24px 0; }
 .customer-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 18px; }
 .customer-header h1 { margin: 0; font-size: 22px; }
 .customer-header p { margin: 5px 0 0; color: var(--color-text-muted); font-size: 13px; }
