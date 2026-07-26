@@ -152,6 +152,47 @@ public final class PurchaseDtos {
         }
     }
 
+    /**
+     * 采购发票建单的已过账入库单窄读投影。
+     *
+     * <p>只在 {@code purchase:invoice} 权限边界内返回，且只保留仍有可开票数量的行。
+     */
+    public record PurchaseInvoiceReceiptOptionResponse(
+            String docNo, String purchaseOrderNo, long warehouseId, LocalDate receiptDate,
+            String remark, String status, String totalAmount,
+            List<PurchaseInvoiceReceiptLineOptionResponse> lines) {
+
+        static boolean isInvoiceable(PurchaseReceipt receipt) {
+            return receipt.getStatus() == DocumentStatus.COMPLETED
+                    && receipt.getLines().stream()
+                    .anyMatch(line -> line.outstandingInvoiceableQty().signum() > 0);
+        }
+
+        static PurchaseInvoiceReceiptOptionResponse from(PurchaseReceipt receipt) {
+            List<PurchaseInvoiceReceiptLineOptionResponse> lines = receipt.getLines().stream()
+                    .filter(line -> line.outstandingInvoiceableQty().signum() > 0)
+                    .map(PurchaseInvoiceReceiptLineOptionResponse::from)
+                    .toList();
+            return new PurchaseInvoiceReceiptOptionResponse(
+                    receipt.getDocNo(), receipt.getPurchaseOrderNo(), receipt.getWarehouseId(),
+                    receipt.getReceiptDate(), receipt.getRemark(), receipt.getStatus().name(),
+                    plain(receipt.totalAmount()), lines);
+        }
+    }
+
+    /** 采购入库未开完行投影；数量、成本与金额仍按 BigDecimal 字符串承载。 */
+    public record PurchaseInvoiceReceiptLineOptionResponse(
+            int receiptLineNo, long productId, String quantity, String unitCost, String amount,
+            String invoicedQty, String outstandingInvoiceableQty) {
+
+        static PurchaseInvoiceReceiptLineOptionResponse from(PurchaseReceiptLine line) {
+            return new PurchaseInvoiceReceiptLineOptionResponse(
+                    line.getLineNo(), line.getProductId(), plain(line.getQuantity()),
+                    plain(line.getUnitCost()), plain(line.getAmount()), plain(line.getInvoicedQty()),
+                    plain(line.outstandingInvoiceableQty()));
+        }
+    }
+
     // =============================================================== T07 采购发票
 
     /** 建单请求：引用采购入库单号 + 发票日期（可空默认今天）+ 供应商发票号（可空）+ 行数组 */
@@ -232,6 +273,15 @@ public final class PurchaseDtos {
             return new PageResponse<>(
                     result.items().stream()
                             .map(PurchaseReceiptOrderOptionResponse::from)
+                            .toList(),
+                    result.total(), result.page(), result.size());
+        }
+
+        static PageResponse<PurchaseInvoiceReceiptOptionResponse> fromInvoiceReceiptOptions(
+                PageResult<PurchaseReceipt> result) {
+            return new PageResponse<>(
+                    result.items().stream()
+                            .map(PurchaseInvoiceReceiptOptionResponse::from)
                             .toList(),
                     result.total(), result.page(), result.size());
         }
