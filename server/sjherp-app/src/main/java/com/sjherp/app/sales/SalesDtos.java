@@ -82,6 +82,42 @@ public final class SalesDtos {
         }
     }
 
+    /**
+     * 销售出库建单的订单窄读候选：只含可发货订单头与未发完行，不授予订单写能力。
+     */
+    public record SalesDeliveryOrderOptionResponse(String docNo, long customerId, String orderDate,
+                                                   String remark, String status,
+                                                   List<SalesDeliveryOrderOptionLineResponse> lines) {
+
+        public static SalesDeliveryOrderOptionResponse from(SalesOrder order) {
+            List<SalesDeliveryOrderOptionLineResponse> lines = order.getLines().stream()
+                    .filter(line -> line.remainingQty().signum() > 0)
+                    .map(SalesDeliveryOrderOptionLineResponse::from)
+                    .toList();
+            return new SalesDeliveryOrderOptionResponse(order.getDocNo(), order.getCustomerId(),
+                    order.getOrderDate().toString(), order.getRemark(), order.getStatus().name(), lines);
+        }
+
+        public static boolean isDeliverable(SalesOrder order) {
+            String status = order.getStatus().name();
+            return ("APPROVED".equals(status) || "EXECUTING".equals(status))
+                    && order.getLines().stream().anyMatch(line -> line.remainingQty().signum() > 0);
+        }
+    }
+
+    /** 出库订单候选未发完行；数量与金额字段保持 BigDecimal 字符串。 */
+    public record SalesDeliveryOrderOptionLineResponse(int soLineNo, long productId,
+                                                       String quantity, String unitPrice,
+                                                       String amount, String deliveredQty,
+                                                       String remainingQty) {
+
+        static SalesDeliveryOrderOptionLineResponse from(SalesOrderLine line) {
+            return new SalesDeliveryOrderOptionLineResponse(line.getLineNo(), line.getProductId(),
+                    plain(line.getQuantity()), plain(line.getUnitPrice()), plain(line.getAmount()),
+                    plain(line.getDeliveredQty()), plain(line.remainingQty()));
+        }
+    }
+
     // ================================================================
     // T09 销售出库单
     // ================================================================
@@ -182,6 +218,13 @@ public final class SalesDtos {
 
         public static PageResponse<SalesOrderResponse> ofOrders(PageResult<SalesOrder> result) {
             return new PageResponse<>(result.items().stream().map(SalesOrderResponse::from).toList(),
+                    result.total(), result.page(), result.size());
+        }
+
+        public static PageResponse<SalesDeliveryOrderOptionResponse> ofDeliveryOrderOptions(
+                PageResult<SalesOrder> result) {
+            return new PageResponse<>(
+                    result.items().stream().map(SalesDeliveryOrderOptionResponse::from).toList(),
                     result.total(), result.page(), result.size());
         }
 
