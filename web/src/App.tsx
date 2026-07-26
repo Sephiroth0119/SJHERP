@@ -14,6 +14,7 @@ import { CustomerWorkbench } from './components/CustomerWorkbench';
 import { NotificationBell } from './components/NotificationBell';
 import { SupplierWorkbench, WarehouseWorkbench } from './components/MasterDataWorkbench';
 import { ProductWorkbench } from './components/ProductWorkbench';
+import { PurchaseOrderWorkbench } from './components/PurchaseOrderWorkbench';
 import { MODULE_NAV_ITEMS, type ModuleKey } from './types/navigation';
 import {
   clearAuth,
@@ -126,7 +127,7 @@ export function App() {
         {guardedModule === 'sales' ? (
           <CustomerWorkbench permissions={permissions} />
         ) : guardedModule === 'purchase' ? (
-          <SupplierWorkbench permissions={permissions} />
+          <PurchaseWorkbench permissions={permissions} />
         ) : guardedModule === 'inventory' ? (
           <InventoryWorkbench permissions={permissions} />
         ) : guardedModule === 'memory' && canManageMemory ? (
@@ -139,6 +140,22 @@ export function App() {
       </main>
     </div>
   );
+}
+
+function PurchaseWorkbench({ permissions }: { permissions: string[] }) {
+  const [tab, setTab] = useState<'supplier' | 'order'>('supplier');
+  const canUseOrders = permissions.includes('purchase:order');
+  const activeTab = tab === 'order' && canUseOrders ? 'order' : 'supplier';
+
+  return <>
+    <div className="memory-tabs purchase-workbench-tabs" role="tablist" aria-label="采购工作台">
+      <button type="button" role="tab" aria-selected={activeTab === 'supplier'} className={activeTab === 'supplier' ? 'memory-tab-active' : ''} onClick={() => setTab('supplier')}>供应商档案</button>
+      {canUseOrders && <button type="button" role="tab" aria-selected={activeTab === 'order'} className={activeTab === 'order' ? 'memory-tab-active' : ''} onClick={() => setTab('order')}>采购订单</button>}
+    </div>
+    {activeTab === 'order'
+      ? <PurchaseOrderWorkbench />
+      : <SupplierWorkbench permissions={permissions} />}
+  </>;
 }
 
 function InventoryWorkbench({ permissions }: { permissions: string[] }) {
