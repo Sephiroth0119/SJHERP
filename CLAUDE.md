@@ -110,4 +110,4 @@ SJHERP/
 
 0→1 完整计划见 **docs/产品路线图-0到1.md**（任务编号制，分配 subagent 时引用编号；该文档是计划的单一真源）。当前推进位置与已知技术债以该文档为准。
 
-**M7-T02h 销售出库工作台已本地完成（2026-07-26）**：从已验收 T02g 最终提交 `729dd45471b5e6bdb3b721890b1758a7c1400753` 派生；接入真实分页、详情、创建、审核、过账和草稿作废，不暴露高风险 `reverse`。为无 `sales:order` 的 WAREHOUSE 在 `sales:delivery` 内新增 APPROVED/EXECUTING 未发完订单窄读投影，JDBC 在 count/分页前过滤可发货订单；过账界面明确扣库存、移动加权 COGS、订单发货量、自动凭证及库存不足整批回滚影响。前端全量 64 项、production build 与 Java 21 聚焦 34 项本地通过，MySQL 8.4 真库测试留后续 CI；未 push、未建 PR。详见 `docs/测试-M7-T02h销售出库工作台.md`。T02g 的最终验收状态以 PR #23 OPEN/Ready/CLEAN、两轮三项 CI 全绿为准。
+**M7-T02h 销售出库工作台已完成并验收（2026-07-26）**：从已验收 T02g 最终提交 `729dd45471b5e6bdb3b721890b1758a7c1400753` 派生；接入真实分页、详情、创建、审核、过账和草稿作废，不暴露高风险 `reverse`。为无 `sales:order` 的 WAREHOUSE 在 `sales:delivery` 内新增 APPROVED/EXECUTING 未发完订单窄读投影，JDBC 在 count/分页前过滤可发货订单；过账界面明确扣库存、移动加权 COGS、订单发货量、自动凭证及库存不足整批回滚影响。前端全量 64 项、production build 与 Java 21 聚焦 34 项本地通过；PR #24（Draft）首轮 CI 全绿：前端 43s、后端 1m43s、MySQL 8.4 `integration-db` 8m28s。详见 `docs/测试-M7-T02h销售出库工作台.md`。T02g 的最终验收状态以 PR #23 OPEN/Ready/CLEAN、两轮三项 CI 全绿为准。
