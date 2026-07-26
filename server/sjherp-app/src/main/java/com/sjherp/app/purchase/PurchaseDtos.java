@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
+import com.sjherp.domain.common.DocumentStatus;
 import com.sjherp.domain.common.PageResult;
 import com.sjherp.domain.payable.AccountsPayable;
 import com.sjherp.domain.purchase.PurchaseInvoice;
@@ -114,6 +115,43 @@ public final class PurchaseDtos {
         }
     }
 
+    /**
+     * 采购入库建单使用的采购订单窄读投影：仅由 purchase:receipt 边界返回 APPROVED 订单的未收行。
+     * 不复用完整订单 API 权限，也不暴露任何订单写能力。
+     */
+    public record PurchaseReceiptOrderOptionResponse(
+            String docNo, long supplierId, LocalDate orderDate, String remark,
+            String status, String totalAmount, List<PurchaseReceiptOrderLineOptionResponse> lines) {
+
+        static boolean isReceivable(PurchaseOrder order) {
+            return order.getStatus() == DocumentStatus.APPROVED
+                    && order.getLines().stream().anyMatch(line -> line.outstandingQty().signum() > 0);
+        }
+
+        static PurchaseReceiptOrderOptionResponse from(PurchaseOrder order) {
+            List<PurchaseReceiptOrderLineOptionResponse> lines = order.getLines().stream()
+                    .filter(line -> line.outstandingQty().signum() > 0)
+                    .map(PurchaseReceiptOrderLineOptionResponse::from)
+                    .toList();
+            return new PurchaseReceiptOrderOptionResponse(
+                    order.getDocNo(), order.getSupplierId(), order.getOrderDate(), order.getRemark(),
+                    order.getStatus().name(), plain(order.totalAmount()), lines);
+        }
+    }
+
+    /** 采购订单未收行投影；数量和单价仍按 BigDecimal 字符串承载。 */
+    public record PurchaseReceiptOrderLineOptionResponse(
+            int poLineNo, long productId, String quantity, String unitPrice,
+            String receivedQty, String outstandingQty) {
+
+        static PurchaseReceiptOrderLineOptionResponse from(PurchaseOrderLine line) {
+            return new PurchaseReceiptOrderLineOptionResponse(
+                    line.getLineNo(), line.getProductId(), plain(line.getQuantity()),
+                    plain(line.getUnitPrice()), plain(line.getReceivedQty()),
+                    plain(line.outstandingQty()));
+        }
+    }
+
     // =============================================================== T07 采购发票
 
     /** 建单请求：引用采购入库单号 + 发票日期（可空默认今天）+ 供应商发票号（可空）+ 行数组 */
@@ -186,6 +224,15 @@ public final class PurchaseDtos {
         static PageResponse<PurchaseReceiptResponse> fromReceipts(PageResult<PurchaseReceipt> result) {
             return new PageResponse<>(
                     result.items().stream().map(PurchaseReceiptResponse::from).toList(),
+                    result.total(), result.page(), result.size());
+        }
+
+        static PageResponse<PurchaseReceiptOrderOptionResponse> fromReceiptOrderOptions(
+                PageResult<PurchaseOrder> result) {
+            return new PageResponse<>(
+                    result.items().stream()
+                            .map(PurchaseReceiptOrderOptionResponse::from)
+                            .toList(),
                     result.total(), result.page(), result.size());
         }
 

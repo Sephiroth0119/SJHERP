@@ -15,9 +15,13 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.sjherp.app.purchase.PurchaseDtos.CreatePurchaseReceiptRequest;
 import com.sjherp.app.purchase.PurchaseDtos.PageResponse;
+import com.sjherp.app.purchase.PurchaseDtos.PurchaseReceiptOrderOptionResponse;
 import com.sjherp.app.purchase.PurchaseDtos.PurchaseReceiptResponse;
 import com.sjherp.app.security.CurrentUser;
 import com.sjherp.domain.common.DocumentStatus;
+import com.sjherp.domain.purchase.PurchaseOrder;
+import com.sjherp.domain.purchase.PurchaseOrderNotFoundException;
+import com.sjherp.domain.purchase.PurchaseOrderQuery;
 import com.sjherp.domain.purchase.PurchaseReceiptQuery;
 
 import jakarta.validation.Valid;
@@ -28,6 +32,8 @@ import jakarta.validation.Valid;
  *   <li>POST /api/purchase/receipts → 201 建单（引用采购订单收货，自动 PR- 编号）；</li>
  *   <li>POST /api/purchase/receipts/{docNo}/approve → 200 审核（DRAFT→APPROVED）；</li>
  *   <li>POST /api/purchase/receipts/{docNo}/post → 200 过账（产生 PURCHASE_IN 入库流水 + 回写到货量）；</li>
+ *   <li>GET  /api/purchase/receipts/order-options → 200 已审核且仍可收货的订单候选；</li>
+ *   <li>GET  /api/purchase/receipts/order-options/{docNo} → 200 候选订单未收行详情；</li>
  *   <li>GET  /api/purchase/receipts/{docNo} → 200 单据详情（不存在 404）；</li>
  *   <li>GET  /api/purchase/receipts?warehouseId=&purchaseOrderNo=&status=&page=&size= → 200 分页。</li>
  * </ul>
@@ -45,9 +51,12 @@ import jakarta.validation.Valid;
 public class PurchaseReceiptController {
 
     private final PurchaseReceiptAppService purchaseReceiptAppService;
+    private final PurchaseOrderAppService purchaseOrderAppService;
 
-    public PurchaseReceiptController(PurchaseReceiptAppService purchaseReceiptAppService) {
+    public PurchaseReceiptController(PurchaseReceiptAppService purchaseReceiptAppService,
+                                     PurchaseOrderAppService purchaseOrderAppService) {
         this.purchaseReceiptAppService = purchaseReceiptAppService;
+        this.purchaseOrderAppService = purchaseOrderAppService;
     }
 
     /** 建单（草稿，自动编号） */
@@ -70,6 +79,28 @@ public class PurchaseReceiptController {
     @PostMapping("/{docNo}/post")
     public PurchaseReceiptResponse post(@PathVariable String docNo) {
         return PurchaseReceiptResponse.from(purchaseReceiptAppService.post(docNo, CurrentUser.operator()));
+    }
+
+    /**
+     * 入库建单采购订单候选：在 purchase:receipt 权限边界内复用订单只读服务，
+     * 仅返回 APPROVED 且仍有未收行的订单；不授予 purchase:order 或任何订单写能力。
+     */
+    @GetMapping("/order-options")
+    public PageResponse<PurchaseReceiptOrderOptionResponse> orderOptions(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return PageResponse.fromReceiptOrderOptions(purchaseOrderAppService.search(
+                new PurchaseOrderQuery(null, DocumentStatus.APPROVED, true, page, size)));
+    }
+
+    /** 入库建单采购订单候选详情：状态变化或已全部收完时按不可用返回 404。 */
+    @GetMapping("/order-options/{docNo}")
+    public PurchaseReceiptOrderOptionResponse orderOption(@PathVariable String docNo) {
+        PurchaseOrder order = purchaseOrderAppService.get(docNo);
+        if (!PurchaseReceiptOrderOptionResponse.isReceivable(order)) {
+            throw new PurchaseOrderNotFoundException(docNo);
+        }
+        return PurchaseReceiptOrderOptionResponse.from(order);
     }
 
     /**
