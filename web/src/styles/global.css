@@ -784,6 +784,8 @@ body {
 .customer-form { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
 .customer-form label { display: flex; flex-direction: column; gap: 4px; color: var(--color-text-muted); font-size: 12px; }
 .customer-form input, .customer-form select { width: 100%; box-sizing: border-box; color: var(--color-text); }
+.customer-form .checkbox-field { flex-direction: row; align-items: center; gap: 8px; }
+.customer-form .checkbox-field input { width: auto; min-height: auto; }
 .customer-success { margin-bottom: 14px; padding: 9px 12px; border: 1px solid #86efac; border-radius: 7px; color: #166534; background: #f0fdf4; font-size: 13px; }
 .customer-list-panel tr:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
 @media (max-width: 850px) { .customer-layout { grid-template-columns: 1fr; } .customer-detail { position: static; } }
