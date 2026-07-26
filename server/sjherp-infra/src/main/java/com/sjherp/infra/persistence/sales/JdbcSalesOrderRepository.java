@@ -139,6 +139,15 @@ public class JdbcSalesOrderRepository implements SalesOrderRepository {
             where.append("AND status = ? ");
             args.add(query.status().name());
         }
+        if (query.deliverableOnly()) {
+            where.append("AND status IN ('APPROVED', 'EXECUTING') ")
+                    .append("AND EXISTS (")
+                    .append("SELECT 1 FROM sales_order_line sol ")
+                    .append("WHERE sol.tenant_id = sales_order.tenant_id ")
+                    .append("AND sol.sales_order_id = sales_order.id ")
+                    .append("AND sol.quantity > sol.delivered_qty")
+                    .append(") ");
+        }
 
         Long total = jdbc.queryForObject("SELECT COUNT(*) FROM sales_order " + where,
                 Long.class, args.toArray());
