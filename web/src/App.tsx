@@ -13,6 +13,7 @@ import { MemoryGovernancePage } from './components/memory/MemoryGovernancePage';
 import { CustomerWorkbench } from './components/CustomerWorkbench';
 import { NotificationBell } from './components/NotificationBell';
 import { SupplierWorkbench, WarehouseWorkbench } from './components/MasterDataWorkbench';
+import { ProductWorkbench } from './components/ProductWorkbench';
 import { MODULE_NAV_ITEMS, type ModuleKey } from './types/navigation';
 import {
   clearAuth,
@@ -127,7 +128,7 @@ export function App() {
         ) : guardedModule === 'purchase' ? (
           <SupplierWorkbench permissions={permissions} />
         ) : guardedModule === 'inventory' ? (
-          <WarehouseWorkbench permissions={permissions} />
+          <InventoryWorkbench permissions={permissions} />
         ) : guardedModule === 'memory' && canManageMemory ? (
           <MemoryGovernancePage />
         ) : guardedModule === 'agent' || !activeItem || guardedModule === 'memory' ? (
@@ -138,4 +139,15 @@ export function App() {
       </main>
     </div>
   );
+}
+
+function InventoryWorkbench({ permissions }: { permissions: string[] }) {
+  const [tab, setTab] = useState<'warehouse' | 'product'>('warehouse');
+  return <>
+    <div className="memory-tabs inventory-workbench-tabs" role="tablist" aria-label="库存基础档案">
+      <button type="button" role="tab" aria-selected={tab === 'warehouse'} className={tab === 'warehouse' ? 'memory-tab-active' : ''} onClick={() => setTab('warehouse')}>仓库档案</button>
+      <button type="button" role="tab" aria-selected={tab === 'product'} className={tab === 'product' ? 'memory-tab-active' : ''} onClick={() => setTab('product')}>商品档案</button>
+    </div>
+    {tab === 'warehouse' ? <WarehouseWorkbench permissions={permissions} /> : <ProductWorkbench permissions={permissions} />}
+  </>;
 }
