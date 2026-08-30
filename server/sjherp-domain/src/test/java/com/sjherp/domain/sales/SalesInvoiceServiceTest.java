@@ -121,6 +121,34 @@ class SalesInvoiceServiceTest {
     }
 
     @Test
+    void 多行分别可落库但总金额超出发票头精度时拒绝() {
+        List<SalesInvoiceLine> lines = List.of(
+                SalesInvoiceLine.create(1, 1, P_A,
+                        new BigDecimal("500000"), new BigDecimal("12000000000")),
+                SalesInvoiceLine.create(2, 2, P_A,
+                        new BigDecimal("500000"), new BigDecimal("12000000000")));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> SalesInvoice.create("SINV-LARGE", "SD-LARGE", CUSTOMER,
+                        INVOICE_DATE, DUE_DATE, null, lines, OPERATOR));
+
+        assertTrue(ex.getMessage().contains("总金额超过系统可保存范围"), ex.getMessage());
+    }
+
+    @Test
+    void 数量和单价超过DECIMAL整数位上限时在领域边界拒绝() {
+        IllegalArgumentException quantityError = assertThrows(IllegalArgumentException.class,
+                () -> SalesInvoiceLine.create(1, 1, P_A,
+                        new BigDecimal("1000000000000"), BigDecimal.ZERO));
+        IllegalArgumentException priceError = assertThrows(IllegalArgumentException.class,
+                () -> SalesInvoiceLine.create(1, 1, P_A,
+                        BigDecimal.ONE, new BigDecimal("1000000000000")));
+
+        assertTrue(quantityError.getMessage().contains("整数最多 12 位"), quantityError.getMessage());
+        assertTrue(priceError.getMessage().contains("整数最多 12 位"), priceError.getMessage());
+    }
+
+    @Test
     void 过账生成应收_OPEN_金额等于发票额() {
         postedDelivery("SO-1", "SD-1");
         service.create("SINV-1", "SD-1", CUSTOMER, INVOICE_DATE, DUE_DATE, null,

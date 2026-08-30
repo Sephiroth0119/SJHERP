@@ -9,6 +9,12 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.time.YearMonth;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 
 import javax.sql.DataSource;
@@ -51,6 +57,8 @@ import com.sjherp.domain.common.numbering.SequenceProvider;
 import com.sjherp.domain.gl.AccountingPeriodService;
 import com.sjherp.domain.gl.PeriodClosedException;
 import com.sjherp.domain.gl.VoucherService;
+import com.sjherp.domain.inventory.InboundCommand;
+import com.sjherp.domain.inventory.InventoryTxnType;
 import com.sjherp.domain.partner.SettlementMethod;
 import com.sjherp.domain.partner.SupplierService;
 import com.sjherp.domain.payable.AccountsPayable;
@@ -136,6 +144,7 @@ class BusinessDocReversalFlowIntegrationTest {
     private static AutoVoucherService autoVoucherService;
     private static ConsistencyCheckService consistencyCheckService;
     private static AgingReportDao agingReportDao;
+    private static TransactionalInventoryService inventoryService;
 
     @BeforeAll
     static void setUp() {
@@ -166,6 +175,7 @@ class BusinessDocReversalFlowIntegrationTest {
         autoVoucherService = context.getBean(AutoVoucherService.class);
         consistencyCheckService = context.getBean(ConsistencyCheckService.class);
         agingReportDao = context.getBean(AgingReportDao.class);
+        inventoryService = context.getBean(TransactionalInventoryService.class);
     }
 
     @AfterAll
@@ -612,6 +622,78 @@ class BusinessDocReversalFlowIntegrationTest {
                 .as("闭月回滚：无红字凭证").isZero();
     }
 
+    @Test
+    void 发票过账未提交时并发冲销_先等发票锁再完整红冲凭证和子账() throws Exception {
+        long warehouseId = nextId();
+        long productId = nextId();
+        long customerId = nextId();
+        String suffix = Long.toString(System.nanoTime(), 36);
+        String orderNo = "SO-RACE-" + suffix;
+        String deliveryNo = "SD-RACE-" + suffix;
+        String invoiceNo = "SINV-RACE-" + suffix;
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        ensurePeriodOpen(YearMonth.from(today).format(
+                java.time.format.DateTimeFormatter.ofPattern("yyyyMM")));
+
+        inventoryService.inbound(new InboundCommand(warehouseId, productId,
+                InventoryTxnType.OPENING, new BigDecimal("20"), new BigDecimal("10"), null,
+                "OPENING", "OP-RACE-" + suffix, 1, "OPENING:OP-RACE-" + suffix + ":1"), OPERATOR);
+        txTemplate.executeWithoutResult(s -> salesOrderService.create(orderNo, customerId, today, null,
+                List.of(new SalesOrderLineInput(productId, new BigDecimal("10"), new BigDecimal("20"))),
+                OPERATOR));
+        txTemplate.executeWithoutResult(s -> salesOrderService.approve(orderNo, OPERATOR));
+        txTemplate.executeWithoutResult(s -> salesDeliveryService.create(deliveryNo, orderNo, warehouseId,
+                null, List.of(new SalesDeliveryLineInput(1, productId, new BigDecimal("10"))), OPERATOR));
+        txTemplate.executeWithoutResult(s -> salesDeliveryService.approve(deliveryNo, OPERATOR));
+        deliveryAppService.post(deliveryNo, OPERATOR);
+        txTemplate.executeWithoutResult(s -> salesInvoiceService.create(invoiceNo, deliveryNo, customerId,
+                today, today.plusMonths(1), null,
+                List.of(new SalesInvoiceLineInput(1, productId, new BigDecimal("4"),
+                        new BigDecimal("25"))), OPERATOR));
+        txTemplate.executeWithoutResult(s -> salesInvoiceService.approve(invoiceNo, OPERATOR));
+
+        CountDownLatch postFinishedInsideTransaction = new CountDownLatch(1);
+        CountDownLatch releasePostTransaction = new CountDownLatch(1);
+        CountDownLatch reverseAttempting = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> post = executor.submit(() -> txTemplate.executeWithoutResult(status -> {
+                salesInvoiceAppService.post(invoiceNo, OPERATOR);
+                postFinishedInsideTransaction.countDown();
+                await(releasePostTransaction);
+            }));
+            assertThat(postFinishedInsideTransaction.await(5, TimeUnit.SECONDS)).isTrue();
+
+            Future<Throwable> reverse = executor.submit(() -> {
+                reverseAttempting.countDown();
+                try {
+                    salesInvoiceAppService.reverse(invoiceNo, OPERATOR);
+                    return null;
+                } catch (Throwable cause) {
+                    return cause;
+                }
+            });
+            assertThat(reverseAttempting.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThatThrownBy(() -> reverse.get(300, TimeUnit.MILLISECONDS))
+                    .isInstanceOf(TimeoutException.class);
+
+            releasePostTransaction.countDown();
+            post.get(5, TimeUnit.SECONDS);
+            assertThat(reverse.get(5, TimeUnit.SECONDS)).isNull();
+        } finally {
+            releasePostTransaction.countDown();
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+        }
+
+        assertThat(docStatus("sales_invoice", invoiceNo)).isEqualTo("REVERSED");
+        assertThat(receivableStatus(invoiceNo)).isEqualTo("REVERSED");
+        assertThat(invoicedQty("sales_delivery_line", "sales_delivery", deliveryNo, 1))
+                .isEqualByComparingTo("0");
+        assertThat(reversalVoucherCountForSource(invoiceNo, "SALES_INVOICE")).isEqualTo(1L);
+        assertSourceNetZero("1122", invoiceNo);
+    }
+
     // ---------------------------------------------------------------
     // 工具
     // ---------------------------------------------------------------
@@ -624,6 +706,17 @@ class BusinessDocReversalFlowIntegrationTest {
             } catch (RuntimeException ignore) {
                 // 并发/已存在：忽略，下方业务过账会再以 isOpen 兜底
             }
+        }
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(5, TimeUnit.SECONDS)) {
+                throw new AssertionError("等待释放销售发票事务超时");
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("等待销售发票事务时被中断", exception);
         }
     }
 

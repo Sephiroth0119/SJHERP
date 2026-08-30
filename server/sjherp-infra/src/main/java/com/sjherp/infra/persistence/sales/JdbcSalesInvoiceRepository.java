@@ -121,6 +121,17 @@ public class JdbcSalesInvoiceRepository implements SalesInvoiceRepository {
     }
 
     @Override
+    public Optional<SalesInvoice> findByDocNoForUpdate(String docNo) {
+        List<HeadRow> heads = jdbc.query(
+                SELECT_HEAD + "WHERE tenant_id = 0 AND doc_no = ? FOR UPDATE",
+                HEAD_ROW_MAPPER, docNo);
+        if (heads.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(toInvoice(heads.get(0)));
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public PageResult<SalesInvoice> search(SalesInvoiceQuery query) {
         StringBuilder where = new StringBuilder("WHERE tenant_id = 0 ");
@@ -166,7 +177,7 @@ public class JdbcSalesInvoiceRepository implements SalesInvoiceRepository {
 
     private List<SalesInvoiceLine> loadLines(long headId) {
         return jdbc.query("SELECT id, line_no, delivery_line_no, product_id, quantity, unit_price, amount "
-                        + "FROM sales_invoice_line WHERE sales_invoice_id = ? ORDER BY line_no",
+                        + "FROM sales_invoice_line WHERE tenant_id = 0 AND sales_invoice_id = ? ORDER BY line_no",
                 (rs, rowNum) -> SalesInvoiceLine.restore(
                         rs.getLong("id"),
                         rs.getInt("line_no"),

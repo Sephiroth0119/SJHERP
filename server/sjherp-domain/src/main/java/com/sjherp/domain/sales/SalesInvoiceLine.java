@@ -16,6 +16,8 @@ import com.sjherp.domain.inventory.CostingStrategy;
  */
 public final class SalesInvoiceLine {
 
+    private static final BigDecimal MAX_DECIMAL_18_6 = new BigDecimal("999999999999.999999");
+
     /** 数据库自增主键，落库后由仓储回填；null 表示尚未持久化 */
     private Long id;
 
@@ -95,6 +97,9 @@ public final class SalesInvoiceLine {
             throw new IllegalArgumentException("开票数量最多 " + CostingStrategy.UNIT_COST_SCALE
                     + " 位小数（基本单位记账）: " + quantity.toPlainString());
         }
+        if (quantity.compareTo(MAX_DECIMAL_18_6) > 0) {
+            throw new IllegalArgumentException("开票数量整数最多 12 位: " + quantity.toPlainString());
+        }
         return quantity.setScale(CostingStrategy.UNIT_COST_SCALE, CostingStrategy.ROUNDING);
     }
 
@@ -108,6 +113,9 @@ public final class SalesInvoiceLine {
         if (unitPrice.stripTrailingZeros().scale() > CostingStrategy.UNIT_COST_SCALE) {
             throw new IllegalArgumentException("开票单价最多 " + CostingStrategy.UNIT_COST_SCALE
                     + " 位小数: " + unitPrice.toPlainString());
+        }
+        if (unitPrice.compareTo(MAX_DECIMAL_18_6) > 0) {
+            throw new IllegalArgumentException("开票单价整数最多 12 位: " + unitPrice.toPlainString());
         }
         return unitPrice.setScale(CostingStrategy.UNIT_COST_SCALE, CostingStrategy.ROUNDING);
     }
