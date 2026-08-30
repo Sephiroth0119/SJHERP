@@ -441,7 +441,7 @@ class SalesPostingIntegrationTest {
             first.get(5, TimeUnit.SECONDS);
             assertThat(second.get(5, TimeUnit.SECONDS))
                     .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("累计已开票量");
+                    .hasMessageContaining("累计开票数量");
         } finally {
             releaseFirst.countDown();
             executor.shutdownNow();

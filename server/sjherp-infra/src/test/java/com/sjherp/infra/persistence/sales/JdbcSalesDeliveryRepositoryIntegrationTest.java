@@ -97,7 +97,7 @@ class JdbcSalesDeliveryRepositoryIntegrationTest extends MySqlContainerTestBase 
             first.get(5, TimeUnit.SECONDS);
             assertThat(second.get(5, TimeUnit.SECONDS))
                     .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("累计已开票量");
+                    .hasMessageContaining("累计开票数量");
             assertThat(repository.findByDocNo(docNo).orElseThrow().getLines().get(0).getInvoicedQty())
                     .isEqualByComparingTo("6");
         } finally {
