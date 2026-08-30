@@ -131,7 +131,7 @@ public class JdbcSalesDeliveryRepository implements SalesDeliveryRepository {
         if (heads.isEmpty()) {
             return Optional.empty();
         }
-        return Optional.of(toDelivery(heads.get(0)));
+        return Optional.of(toDeliveryForUpdate(heads.get(0)));
     }
 
     @Override
@@ -180,14 +180,21 @@ public class JdbcSalesDeliveryRepository implements SalesDeliveryRepository {
     }
 
     private SalesDelivery toDelivery(HeadRow head) {
-        List<SalesDeliveryLine> lines = loadLines(head.id());
+        List<SalesDeliveryLine> lines = loadLines(head.id(), false);
         return SalesDelivery.restore(head.docNo(), head.salesOrderNo(), head.warehouseId(),
                 head.remark(), head.status(), lines, head.createdBy());
     }
 
-    private List<SalesDeliveryLine> loadLines(long headId) {
+    private SalesDelivery toDeliveryForUpdate(HeadRow head) {
+        List<SalesDeliveryLine> lines = loadLines(head.id(), true);
+        return SalesDelivery.restore(head.docNo(), head.salesOrderNo(), head.warehouseId(),
+                head.remark(), head.status(), lines, head.createdBy());
+    }
+
+    private List<SalesDeliveryLine> loadLines(long headId, boolean forUpdate) {
         return jdbc.query("SELECT id, line_no, so_line_no, product_id, quantity, cogs_amount, invoiced_qty "
-                        + "FROM sales_delivery_line WHERE tenant_id = 0 AND sales_delivery_id = ? ORDER BY line_no",
+                        + "FROM sales_delivery_line WHERE tenant_id = 0 AND sales_delivery_id = ? ORDER BY line_no"
+                        + (forUpdate ? " FOR UPDATE" : ""),
                 (rs, rowNum) -> SalesDeliveryLine.restore(
                         rs.getLong("id"),
                         rs.getInt("line_no"),
