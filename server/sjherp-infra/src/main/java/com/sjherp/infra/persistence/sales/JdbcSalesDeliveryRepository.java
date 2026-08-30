@@ -107,7 +107,7 @@ public class JdbcSalesDeliveryRepository implements SalesDeliveryRepository {
         // COGS 与累计已开票量 invoiced_qty 均由过账回填（COGS 出库过账、invoiced_qty 发票过账），更新时逐行落库
         for (SalesDeliveryLine line : delivery.getLines()) {
             jdbc.update("UPDATE sales_delivery_line SET cogs_amount = ?, invoiced_qty = ? "
-                            + "WHERE sales_delivery_id = ? AND line_no = ?",
+                            + "WHERE tenant_id = 0 AND sales_delivery_id = ? AND line_no = ?",
                     line.getCogsAmount(), line.getInvoicedQty(), headId, line.getLineNo());
         }
     }
@@ -116,6 +116,17 @@ public class JdbcSalesDeliveryRepository implements SalesDeliveryRepository {
     @Transactional(readOnly = true)
     public Optional<SalesDelivery> findByDocNo(String docNo) {
         List<HeadRow> heads = jdbc.query(SELECT_HEAD + "WHERE tenant_id = 0 AND doc_no = ?",
+                HEAD_ROW_MAPPER, docNo);
+        if (heads.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(toDelivery(heads.get(0)));
+    }
+
+    @Override
+    public Optional<SalesDelivery> findByDocNoForUpdate(String docNo) {
+        List<HeadRow> heads = jdbc.query(
+                SELECT_HEAD + "WHERE tenant_id = 0 AND doc_no = ? FOR UPDATE",
                 HEAD_ROW_MAPPER, docNo);
         if (heads.isEmpty()) {
             return Optional.empty();
@@ -139,6 +150,13 @@ public class JdbcSalesDeliveryRepository implements SalesDeliveryRepository {
         if (query.status() != null) {
             where.append("AND status = ? ");
             args.add(query.status().name());
+        }
+        if (query.invoiceableOnly()) {
+            where.append("AND status = 'COMPLETED' ")
+                    .append("AND EXISTS (SELECT 1 FROM sales_delivery_line invoiceable_line ")
+                    .append("WHERE invoiceable_line.tenant_id = sales_delivery.tenant_id ")
+                    .append("AND invoiceable_line.sales_delivery_id = sales_delivery.id ")
+                    .append("AND invoiceable_line.quantity > invoiceable_line.invoiced_qty) ");
         }
 
         Long total = jdbc.queryForObject("SELECT COUNT(*) FROM sales_delivery " + where,
@@ -169,7 +187,7 @@ public class JdbcSalesDeliveryRepository implements SalesDeliveryRepository {
 
     private List<SalesDeliveryLine> loadLines(long headId) {
         return jdbc.query("SELECT id, line_no, so_line_no, product_id, quantity, cogs_amount, invoiced_qty "
-                        + "FROM sales_delivery_line WHERE sales_delivery_id = ? ORDER BY line_no",
+                        + "FROM sales_delivery_line WHERE tenant_id = 0 AND sales_delivery_id = ? ORDER BY line_no",
                 (rs, rowNum) -> SalesDeliveryLine.restore(
                         rs.getLong("id"),
                         rs.getInt("line_no"),

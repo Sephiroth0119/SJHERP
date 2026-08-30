@@ -18,6 +18,14 @@ public interface SalesDeliveryRepository {
     /** 按单据号查（不存在返回空） */
     Optional<SalesDelivery> findByDocNo(String docNo);
 
+    /**
+     * 按单据号加写锁读取；发票过账/冲销回写累计已开票量时用于串行化同一出库单。
+     * 内存替身默认退化为普通读取，生产 JDBC 实现必须使用 tenant-scoped {@code FOR UPDATE}。
+     */
+    default Optional<SalesDelivery> findByDocNoForUpdate(String docNo) {
+        return findByDocNo(docNo);
+    }
+
     /** 分页查询（按关联订单/仓库/状态过滤，可空；按 id 倒序即最近创建在前） */
     PageResult<SalesDelivery> search(SalesDeliveryQuery query);
 }

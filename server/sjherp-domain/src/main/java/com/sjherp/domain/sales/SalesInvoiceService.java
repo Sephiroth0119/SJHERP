@@ -122,7 +122,7 @@ public class SalesInvoiceService {
     @Audited(action = "sales_invoice.approve", targetType = "sales_invoice")
     public SalesInvoice approve(String docNo, String operator) {
         requireOperator(operator);
-        SalesInvoice invoice = get(docNo);
+        SalesInvoice invoice = getForUpdate(docNo);
         invoice.registerEventPublisher(eventPublisher);
         invoice.approve(operator);
         repository.save(invoice);
@@ -133,7 +133,7 @@ public class SalesInvoiceService {
     @Audited(action = "sales_invoice.cancel", targetType = "sales_invoice")
     public SalesInvoice cancel(String docNo, String operator) {
         requireOperator(operator);
-        SalesInvoice invoice = get(docNo);
+        SalesInvoice invoice = getForUpdate(docNo);
         invoice.registerEventPublisher(eventPublisher);
         invoice.cancel(operator);
         repository.save(invoice);
@@ -149,7 +149,7 @@ public class SalesInvoiceService {
     @Audited(action = "sales_invoice.post", targetType = "sales_invoice")
     public SalesInvoice post(String docNo, String operator) {
         requireOperator(operator);
-        SalesInvoice invoice = get(docNo);
+        SalesInvoice invoice = getForUpdate(docNo);
         invoice.registerEventPublisher(eventPublisher);
         invoice.startExecution(operator);
         // 同事务回写出库行累计已开票量（守门累计开票 ≤ 发货量，防跨发票超额虚增应收）；
@@ -185,13 +185,7 @@ public class SalesInvoiceService {
     public SalesInvoice reverse(String docNo, String reversalDocNo, String operator) {
         requireOperator(operator);
         Objects.requireNonNull(reversalDocNo, "红字关联锚点 reversalDocNo 不能为空");
-        SalesInvoice invoice = get(docNo);
-        // 仅已过账（COMPLETED）发票可冲销——只有它挂了应收 + 回写了已开票量，才有反向对象。
-        // 其余状态提前抛流转异常（与 BusinessDocument.reverse 流转表一致）。
-        if (invoice.getStatus() != DocumentStatus.COMPLETED) {
-            throw new IllegalStateTransitionException(docNo, invoice.getStatus(),
-                    DocumentStatus.REVERSED);
-        }
+        SalesInvoice invoice = lockForReverse(docNo);
         invoice.registerEventPublisher(eventPublisher);
         // ① 应收整笔冲回（前置校验无核销，已核销引导先冲对应收款单）——先冲应收再回退开票量，
         //    带核销时此步即抛 IllegalStateException 整事务回滚，不留半截副作用
@@ -204,9 +198,28 @@ public class SalesInvoiceService {
         return invoice;
     }
 
+    /**
+     * 在冲销外层事务起点锁定并校验发票。
+     * App 层必须先调用本方法，再读取/红冲自动凭证，最后调用 {@link #reverse}；这样并发 post
+     * 提交后，冲销才建立包含应收与凭证的读取快照，且全链固定从发票头锁开始。
+     */
+    public SalesInvoice lockForReverse(String docNo) {
+        SalesInvoice invoice = getForUpdate(docNo);
+        if (invoice.getStatus() != DocumentStatus.COMPLETED) {
+            throw new IllegalStateTransitionException(docNo, invoice.getStatus(),
+                    DocumentStatus.REVERSED);
+        }
+        return invoice;
+    }
+
     /** 按单据号查（不存在抛 {@link SalesInvoiceNotFoundException} → API 404） */
     public SalesInvoice get(String docNo) {
         return repository.findByDocNo(docNo)
+                .orElseThrow(() -> new SalesInvoiceNotFoundException(docNo));
+    }
+
+    private SalesInvoice getForUpdate(String docNo) {
+        return repository.findByDocNoForUpdate(docNo)
                 .orElseThrow(() -> new SalesInvoiceNotFoundException(docNo));
     }
 

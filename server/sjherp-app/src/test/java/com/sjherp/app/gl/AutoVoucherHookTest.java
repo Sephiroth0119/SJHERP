@@ -7,7 +7,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.util.List;
+
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 
 import com.sjherp.app.purchase.PurchaseInvoiceAppService;
 import com.sjherp.app.purchase.PurchaseReceiptAppService;
@@ -153,6 +156,27 @@ class AutoVoucherHookTest {
         assertThat(result).isSameAs(posted);
         verify(invoiceService).post("SINV-202606-0001", OPERATOR);
         verify(autoVoucherService).generateForSalesInvoice(posted, OPERATOR);
+    }
+
+    @Test
+    void 销售发票冲销先锁发票再查凭证并执行领域冲销() {
+        SalesInvoiceService invoiceService = mock(SalesInvoiceService.class);
+        VoucherService voucherService = mock(VoucherService.class);
+        SalesInvoiceAppService appService = new SalesInvoiceAppService(
+                invoiceService, mock(SalesDeliveryService.class), mock(SalesOrderService.class),
+                mock(DocumentNumberGenerator.class), mock(AutoVoucherService.class),
+                voucherService, mock(VoucherAppService.class));
+        SalesInvoice reversed = mock(SalesInvoice.class);
+        when(voucherService.findBySourceDocNo("SINV-202606-0001")).thenReturn(List.of());
+        when(invoiceService.reverse("SINV-202606-0001", "SINV-202606-0001", OPERATOR))
+                .thenReturn(reversed);
+
+        assertThat(appService.reverse("SINV-202606-0001", OPERATOR)).isSameAs(reversed);
+
+        InOrder order = org.mockito.Mockito.inOrder(invoiceService, voucherService);
+        order.verify(invoiceService).lockForReverse("SINV-202606-0001");
+        order.verify(voucherService).findBySourceDocNo("SINV-202606-0001");
+        order.verify(invoiceService).reverse("SINV-202606-0001", "SINV-202606-0001", OPERATOR);
     }
 
     // ------------------------------------------------------------------

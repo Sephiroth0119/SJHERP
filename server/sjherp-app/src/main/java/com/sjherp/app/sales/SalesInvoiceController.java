@@ -16,8 +16,12 @@ import org.springframework.web.bind.annotation.RestController;
 import com.sjherp.app.security.CurrentUser;
 import com.sjherp.app.sales.SalesDtos.PageResponse;
 import com.sjherp.app.sales.SalesDtos.SalesInvoiceCreateRequest;
+import com.sjherp.app.sales.SalesDtos.SalesInvoiceDeliveryOptionResponse;
 import com.sjherp.app.sales.SalesDtos.SalesInvoiceResponse;
 import com.sjherp.domain.common.DocumentStatus;
+import com.sjherp.domain.sales.SalesDelivery;
+import com.sjherp.domain.sales.SalesDeliveryNotFoundException;
+import com.sjherp.domain.sales.SalesDeliveryQuery;
 import com.sjherp.domain.sales.SalesInvoiceQuery;
 
 import jakarta.validation.Valid;
@@ -29,12 +33,14 @@ import jakarta.validation.Valid;
  *   <li>POST /api/sales/invoices/{docNo}/approve → 200 审核（DRAFT→APPROVED）；</li>
  *   <li>POST /api/sales/invoices/{docNo}/post → 200 过账（生成应收 OPEN）；</li>
  *   <li>POST /api/sales/invoices/{docNo}/cancel → 200 作废（仅 DRAFT）；</li>
+ *   <li>GET  /api/sales/invoices/delivery-options → 200 已过账且仍可开票的出库单候选；</li>
+ *   <li>GET  /api/sales/invoices/delivery-options/{docNo} → 200 候选出库单未开完行详情；</li>
  *   <li>GET  /api/sales/invoices/{docNo} → 200 单据详情（不存在 404）；</li>
  *   <li>GET  /api/sales/invoices?customerId=&salesDeliveryNo=&status=&page=&size= → 200 分页。</li>
  * </ul>
  *
  * <p>权限（docs/权限矩阵.md）：写/查均须 {@code sales:invoice}（ADMIN/BOSS/SALES/ACCOUNTANT）。
- * 开票数量校验不超出库已发量；过账按发票金额生成应收账款（OPEN，核销 M4-T03）。
+ * 开票数量校验不超出库剩余可开票量；过账按发票金额生成应收账款（OPEN，核销 M4-T03）。
  */
 @RestController
 @RequestMapping("/api/sales/invoices")
@@ -42,9 +48,12 @@ import jakarta.validation.Valid;
 public class SalesInvoiceController {
 
     private final SalesInvoiceAppService salesInvoiceAppService;
+    private final SalesDeliveryAppService salesDeliveryAppService;
 
-    public SalesInvoiceController(SalesInvoiceAppService salesInvoiceAppService) {
+    public SalesInvoiceController(SalesInvoiceAppService salesInvoiceAppService,
+                                  SalesDeliveryAppService salesDeliveryAppService) {
         this.salesInvoiceAppService = salesInvoiceAppService;
+        this.salesDeliveryAppService = salesDeliveryAppService;
     }
 
     /** 建单（草稿，自动编号） */
@@ -66,6 +75,28 @@ public class SalesInvoiceController {
     @PostMapping("/{docNo}/post")
     public SalesInvoiceResponse post(@PathVariable String docNo) {
         return SalesInvoiceResponse.from(salesInvoiceAppService.post(docNo, CurrentUser.operator()));
+    }
+
+    /**
+     * 发票建单出库单候选：在 sales:invoice 权限边界内复用出库只读服务，
+     * 仅返回 COMPLETED 且仍有未开完行的出库单；不授予 sales:delivery 或任何出库写能力。
+     */
+    @GetMapping("/delivery-options")
+    public PageResponse<SalesInvoiceDeliveryOptionResponse> deliveryOptions(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int size) {
+        return PageResponse.ofInvoiceDeliveryOptions(salesDeliveryAppService.search(
+                new SalesDeliveryQuery(null, null, DocumentStatus.COMPLETED, true, page, size)));
+    }
+
+    /** 发票建单出库单候选详情：状态变化、已冲销或全部开完时按不可用返回 404。 */
+    @GetMapping("/delivery-options/{docNo}")
+    public SalesInvoiceDeliveryOptionResponse deliveryOption(@PathVariable String docNo) {
+        SalesDelivery delivery = salesDeliveryAppService.get(docNo);
+        if (!SalesInvoiceDeliveryOptionResponse.isInvoiceable(delivery)) {
+            throw new SalesDeliveryNotFoundException(docNo);
+        }
+        return SalesInvoiceDeliveryOptionResponse.from(delivery);
     }
 
     /** 冲销（红字发票，M4-T07b：COMPLETED → REVERSED，应收整笔冲回[须无核销] + 红冲发票凭证 + 回退已开票量） */

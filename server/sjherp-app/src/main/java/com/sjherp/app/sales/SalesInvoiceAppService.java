@@ -136,9 +136,11 @@ public class SalesInvoiceAppService {
      */
     @Transactional
     public SalesInvoice reverse(String docNo, String operator) {
-        // ① 红冲发票自动凭证（按来源单据号反查 SALES_INVOICE 凭证）→ 红字号作冲销链路锚点
+        // ① 先锁发票头并校验 COMPLETED；避免与尚未提交的 post 竞态时先建立缺应收/凭证的旧快照。
+        salesInvoiceService.lockForReverse(docNo);
+        // ② 红冲发票自动凭证（按来源单据号反查 SALES_INVOICE 凭证）→ 红字号作冲销链路锚点
         String reversalAnchor = reverseAutoVoucher(docNo, operator);
-        // ② 应收冲回 + 回退开票量 + 单据冲销（同事务原子；带核销在此步硬拒回滚）
+        // ③ 应收冲回 + 回退开票量 + 单据冲销（同事务原子；带核销在此步硬拒回滚）
         return salesInvoiceService.reverse(docNo, reversalAnchor, operator);
     }
 

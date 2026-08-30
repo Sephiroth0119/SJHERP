@@ -268,7 +268,7 @@ public class SalesDeliveryService {
      */
     public void recordInvoiced(String docNo, List<InvoicedLine> invoiced) {
         Objects.requireNonNull(invoiced, "开票回写行不能为空");
-        SalesDelivery delivery = get(docNo);
+        SalesDelivery delivery = getForUpdate(docNo);
         for (InvoicedLine line : invoiced) {
             delivery.invoiceLine(line.lineNo(), line.quantity());
         }
@@ -286,7 +286,7 @@ public class SalesDeliveryService {
      */
     public void reverseInvoiced(String docNo, List<InvoicedLine> invoiced) {
         Objects.requireNonNull(invoiced, "回滚开票行不能为空");
-        SalesDelivery delivery = get(docNo);
+        SalesDelivery delivery = getForUpdate(docNo);
         for (InvoicedLine line : invoiced) {
             delivery.reverseInvoiceLine(line.lineNo(), line.quantity());
         }
@@ -296,6 +296,11 @@ public class SalesDeliveryService {
     /** 按单据号查（不存在抛 {@link SalesDeliveryNotFoundException} → API 404） */
     public SalesDelivery get(String docNo) {
         return repository.findByDocNo(docNo)
+                .orElseThrow(() -> new SalesDeliveryNotFoundException(docNo));
+    }
+
+    private SalesDelivery getForUpdate(String docNo) {
+        return repository.findByDocNoForUpdate(docNo)
                 .orElseThrow(() -> new SalesDeliveryNotFoundException(docNo));
     }
 
