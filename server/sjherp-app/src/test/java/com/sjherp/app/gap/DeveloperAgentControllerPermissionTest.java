@@ -16,9 +16,13 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.context.TestPropertySource;
 
 @WebMvcTest(DeveloperAgentController.class)
 @Import({SecurityConfig.class, PermissionGuard.class})
+@TestPropertySource(properties = {
+        "sjherp.security.jwt-secret=test-only-secret-0123456789-0123456789-0123456789",
+})
 class DeveloperAgentControllerPermissionTest {
     @Autowired MockMvc mvc;
     @MockitoBean DeveloperAgentService service;
