@@ -17,6 +17,7 @@ import { ProductWorkbench } from './components/ProductWorkbench';
 import { PurchaseInvoiceWorkbench } from './components/PurchaseInvoiceWorkbench';
 import { PurchaseOrderWorkbench } from './components/PurchaseOrderWorkbench';
 import { PurchaseReceiptWorkbench } from './components/PurchaseReceiptWorkbench';
+import { SalesDeliveryWorkbench } from './components/SalesDeliveryWorkbench';
 import { SalesOrderWorkbench } from './components/SalesOrderWorkbench';
 import { MODULE_NAV_ITEMS, type ModuleKey } from './types/navigation';
 import {
@@ -146,17 +147,25 @@ export function App() {
 }
 
 function SalesWorkbench({ permissions }: { permissions: string[] }) {
-  const [tab, setTab] = useState<'customer' | 'order'>('customer');
+  const [tab, setTab] = useState<'customer' | 'order' | 'delivery'>('customer');
   const canUseSalesOrders = permissions.includes('sales:order');
-  const activeTab = tab === 'order' && canUseSalesOrders ? 'order' : 'customer';
+  const canUseSalesDeliveries = permissions.includes('sales:delivery');
+  const activeTab = tab === 'order' && canUseSalesOrders
+    ? 'order'
+    : tab === 'delivery' && canUseSalesDeliveries
+      ? 'delivery'
+      : 'customer';
 
   return <>
     <div className="memory-tabs purchase-workbench-tabs" role="tablist" aria-label="销售工作台">
       <button type="button" role="tab" aria-selected={activeTab === 'customer'} className={activeTab === 'customer' ? 'memory-tab-active' : ''} onClick={() => setTab('customer')}>客户档案</button>
       {canUseSalesOrders && <button type="button" role="tab" aria-selected={activeTab === 'order'} className={activeTab === 'order' ? 'memory-tab-active' : ''} onClick={() => setTab('order')}>销售订单</button>}
+      {canUseSalesDeliveries && <button type="button" role="tab" aria-selected={activeTab === 'delivery'} className={activeTab === 'delivery' ? 'memory-tab-active' : ''} onClick={() => setTab('delivery')}>销售出库</button>}
     </div>
     {activeTab === 'order'
       ? <SalesOrderWorkbench />
+      : activeTab === 'delivery'
+        ? <SalesDeliveryWorkbench />
       : <CustomerWorkbench permissions={permissions} />}
   </>;
 }
