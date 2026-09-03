@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -231,6 +232,37 @@ public class JdbcMemoryEntryRepository implements MemoryEntryRepository {
                 WHERE tenant_id = 0 AND status = 'ACTIVE' AND id > ?
                 ORDER BY id LIMIT ?
                 """, ROW_MAPPER, afterId, limit);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MemoryEntry> findRecallableByIds(List<Long> ids, long tenantId, Instant asOf) {
+        Objects.requireNonNull(ids, "召回主键列表不能为空");
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        if (tenantId < 0) {
+            throw new IllegalArgumentException("租户主键不能为负数");
+        }
+        Objects.requireNonNull(asOf, "召回时间不能为空");
+        if (ids.size() > 200 || ids.stream().anyMatch(id -> id == null || id < 1)) {
+            throw new IllegalArgumentException("召回主键必须为正数且一次不得超过 200 个");
+        }
+
+        String placeholders = String.join(",", Collections.nCopies(ids.size(), "?"));
+        List<Object> args = new ArrayList<>(ids.size() + 3);
+        args.add(tenantId);
+        args.add(toDb(asOf));
+        args.add(toDb(asOf));
+        args.addAll(ids);
+        return jdbc.query(SELECT_COLUMNS + """
+                WHERE tenant_id = ?
+                  AND status = 'ACTIVE'
+                  AND index_status = 'INDEXED'
+                  AND valid_from <= ?
+                  AND (valid_to IS NULL OR valid_to > ?)
+                  AND id IN (
+                """ + placeholders + ") ORDER BY id", ROW_MAPPER, args.toArray());
     }
 
     private static Optional<MemoryEntry> first(List<MemoryEntry> rows) {

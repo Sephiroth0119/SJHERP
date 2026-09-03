@@ -3,21 +3,29 @@ package com.sjherp.app.memory;
 import java.net.URI;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 
 /** 大记忆本地基础设施配置；开启时按设计规格 fail-fast 校验。 */
 @ConfigurationProperties(prefix = "sjherp.memory")
 public record MemoryProperties(boolean enabled, Embedding embedding,
-        Vector vector, Indexing indexing) {
+        Vector vector, Indexing indexing, Recall recall) {
 
     private static final URI DEFAULT_OLLAMA_URL = URI.create("http://localhost:11434");
     private static final URI DEFAULT_QDRANT_URL = URI.create("http://localhost:6333");
 
+    public MemoryProperties(boolean enabled, Embedding embedding,
+            Vector vector, Indexing indexing) {
+        this(enabled, embedding, vector, indexing, null);
+    }
+
+    @ConstructorBinding
     public MemoryProperties {
         embedding = embedding == null ? defaultEmbedding() : embedding;
         vector = vector == null ? defaultVector() : vector;
         indexing = indexing == null ? defaultIndexing() : indexing;
+        recall = recall == null ? defaultRecall() : recall;
         if (enabled) {
-            validateEnabled(embedding, vector, indexing);
+            validateEnabled(embedding, vector, indexing, recall);
         }
     }
 
@@ -40,7 +48,12 @@ public record MemoryProperties(boolean enabled, Embedding embedding,
         return new Indexing(30, 50, 8);
     }
 
-    private static void validateEnabled(Embedding embedding, Vector vector, Indexing indexing) {
+    private static Recall defaultRecall() {
+        return new Recall(12, 5, 0.45d, 6000);
+    }
+
+    private static void validateEnabled(Embedding embedding, Vector vector,
+            Indexing indexing, Recall recall) {
         if (!"ollama".equalsIgnoreCase(embedding.provider())) {
             throw new IllegalStateException("sjherp.memory.embedding.provider 必须为 ollama");
         }
@@ -71,6 +84,23 @@ public record MemoryProperties(boolean enabled, Embedding embedding,
         if (indexing.maxRetries() < 1 || indexing.maxRetries() > 100) {
             throw new IllegalStateException("sjherp.memory.indexing.max-retries 必须在 1 到 100 之间");
         }
+
+        if (recall.candidateLimit() < 1 || recall.candidateLimit() > 200
+                || recall.candidateLimit() < recall.maxResults()) {
+            throw new IllegalStateException(
+                    "sjherp.memory.recall.candidate-limit 必须在 1 到 200 之间且不小于 max-results");
+        }
+        if (recall.maxResults() < 1 || recall.maxResults() > 20) {
+            throw new IllegalStateException("sjherp.memory.recall.max-results 必须在 1 到 20 之间");
+        }
+        if (!Double.isFinite(recall.minScore())
+                || recall.minScore() < 0d || recall.minScore() > 1d) {
+            throw new IllegalStateException("sjherp.memory.recall.min-score 必须是 0 到 1 的有限数");
+        }
+        if (recall.maxContextChars() < 1000 || recall.maxContextChars() > 20000) {
+            throw new IllegalStateException(
+                    "sjherp.memory.recall.max-context-chars 必须在 1000 到 20000 之间");
+        }
     }
 
     private static void requireHttpUri(URI uri, String fieldName) {
@@ -96,5 +126,9 @@ public record MemoryProperties(boolean enabled, Embedding embedding,
     }
 
     public record Indexing(long retryDelaySeconds, int batchSize, int maxRetries) {
+    }
+
+    public record Recall(int candidateLimit, int maxResults,
+                         double minScore, int maxContextChars) {
     }
 }
