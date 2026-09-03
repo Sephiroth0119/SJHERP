@@ -8,11 +8,18 @@ import com.sjherp.domain.common.DocumentStatus;
  * @param warehouseId     收货仓库 id 过滤（可空）
  * @param purchaseOrderNo 引用采购订单号过滤（可空，精确匹配）
  * @param status          单据状态过滤（可空）
+ * @param invoiceableOnly 是否只返回已过账且至少有一行仍可开票的入库单
  * @param page            页码（从 1 起）
  * @param size            每页条数
  */
 public record PurchaseReceiptQuery(Long warehouseId, String purchaseOrderNo, DocumentStatus status,
-                                   int page, int size) {
+                                   boolean invoiceableOnly, int page, int size) {
+
+    /** 兼容既有普通分页调用；默认不启用采购发票候选过滤。 */
+    public PurchaseReceiptQuery(Long warehouseId, String purchaseOrderNo, DocumentStatus status,
+                                int page, int size) {
+        this(warehouseId, purchaseOrderNo, status, false, page, size);
+    }
 
     public PurchaseReceiptQuery {
         if (page < 1) {

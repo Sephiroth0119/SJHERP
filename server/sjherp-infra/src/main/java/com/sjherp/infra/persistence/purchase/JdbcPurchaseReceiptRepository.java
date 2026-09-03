@@ -143,6 +143,13 @@ public class JdbcPurchaseReceiptRepository implements PurchaseReceiptRepository 
             where.append("AND status = ? ");
             args.add(query.status().name());
         }
+        if (query.invoiceableOnly()) {
+            where.append("AND status = 'COMPLETED' ")
+                    .append("AND EXISTS (SELECT 1 FROM purchase_receipt_line invoiceable_line ")
+                    .append("WHERE invoiceable_line.tenant_id = purchase_receipt.tenant_id ")
+                    .append("AND invoiceable_line.purchase_receipt_id = purchase_receipt.id ")
+                    .append("AND invoiceable_line.quantity > invoiceable_line.invoiced_qty) ");
+        }
 
         Long total = jdbc.queryForObject("SELECT COUNT(*) FROM purchase_receipt " + where,
                 Long.class, args.toArray());

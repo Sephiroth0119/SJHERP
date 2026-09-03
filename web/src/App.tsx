@@ -14,6 +14,7 @@ import { CustomerWorkbench } from './components/CustomerWorkbench';
 import { NotificationBell } from './components/NotificationBell';
 import { SupplierWorkbench, WarehouseWorkbench } from './components/MasterDataWorkbench';
 import { ProductWorkbench } from './components/ProductWorkbench';
+import { PurchaseInvoiceWorkbench } from './components/PurchaseInvoiceWorkbench';
 import { PurchaseOrderWorkbench } from './components/PurchaseOrderWorkbench';
 import { PurchaseReceiptWorkbench } from './components/PurchaseReceiptWorkbench';
 import { SalesOrderWorkbench } from './components/SalesOrderWorkbench';
@@ -161,13 +162,18 @@ function SalesWorkbench({ permissions }: { permissions: string[] }) {
 }
 
 function PurchaseWorkbench({ permissions }: { permissions: string[] }) {
-  const [tab, setTab] = useState<'supplier' | 'order' | 'receipt'>('supplier');
+  const [tab, setTab] = useState<
+    'supplier' | 'order' | 'receipt' | 'invoice'
+  >('supplier');
   const canUseOrders = permissions.includes('purchase:order');
   const canUseReceipts = permissions.includes('purchase:receipt');
+  const canUseInvoices = permissions.includes('purchase:invoice');
   const activeTab = tab === 'order' && canUseOrders
     ? 'order'
     : tab === 'receipt' && canUseReceipts
       ? 'receipt'
+      : tab === 'invoice' && canUseInvoices
+        ? 'invoice'
       : 'supplier';
 
   return <>
@@ -175,11 +181,14 @@ function PurchaseWorkbench({ permissions }: { permissions: string[] }) {
       <button type="button" role="tab" aria-selected={activeTab === 'supplier'} className={activeTab === 'supplier' ? 'memory-tab-active' : ''} onClick={() => setTab('supplier')}>供应商档案</button>
       {canUseOrders && <button type="button" role="tab" aria-selected={activeTab === 'order'} className={activeTab === 'order' ? 'memory-tab-active' : ''} onClick={() => setTab('order')}>采购订单</button>}
       {canUseReceipts && <button type="button" role="tab" aria-selected={activeTab === 'receipt'} className={activeTab === 'receipt' ? 'memory-tab-active' : ''} onClick={() => setTab('receipt')}>采购入库</button>}
+      {canUseInvoices && <button type="button" role="tab" aria-selected={activeTab === 'invoice'} className={activeTab === 'invoice' ? 'memory-tab-active' : ''} onClick={() => setTab('invoice')}>采购发票</button>}
     </div>
     {activeTab === 'order'
       ? <PurchaseOrderWorkbench />
       : activeTab === 'receipt'
         ? <PurchaseReceiptWorkbench />
+        : activeTab === 'invoice'
+          ? <PurchaseInvoiceWorkbench />
       : <SupplierWorkbench permissions={permissions} />}
   </>;
 }
