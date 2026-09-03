@@ -49,9 +49,15 @@ class JdbcSequenceProviderIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        String url = envOrDefault("SJHERP_DB_URL", "jdbc:mysql://192.168.237.133:3306/sjherp");
-        String username = envOrDefault("SJHERP_DB_USERNAME", "sjherp_app");
-        String password = envOrDefault("SJHERP_DB_PASSWORD", "sjherp_dev_2026");
+        String url = System.getenv("SJHERP_DB_URL");
+        String username = System.getenv("SJHERP_DB_USERNAME");
+        String password = System.getenv("SJHERP_DB_PASSWORD");
+
+        // 环境变量未配置时跳过测试（公开仓库不提供弱默认值）
+        if (url == null || url.isBlank() || username == null || password == null) {
+            Assumptions.assumeTrue(false,
+                    "集成测试需要环境变量 SJHERP_DB_URL / SJHERP_DB_USERNAME / SJHERP_DB_PASSWORD");
+        }
 
         DriverManagerDataSource dataSource = new DriverManagerDataSource(url, username, password);
         dataSource.setDriverClassName("com.mysql.cj.jdbc.Driver");
@@ -137,8 +143,4 @@ class JdbcSequenceProviderIntegrationTest {
         return value;
     }
 
-    private static String envOrDefault(String name, String defaultValue) {
-        String value = System.getenv(name);
-        return (value == null || value.isBlank()) ? defaultValue : value;
-    }
 }

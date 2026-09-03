@@ -1,16 +1,17 @@
 # SJHERP 开发中间件声明（MySQL + Qdrant）
 #
-# 重要说明：
-# - 当前实际开发环境是 VM 192.168.237.133 上**手工 docker run** 的两个容器：
-#     dq-mysql       -> mysql:8.4            （3306，库 sjherp，应用账号 sjherp_app）
-#     sjherp-qdrant  -> qdrant/qdrant:v1.13.4（6333 HTTP / 6334 gRPC）
-#   本文件不是那台 VM 的运行来源，而是把同一套环境声明化，用于在新环境一键复现：
-#     MYSQL_ROOT_PASSWORD=xxx docker compose -f deploy/docker-compose.dev.yml up -d
-# - 国内网络拉镜像慢/失败时，可给镜像加 DaoCloud 加速前缀，例如：
+# 安全要求（公开仓库）：
+# - 所有密码必须通过环境变量配置，不提供弱默认值；
+# - 启动命令示例：
+#     export MYSQL_ROOT_PASSWORD=$(openssl rand -base64 16)
+#     export SJHERP_DB_PASSWORD=$(openssl rand -base64 16)
+#     docker compose -f deploy/docker-compose.dev.yml up -d
+#
+# 国内网络拉镜像慢/失败时，可给镜像加 DaoCloud 加速前缀，例如：
 #     docker.m.daocloud.io/library/mysql:8.4
 #     docker.m.daocloud.io/qdrant/qdrant:v1.13.4
-# - 应用侧连接配置见 server/sjherp-app/src/main/resources/application.yml
-#  （环境变量 SJHERP_DB_URL / SJHERP_DB_USERNAME / SJHERP_DB_PASSWORD）。
+#
+# 应用侧连接配置见 README.md。
 
 services:
   mysql:
@@ -18,12 +19,11 @@ services:
     container_name: dq-mysql
     restart: unless-stopped
     environment:
-      # root 密码不写入仓库，必须通过环境变量传入
+      # 必须通过环境变量提供（公开仓库不提供弱默认值）
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?必须通过环境变量提供 MySQL root 密码}
-      # 应用库与应用账号（与 application.yml 的开发默认值保持一致）
       MYSQL_DATABASE: sjherp
       MYSQL_USER: sjherp_app
-      MYSQL_PASSWORD: ${SJHERP_DB_PASSWORD:-sjherp_dev_2026}
+      MYSQL_PASSWORD: ${SJHERP_DB_PASSWORD:?必须通过环境变量提供应用数据库密码 SJHERP_DB_PASSWORD}
     ports:
       - "3306:3306"
     volumes:

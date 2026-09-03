@@ -26,11 +26,7 @@ CREATE TABLE sys_user (
   COLLATE = utf8mb4_0900_ai_ci
   COMMENT '系统用户（M2-T05）';
 
--- 种子数据：初始管理员 admin，初始密码 Admin@2026（BCrypt 哈希，cost=10）。
--- 安全要求：私有部署上线后必须立即登录修改该密码（README 有提醒）。
-INSERT INTO sys_user (username, display_name, password_hash, roles, status,
-                      created_by, created_at, updated_by, updated_at)
-VALUES ('admin', '系统管理员',
-        '$2a$10$9rz1fc/lk7boDelIX66O6OVwalIlQUDKZGW5FtIouNyDaEg55Kzbi',
-        '["ADMIN"]', 'ENABLED',
-        'system', UTC_TIMESTAMP(6), 'system', UTC_TIMESTAMP(6));
+-- 初始管理员不再在迁移脚本中硬编码（公开仓库安全要求）。
+-- 管理员账户由应用启动时从环境变量 SJHERP_ADMIN_PASSWORD 创建。
+-- 如果 sys_user 表为空且环境变量未配置，应用启动会失败。
+-- 参见 AdminInitializer.java。
