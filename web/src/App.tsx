@@ -10,6 +10,7 @@ import { ChatPanel } from './components/chat/ChatPanel';
 import { LoginPage } from './components/LoginPage';
 import { ModulePlaceholder } from './components/ModulePlaceholder';
 import { MemoryGovernancePage } from './components/memory/MemoryGovernancePage';
+import { NotificationBell } from './components/NotificationBell';
 import { MODULE_NAV_ITEMS, type ModuleKey } from './types/navigation';
 import {
   clearAuth,
@@ -79,6 +80,7 @@ export function App() {
       <Sidebar active={activeModule} onSelect={setActiveModule} roles={user.roles} />
       <main className="app-main">
         <header className="app-topbar">
+          <NotificationBell />
           <span className="app-topbar-user" title={`角色：${formatRoles(user.roles)}`}>
             {user.displayName}
             <span className="app-topbar-roles">{formatRoles(user.roles)}</span>
