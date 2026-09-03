@@ -136,6 +136,12 @@ public class JdbcPurchaseOrderRepository implements PurchaseOrderRepository {
             where.append("AND status = ? ");
             args.add(query.status().name());
         }
+        if (query.receivableOnly()) {
+            where.append("AND EXISTS (SELECT 1 FROM purchase_order_line pol "
+                    + "WHERE pol.tenant_id = purchase_order.tenant_id "
+                    + "AND pol.purchase_order_id = purchase_order.id "
+                    + "AND pol.quantity > pol.received_qty) ");
+        }
 
         Long total = jdbc.queryForObject("SELECT COUNT(*) FROM purchase_order " + where,
                 Long.class, args.toArray());
