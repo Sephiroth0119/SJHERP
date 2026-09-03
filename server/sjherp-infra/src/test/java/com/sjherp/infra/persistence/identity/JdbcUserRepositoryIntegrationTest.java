@@ -48,10 +48,11 @@ class JdbcUserRepositoryIntegrationTest extends MySqlContainerTestBase {
     }
 
     @Test
-    void 种子管理员_V6迁移已写入() {
-        // V6 迁移内置 admin 种子用户（部署后必须改密）——迁移可执行性验证的一部分
+    void V6迁移不再硬编码管理员_由AdminInitializer运行时创建() {
+        // PR #26 安全加固：V6 迁移不再写入 admin 种子用户；
+        // 管理员账户由应用启动时从环境变量 SJHERP_ADMIN_PASSWORD 创建（参见 AdminInitializer）。
+        // 此测试验证迁移后表空，确认旧硬编码已移除。
         Optional<User> admin = userRepository.findByUsername("admin");
-        assertThat(admin).isPresent();
-        assertThat(admin.get().getRoles()).contains(Role.ADMIN);
+        assertThat(admin).isEmpty();
     }
 }
