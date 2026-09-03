@@ -94,4 +94,6 @@ SJHERP/
 
 **M6-T03 记忆召回已完成（2026-07-18）**：所有已登录聊天用户在请求进入 LLM 前可只读召回，写入与治理仍仅 `memory:manage`（ADMIN/BOSS）。召回用 QUERY embedding 查 Qdrant 候选，随后必须批量回查 MySQL，只接受同租户、`ACTIVE + INDEXED` 且有效期内的真源；按向量顺序最多注入 5 条。提示采用 Jackson 转义的完整 JSON 数据行并限制总长，明确记忆是数据而非指令，引用 `[M1]` 时携来源、生效与更新时间，冲突不得静默裁决；工具结果、权限、HITL、领域状态机和财务规则始终优先。Ollama/Qdrant/格式化异常 fail-open，日志只记异常类型；高风险确认恢复沿用原始用户问题。未新增迁移、REST 召回 API、Agent 搜索工具或 M6-T04 管理前端。设计真源见 docs/superpowers/specs/2026-07-18-m6-memory-recall-design.md。
 
+**M6-T04 记忆治理已完成（2026-07-18）**：MySQL 真源以确定性规则生成重复候选（同租户/类型/正文哈希）与冲突候选（同租户/类型/完全相同标题/不同正文哈希），只提示 ADMIN/BOSS 人工处理，不做语义自动裁决。整组冲突标记执行 `ACTIVE→CONFLICT` 并删除派生 point；有效期内冲突可恢复为 `ACTIVE + PENDING` 后重索引，活动/冲突版本均可逻辑失效，终态不可恢复且真源永不物删。`/api/memories/**` 追加候选、冲突和恢复入口，管理页覆盖查看、编辑为新版本、失效、重试、重复处理、冲突标记与恢复；前后端均以 `memory:manage` 限定 ADMIN/BOSS，其他已登录用户仍仅可聊天召回。治理写操作经领域/应用服务并统一审计，批次摘要不含标题、正文或哈希；未新增迁移、依赖、Agent 治理工具或改动 T03 召回算法。本地后端全量 1290 项测试与前端生产构建通过。设计真源见 docs/superpowers/specs/2026-07-18-m6-memory-governance-design.md。
+
 0→1 完整计划见 **docs/产品路线图-0到1.md**（任务编号制，分配 subagent 时引用编号；该文档是计划的单一真源）。当前推进位置与已知技术债以该文档为准。

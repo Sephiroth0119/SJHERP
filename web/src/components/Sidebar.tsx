@@ -8,9 +8,14 @@ import { USE_MOCK } from '../api/chatApi';
 interface SidebarProps {
   active: ModuleKey;
   onSelect: (key: ModuleKey) => void;
+  roles: string[];
 }
 
-export function Sidebar({ active, onSelect }: SidebarProps) {
+export function Sidebar({ active, onSelect, roles }: SidebarProps) {
+  const visibleItems = MODULE_NAV_ITEMS.filter(
+    (item) => !item.requiredRoles || item.requiredRoles.some((role) => roles.includes(role)),
+  );
+
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
@@ -18,7 +23,7 @@ export function Sidebar({ active, onSelect }: SidebarProps) {
         <span className="sidebar-brand-sub">Agent 原生 ERP</span>
       </div>
       <nav className="sidebar-nav">
-        {MODULE_NAV_ITEMS.map((item) => (
+        {visibleItems.map((item) => (
           <button
             key={item.key}
             type="button"

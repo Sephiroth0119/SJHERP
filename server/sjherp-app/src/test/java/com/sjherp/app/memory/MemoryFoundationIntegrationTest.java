@@ -86,6 +86,7 @@ class MemoryFoundationIntegrationTest {
     private static MemoryProperties properties;
     private static MemoryRecallService recallService;
     private static MemoryPromptFormatter promptFormatter;
+    private static MemoryGovernanceService governanceService;
 
     @BeforeAll
     static void setUp() {
@@ -106,6 +107,7 @@ class MemoryFoundationIntegrationTest {
         properties = context.getBean(MemoryProperties.class);
         recallService = context.getBean(MemoryRecallService.class);
         promptFormatter = context.getBean(MemoryPromptFormatter.class);
+        governanceService = context.getBean(MemoryGovernanceService.class);
     }
 
     @AfterAll
@@ -186,11 +188,65 @@ class MemoryFoundationIntegrationTest {
 
         memoryService.expire(entry.getMemoryNo(), "user:1");
 
+        vectorIndex.upsert(new VectorPoint(entry.getId(), entry.getTenantId(),
+                entry.getMemoryType(), MemoryStatus.ACTIVE, entry.getSourceType(),
+                Collections.nCopies(1024, 0.125f)));
+
         assertThat(memoryService.get(entry.getMemoryNo()).getStatus()).isEqualTo(MemoryStatus.EXPIRED);
         assertThat(recallService.recall("我们公司的大客户怎么定义")).isEmpty();
         assertThat(repository.findActiveByMemoryKey(entry.getMemoryKey())).isEmpty();
         assertThat(repository.findActiveAfterId(0, 50)).isEmpty();
         assertThat(point(entry.getId()).path("id").longValue()).isEqualTo(entry.getId());
+    }
+
+    @Test
+    void governanceCandidates_conflictLifecycle_andDuplicateExpiryKeepTruth() throws Exception {
+        MemoryEntry first = memoryService.create(
+                command("大客户口径", "年采购金额超过50万元"), "boss");
+        MemoryEntry second = memoryService.create(
+                command("大客户口径", "年采购金额超过80万元"), "boss");
+
+        MemoryGovernanceService.Candidates initial = governanceService.findCandidates(50);
+        assertThat(initial.conflictGroups()).anySatisfy(group -> {
+            assertThat(group.title()).isEqualTo("大客户口径");
+            assertThat(group.entries()).extracting(MemoryEntry::getMemoryNo)
+                    .containsExactlyInAnyOrder(first.getMemoryNo(), second.getMemoryNo());
+        });
+
+        memoryService.markConflict(
+                List.of(first.getMemoryNo(), second.getMemoryNo()), "boss");
+
+        assertThat(memoryService.get(first.getMemoryNo()).getStatus())
+                .isEqualTo(MemoryStatus.CONFLICT);
+        assertThat(memoryService.get(second.getMemoryNo()).getStatus())
+                .isEqualTo(MemoryStatus.CONFLICT);
+        assertPointMissing(first.getId());
+        assertPointMissing(second.getId());
+
+        memoryService.expire(second.getMemoryNo(), "boss");
+        MemoryEntry activated = memoryService.activate(first.getMemoryNo(), "boss");
+        assertThat(activated.getStatus()).isEqualTo(MemoryStatus.ACTIVE);
+        assertThat(memoryService.get(first.getMemoryNo()).getIndexStatus())
+                .isEqualTo(MemoryIndexStatus.INDEXED);
+        assertThat(point(first.getId()).path("id").longValue()).isEqualTo(first.getId());
+
+        MemoryEntry duplicateA = memoryService.create(
+                command("客户分层说明", "年采购金额超过50万元"), "boss");
+        MemoryEntry duplicateB = memoryService.create(
+                command("重点客户说明", "年采购金额超过50万元"), "boss");
+        assertThat(governanceService.findCandidates(50).duplicateGroups())
+                .anySatisfy(group -> assertThat(group.entries())
+                        .extracting(MemoryEntry::getMemoryNo)
+                        .contains(duplicateA.getMemoryNo(), duplicateB.getMemoryNo()));
+
+        Integer before = jdbc.queryForObject("SELECT COUNT(*) FROM memory_entry", Integer.class);
+        memoryService.expire(duplicateB.getMemoryNo(), "boss");
+
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM memory_entry", Integer.class))
+                .isEqualTo(before);
+        assertThat(memoryService.get(duplicateB.getMemoryNo()).getStatus())
+                .isEqualTo(MemoryStatus.EXPIRED);
+        assertPointMissing(duplicateB.getId());
     }
 
     @Test
@@ -247,6 +303,12 @@ class MemoryFoundationIntegrationTest {
                 + "/points/" + id + "?with_payload=true&with_vector=false", null);
         assertThat(response.statusCode()).isEqualTo(200);
         return JSON.readTree(response.body()).path("result");
+    }
+
+    private static void assertPointMissing(long id) throws Exception {
+        HttpResponse<String> response = send("GET", "/collections/" + COLLECTION
+                + "/points/" + id + "?with_payload=true&with_vector=false", null);
+        assertThat(response.statusCode()).isEqualTo(404);
     }
 
     private static void deleteCollection(String collection) throws Exception {
@@ -356,6 +418,17 @@ class MemoryFoundationIntegrationTest {
                                     DocumentNumberGenerator numberGenerator,
                                     ApplicationEventPublisher events) {
             return new MemoryService(repository, numberGenerator, events);
+        }
+
+        @Bean
+        MemoryGovernanceService memoryGovernanceService(MemoryEntryRepository repository) {
+            return new MemoryGovernanceService(repository);
+        }
+
+        @Bean
+        MemoryIndexEventListener memoryIndexEventListener(
+                MemoryIndexingService indexingService) {
+            return new MemoryIndexEventListener(indexingService);
         }
     }
 }

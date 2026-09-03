@@ -1,6 +1,7 @@
 package com.sjherp.app.memory;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -40,14 +41,16 @@ class MemoryControllerTest {
 
     private MemoryService memoryService;
     private MemoryIndexingService indexingService;
+    private MemoryGovernanceService governanceService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         memoryService = Mockito.mock(MemoryService.class);
         indexingService = Mockito.mock(MemoryIndexingService.class);
+        governanceService = Mockito.mock(MemoryGovernanceService.class);
         mockMvc = MockMvcBuilders.standaloneSetup(
-                        new MemoryController(memoryService, indexingService))
+                        new MemoryController(memoryService, indexingService, governanceService))
                 .setControllerAdvice(new MemoryExceptionHandler())
                 .build();
 
@@ -107,7 +110,7 @@ class MemoryControllerTest {
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").isNotEmpty());
-        Mockito.verifyNoInteractions(memoryService, indexingService);
+        Mockito.verifyNoInteractions(memoryService, indexingService, governanceService);
     }
 
     @Test
@@ -125,7 +128,7 @@ class MemoryControllerTest {
                                 """))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("请求体不是合法的 JSON 或字段类型不匹配"));
-        Mockito.verifyNoInteractions(memoryService, indexingService);
+        Mockito.verifyNoInteractions(memoryService, indexingService, governanceService);
     }
 
     @Test
@@ -192,6 +195,70 @@ class MemoryControllerTest {
                 .andExpect(jsonPath("$.succeeded").value(7))
                 .andExpect(jsonPath("$.failed").value(2))
                 .andExpect(jsonPath("$.lastProcessedId").value(99));
+    }
+
+    @Test
+    void governanceCandidates_returnsGroupedEntries() throws Exception {
+        MemoryEntry first = entry(1L, "MEM-202607-0001", 1,
+                MemoryStatus.ACTIVE, MemoryIndexStatus.INDEXED, null);
+        MemoryEntry second = entry(2L, "MEM-202607-0002", 1,
+                MemoryStatus.ACTIVE, MemoryIndexStatus.INDEXED, null);
+        Mockito.when(governanceService.findCandidates(50)).thenReturn(
+                new MemoryGovernanceService.Candidates(
+                        List.of(new MemoryGovernanceService.DuplicateGroup(
+                                MemoryType.BUSINESS_TERM, List.of(second, first))),
+                        List.of(new MemoryGovernanceService.ConflictGroup(
+                                MemoryType.BUSINESS_TERM, "含税单价", List.of(second, first)))));
+
+        mockMvc.perform(get("/api/memories/governance/candidates"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.duplicateGroups[0].entries.length()").value(2))
+                .andExpect(jsonPath("$.conflictGroups[0].title").value("含税单价"));
+
+        Mockito.verify(governanceService).findCandidates(50);
+    }
+
+    @Test
+    void markConflict_andActivate_delegateCurrentOperator() throws Exception {
+        MemoryEntry first = entry(1L, "MEM-202607-0001", 1,
+                MemoryStatus.CONFLICT, MemoryIndexStatus.INDEXED, null);
+        MemoryEntry second = entry(2L, "MEM-202607-0002", 1,
+                MemoryStatus.CONFLICT, MemoryIndexStatus.INDEXED, null);
+        Mockito.when(memoryService.markConflict(anyList(), eq("alice")))
+                .thenReturn(new MemoryConflictResult(List.of(first, second)));
+        MemoryEntry activated = entry(1L, "MEM-202607-0001", 1,
+                MemoryStatus.ACTIVE, MemoryIndexStatus.PENDING, null);
+        Mockito.when(memoryService.activate("MEM-202607-0001", "alice"))
+                .thenReturn(activated);
+
+        mockMvc.perform(post("/api/memories/governance/conflicts")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"memoryNos":["MEM-202607-0001","MEM-202607-0002"]}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.entries.length()").value(2))
+                .andExpect(jsonPath("$.entries[0].status").value("CONFLICT"));
+        mockMvc.perform(post("/api/memories/MEM-202607-0001/activate"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ACTIVE"))
+                .andExpect(jsonPath("$.indexStatus").value("PENDING"));
+
+        Mockito.verify(memoryService).markConflict(
+                List.of("MEM-202607-0001", "MEM-202607-0002"), "alice");
+        Mockito.verify(memoryService).activate("MEM-202607-0001", "alice");
+    }
+
+    @Test
+    void markConflict_requiresAtLeastTwoMemoryNumbers() throws Exception {
+        mockMvc.perform(post("/api/memories/governance/conflicts")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"memoryNos":["MEM-202607-0001"]}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").isNotEmpty());
+        Mockito.verifyNoInteractions(memoryService, indexingService, governanceService);
     }
 
     private static String validJson() {

@@ -154,6 +154,60 @@ class MemoryEntryTest {
         assertThat(replacement.getStatus()).isEqualTo(MemoryStatus.ACTIVE);
     }
 
+    @Test
+    void 冲突可恢复且恢复保留有效期并重置索引() {
+        Instant validTo = NOW.plusSeconds(3600);
+        MemoryEntry entry = MemoryEntry.create("MEM-202607-0002", "MEM-202607-0002", 1,
+                MemoryType.BUSINESS_TERM, "口径", "正文", MemorySourceType.USER_INPUT,
+                "session-1", NOW, validTo, "user:1", NOW);
+        entry.markIndexed("memory-v1", "model", 1024,
+                "system:indexer", NOW.plusSeconds(1));
+
+        entry.markConflict("user:1", NOW.plusSeconds(2));
+
+        assertThat(entry.getStatus()).isEqualTo(MemoryStatus.CONFLICT);
+        assertThatThrownBy(() -> entry.markPending("user:1", NOW.plusSeconds(3)))
+                .isInstanceOf(IllegalStateException.class);
+
+        entry.activate("user:1", NOW.plusSeconds(4));
+
+        assertThat(entry.getStatus()).isEqualTo(MemoryStatus.ACTIVE);
+        assertThat(entry.getValidTo()).isEqualTo(validTo);
+        assertThat(entry.getIndexStatus()).isEqualTo(MemoryIndexStatus.PENDING);
+        assertThat(entry.getIndexedCollection()).isNull();
+        assertThat(entry.getEmbeddingModel()).isNull();
+        assertThat(entry.getEmbeddingDimension()).isNull();
+    }
+
+    @Test
+    void 已过有效期或非冲突记忆不可恢复() {
+        MemoryEntry active = fixture();
+        assertThatThrownBy(() -> active.activate("user:1", NOW.plusSeconds(1)))
+                .isInstanceOf(IllegalStateException.class);
+
+        MemoryEntry ended = MemoryEntry.create("MEM-202607-0002", "MEM-202607-0002", 1,
+                MemoryType.BUSINESS_TERM, "口径", "正文", MemorySourceType.USER_INPUT,
+                "session-1", NOW, NOW.plusSeconds(1), "user:1", NOW);
+        ended.markConflict("user:1", NOW.plusMillis(500));
+
+        assertThatThrownBy(() -> ended.activate("user:1", NOW.plusSeconds(1)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("有效期");
+    }
+
+    @Test
+    void 冲突记忆可逻辑失效但终态不可恢复() {
+        MemoryEntry entry = fixture();
+        entry.markConflict("user:1", NOW.plusSeconds(1));
+
+        entry.expire("user:1", NOW.plusSeconds(2));
+
+        assertThat(entry.getStatus()).isEqualTo(MemoryStatus.EXPIRED);
+        assertThat(entry.getValidTo()).isEqualTo(NOW.plusSeconds(2));
+        assertThatThrownBy(() -> entry.activate("user:1", NOW.plusSeconds(3)))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
     private static MemoryEntry fixture() {
         return MemoryEntry.create("MEM-202607-0001", "MEM-202607-0001", 1,
                 MemoryType.BUSINESS_TERM, "大客户口径", "年采购金额超过50万元",
