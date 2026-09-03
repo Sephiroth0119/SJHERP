@@ -1,6 +1,11 @@
 package com.sjherp.app.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.any;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -33,6 +38,15 @@ import org.testcontainers.utility.DockerImageName;
 
 import com.sjherp.app.consistency.ConsistencyCheckDao;
 import com.sjherp.app.consistency.ConsistencyCheckService;
+import com.sjherp.app.consistency.ConsistencyCheckType;
+import com.sjherp.app.consistency.ConsistencySeverity;
+import com.sjherp.app.consistency.ConsistencyCheckRunner;
+import com.sjherp.app.consistency.ConsistencyRule;
+import com.sjherp.app.consistency.ConsistencyRuleRegistry;
+import com.sjherp.app.consistency.ConsistencyRunPersistenceService;
+import com.sjherp.app.consistency.ConsistencyConfig;
+import com.sjherp.app.notification.InAppNotificationChannel;
+import com.sjherp.domain.consistency.ConsistencyCheckRunRepository;
 import com.sjherp.app.finance.FinancialStatementDao;
 import com.sjherp.app.finance.FinancialStatementDtos.BalanceSheet;
 import com.sjherp.app.finance.FinancialStatementDtos.BalanceSheetLine;
@@ -122,6 +136,9 @@ class FinancialStatementFlowIntegrationTest {
     private static AccountingPeriodService periodService;
     private static PeriodCloseService periodCloseService;
     private static FinancialStatementService financialStatementService;
+    private static ConsistencyCheckService consistencyCheckService;
+    private static ConsistencyCheckRunner consistencyCheckRunner;
+    private static InAppNotificationChannel notificationChannel;
 
     @BeforeAll
     static void setUp() {
@@ -148,6 +165,9 @@ class FinancialStatementFlowIntegrationTest {
         periodService = context.getBean(AccountingPeriodService.class);
         periodCloseService = context.getBean(PeriodCloseService.class);
         financialStatementService = context.getBean(FinancialStatementService.class);
+        consistencyCheckService = context.getBean(ConsistencyCheckService.class);
+        consistencyCheckRunner = context.getBean(ConsistencyCheckRunner.class);
+        notificationChannel = context.getBean(InAppNotificationChannel.class);
     }
 
     @AfterAll
@@ -160,7 +180,7 @@ class FinancialStatementFlowIntegrationTest {
     @Configuration
     @EnableTransactionManagement
     @EnableAspectJAutoProxy(proxyTargetClass = true)
-    @Import({AuditConfig.class, InventoryInfraConfig.class, PurchaseInfraConfig.class,
+    @Import({AuditConfig.class, ConsistencyConfig.class, InventoryInfraConfig.class, PurchaseInfraConfig.class,
             SalesInfraConfig.class, GlInfraConfig.class, ProductRepositoryTestConfig.class})
     static class TestConfig {
 
@@ -205,6 +225,24 @@ class FinancialStatementFlowIntegrationTest {
         @Bean
         ConsistencyCheckService consistencyCheckService(ConsistencyCheckDao dao) {
             return new ConsistencyCheckService(dao, false);
+        }
+
+        @Bean
+        InAppNotificationChannel inAppNotificationChannel() {
+            return mock(InAppNotificationChannel.class);
+        }
+
+        @Bean
+        ConsistencyRunPersistenceService consistencyRunPersistenceService(
+                ConsistencyCheckRunRepository repository, InAppNotificationChannel channel) {
+            return new ConsistencyRunPersistenceService(repository, channel);
+        }
+
+        @Bean
+        ConsistencyCheckRunner consistencyCheckRunner(ConsistencyCheckService service,
+                DocumentNumberGenerator numberGenerator, ConsistencyRunPersistenceService persistence) {
+            ConsistencyRule core = new com.sjherp.app.consistency.CoreSqlAssertionRule(service);
+            return new ConsistencyCheckRunner(new ConsistencyRuleRegistry(List.of(core)), numberGenerator, persistence);
         }
 
         // 月末结转关账编排器（注入顺序同生产构造器）
@@ -423,6 +461,38 @@ class FinancialStatementFlowIntegrationTest {
         assertThat(new BigDecimal(bsAfter.totalEquity()))
                 .as("关账后权益合计与关账前一致（损益结转为权益内部腾挪）")
                 .isEqualByComparingTo(new BigDecimal(bsBefore.totalEquity()));
+
+        // M6-T06 验收：先确认干净基线，再只污染 1122 控制科目侧；凭证仍自平衡，下一周期必须揪出 GL_DETAIL。
+        var baseline = consistencyCheckRunner.runScheduled();
+        assertThat(baseline.clean()).isTrue();
+        assertThat(baseline.findings()).noneMatch(f -> f.checkType().equals(ConsistencyCheckType.GL_DETAIL.code()));
+        assertThat(baseline.findings()).noneMatch(f -> f.checkType().equals(ConsistencyCheckType.VOUCHER_BALANCE.code()));
+        Long voucherId = jdbc.queryForObject("SELECT vl.voucher_id FROM voucher_line vl JOIN voucher v ON v.id = vl.voucher_id "
+                + "WHERE vl.tenant_id = 0 AND vl.account_code = '1122' AND v.status IN ('APPROVED','REVERSED') LIMIT 1", Long.class);
+        Long controlLineId = jdbc.queryForObject("SELECT vl.id FROM voucher_line vl WHERE vl.voucher_id = ? AND vl.account_code = '1122' LIMIT 1",
+                Long.class, voucherId);
+        Long offsetLineId = jdbc.queryForObject("SELECT vl.id FROM voucher_line vl WHERE vl.voucher_id = ? AND vl.account_code <> '1122' "
+                + "AND vl.credit > 0 LIMIT 1", Long.class, voucherId);
+        clearInvocations(notificationChannel);
+        try {
+            jdbc.update("UPDATE voucher_line SET debit = debit + 1.00 WHERE id = ?", controlLineId);
+            jdbc.update("UPDATE voucher_line SET credit = credit + 1.00 WHERE id = ?", offsetLineId);
+            jdbc.update("UPDATE voucher SET total_amount = total_amount + 1.00 WHERE id = ?", voucherId);
+            var run = consistencyCheckRunner.runScheduled();
+            assertThat(run.clean()).isFalse();
+            assertThat(run.findings()).anyMatch(f -> f.checkType().equals(ConsistencyCheckType.GL_DETAIL.code()));
+            assertThat(run.findings()).noneMatch(f -> f.checkType().equals(ConsistencyCheckType.VOUCHER_BALANCE.code()));
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM consistency_check_run WHERE run_no = ?", Long.class, run.runNo())).isEqualTo(1L);
+            assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM consistency_check_break WHERE run_id = "
+                    + "(SELECT id FROM consistency_check_run WHERE run_no = ?)", Long.class, run.runNo())).isGreaterThan(0L);
+            verify(notificationChannel).send(argThat(n -> n.runNo().equals(run.runNo())));
+        } finally {
+            jdbc.update("UPDATE voucher_line SET debit = debit - 1.00 WHERE id = ?", controlLineId);
+            jdbc.update("UPDATE voucher_line SET credit = credit - 1.00 WHERE id = ?", offsetLineId);
+            jdbc.update("UPDATE voucher SET total_amount = total_amount - 1.00 WHERE id = ?", voucherId);
+            var restored = consistencyCheckRunner.runScheduled();
+            assertThat(restored.clean()).isTrue();
+        }
     }
 
     // ---------------------------------------------------------------
