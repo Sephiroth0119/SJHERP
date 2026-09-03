@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Set;
 
 import org.junit.jupiter.api.Test;
@@ -15,6 +16,16 @@ import org.junit.jupiter.api.Test;
  * 改映射必须同步改本测试与文档。
  */
 class RolePermissionsTest {
+
+    @Test
+    void permissionCodesAreTheStableUnionExposedToTheFrontend() {
+        List<String> codes = RolePermissions.permissionCodesOf(Set.of(Role.SALES, Role.ACCOUNTANT));
+
+        assertEquals(codes.stream().sorted().toList(), codes);
+        assertTrue(codes.contains("sales:order"));
+        assertTrue(codes.contains("finance:voucher"));
+        assertFalse(codes.contains("memory:manage"));
+    }
 
     // ---------------------------------------------------------------- 矩阵逐行
 

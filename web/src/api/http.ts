@@ -8,16 +8,38 @@
  */
 
 /** localStorage 键：JWT token */
-const TOKEN_STORAGE_KEY = 'sjherp.auth.token';
-
-/** localStorage 键：当前用户展示信息（displayName/roles，刷新页面后免请求渲染） */
-const USER_STORAGE_KEY = 'sjherp.auth.user';
+import { isUsableToken } from '../security/token.ts';
+import {
+  endFrontendSession,
+  TOKEN_STORAGE_KEY,
+  USER_STORAGE_KEY,
+} from './session.ts';
 
 /** 当前登录用户的前端展示信息 */
 export interface AuthUser {
   username: string;
   displayName: string;
   roles: string[];
+  permissions: string[];
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean)
+    : [];
+}
+
+/** Normalize cached/API data so unknown fields never grant client-side access. */
+export function normalizeAuthUser(value: unknown): AuthUser | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.username !== 'string' || typeof candidate.displayName !== 'string') return null;
+  return {
+    username: candidate.username,
+    displayName: candidate.displayName,
+    roles: stringArray(candidate.roles),
+    permissions: stringArray(candidate.permissions),
+  };
 }
 
 /**
@@ -39,18 +61,21 @@ export class ApiError extends Error {
 // ============================================================
 
 export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_STORAGE_KEY);
+  const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+  if (!token || isUsableToken(token)) return token;
+  endFrontendSession();
+  return null;
 }
 
 export function setToken(token: string): void {
-  localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  localStorage.setItem(TOKEN_STORAGE_KEY, token.trim());
 }
 
 export function getStoredUser(): AuthUser | null {
   const raw = localStorage.getItem(USER_STORAGE_KEY);
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as AuthUser;
+    return normalizeAuthUser(JSON.parse(raw));
   } catch {
     return null;
   }
@@ -62,8 +87,7 @@ export function setStoredUser(user: AuthUser): void {
 
 /** 清除本地登录态（退出 / 401 拦截时调用） */
 export function clearAuth(): void {
-  localStorage.removeItem(TOKEN_STORAGE_KEY);
-  localStorage.removeItem(USER_STORAGE_KEY);
+  endFrontendSession();
 }
 
 // ============================================================
@@ -124,7 +148,7 @@ export async function request<T>(path: string, init?: RequestInitLite): Promise<
     }
     if (response.status === 401 && !init?.skipUnauthorizedHandler) {
       // 登录已过期 / 用户被停用：清登录态并通知 App 跳登录页
-      clearAuth();
+      endFrontendSession();
       unauthorizedHandler?.();
     }
     throw new ApiError(message, response.status);

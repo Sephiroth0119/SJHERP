@@ -3,6 +3,7 @@ package com.sjherp.domain.identity;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -130,6 +131,20 @@ public final class RolePermissions {
     /** 单个角色的权限点集合（不可变；所有角色都有映射项，返回值绝不为 null） */
     public static Set<Permission> permissionsOf(Role role) {
         return GRANTS.get(role);
+    }
+
+    /** 多角色的有效权限码并集，作为认证 API 向前端导出的唯一权限真源。 */
+    public static List<String> permissionCodesOf(Set<Role> roles) {
+        if (roles == null || roles.isEmpty()) {
+            return List.of();
+        }
+        EnumSet<Permission> permissions = EnumSet.noneOf(Permission.class);
+        roles.stream()
+                .filter(role -> role != null)
+                .map(GRANTS::get)
+                .filter(grant -> grant != null)
+                .forEach(permissions::addAll);
+        return permissions.stream().map(Permission::code).sorted().toList();
     }
 
     /** 角色集合是否被授予某权限点（多角色取并集；roles 为空一律拒绝） */

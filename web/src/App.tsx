@@ -21,12 +21,16 @@ import {
   type AuthUser,
 } from './api/http';
 import { fetchMe, formatRoles } from './api/authApi';
-import { CHAT_SESSION_STORAGE_KEY } from './api/chatApi';
+import { canAccessModule } from './security/access';
+import { isTokenExpiringSoon } from './security/token';
+import { guardModule, moduleFromHash, routeForModule } from './security/routeGuard';
 
 export function App() {
   // 有 token 即先按已登录渲染（展示信息取本地缓存），后台 me 校验兜底
   const [user, setUser] = useState<AuthUser | null>(() => (getToken() ? getStoredUser() : null));
-  const [activeModule, setActiveModule] = useState<ModuleKey>('agent');
+  const [activeModule, setActiveModule] = useState<ModuleKey>(() =>
+    moduleFromHash(typeof window === 'undefined' ? '' : window.location.hash));
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   // 401 全局拦截：任何接口返回未登录/过期 → 清登录态（http.ts 已清）并切回登录页
   useEffect(() => {
@@ -43,6 +47,7 @@ export function App() {
           username: me.username,
           displayName: me.displayName,
           roles: me.roles,
+          permissions: me.permissions ?? [],
         };
         setStoredUser(fresh);
         setUser(fresh);
@@ -55,32 +60,58 @@ export function App() {
   /** 退出登录：清 token/用户信息与当前聊天会话 id（避免下个登录者串会话） */
   const handleLogout = useCallback(() => {
     clearAuth();
-    localStorage.removeItem(CHAT_SESSION_STORAGE_KEY);
     setUser(null);
   }, []);
 
-  const canManageMemory = user?.roles.some(
-    (role) => role === 'ADMIN' || role === 'BOSS',
-  ) ?? false;
+  const permissions = user?.permissions ?? [];
+  const canManageMemory = canAccessModule('memory', permissions);
+  const selectModule = useCallback((module: ModuleKey) => {
+    const guarded = guardModule(module, permissions);
+    setActiveModule(guarded);
+    window.history.replaceState(null, '', routeForModule(guarded));
+  }, [permissions]);
 
   useEffect(() => {
-    if (activeModule === 'memory' && !canManageMemory) {
-      setActiveModule('agent');
+    if (!user) return;
+    const timer = window.setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, [user]);
+
+  useEffect(() => {
+    if (user && !getToken()) setUser(null);
+  }, [nowMs, user]);
+
+  useEffect(() => {
+    const onHashChange = () => setActiveModule(moduleFromHash(window.location.hash));
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    const requested = moduleFromHash(window.location.hash);
+    const guarded = guardModule(requested, permissions);
+    if (guarded !== activeModule) setActiveModule(guarded);
+    if (requested !== guarded || window.location.hash === '') {
+      window.history.replaceState(null, '', routeForModule(guarded));
     }
-  }, [activeModule, canManageMemory]);
+  }, [activeModule, permissions, user]);
 
   if (!user) {
     return <LoginPage onLogin={setUser} />;
   }
 
-  const activeItem = MODULE_NAV_ITEMS.find((item) => item.key === activeModule);
+  const guardedModule = guardModule(activeModule, permissions);
+  const activeItem = MODULE_NAV_ITEMS.find((item) => item.key === guardedModule);
+  const tokenWarning = isTokenExpiringSoon(getToken() ?? '', nowMs);
 
   return (
     <div className="app-layout">
-      <Sidebar active={activeModule} onSelect={setActiveModule} roles={user.roles} />
+      <Sidebar active={guardedModule} onSelect={selectModule} permissions={permissions} />
       <main className="app-main">
         <header className="app-topbar">
           <NotificationBell />
+          {tokenWarning && <span className="app-token-warning">登录会话即将过期，请重新登录</span>}
           <span className="app-topbar-user" title={`角色：${formatRoles(user.roles)}`}>
             {user.displayName}
             <span className="app-topbar-roles">{formatRoles(user.roles)}</span>
@@ -89,9 +120,9 @@ export function App() {
             退出
           </button>
         </header>
-        {activeModule === 'memory' && canManageMemory ? (
+        {guardedModule === 'memory' && canManageMemory ? (
           <MemoryGovernancePage />
-        ) : activeModule === 'agent' || !activeItem || activeModule === 'memory' ? (
+        ) : guardedModule === 'agent' || !activeItem || guardedModule === 'memory' ? (
           <ChatPanel />
         ) : (
           <ModulePlaceholder module={activeItem} />
