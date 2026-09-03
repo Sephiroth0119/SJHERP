@@ -12,6 +12,7 @@ import { ModulePlaceholder } from './components/ModulePlaceholder';
 import { MemoryGovernancePage } from './components/memory/MemoryGovernancePage';
 import { CustomerWorkbench } from './components/CustomerWorkbench';
 import { NotificationBell } from './components/NotificationBell';
+import { SupplierWorkbench, WarehouseWorkbench } from './components/MasterDataWorkbench';
 import { MODULE_NAV_ITEMS, type ModuleKey } from './types/navigation';
 import {
   clearAuth,
@@ -123,6 +124,10 @@ export function App() {
         </header>
         {guardedModule === 'sales' ? (
           <CustomerWorkbench permissions={permissions} />
+        ) : guardedModule === 'purchase' ? (
+          <SupplierWorkbench permissions={permissions} />
+        ) : guardedModule === 'inventory' ? (
+          <WarehouseWorkbench permissions={permissions} />
         ) : guardedModule === 'memory' && canManageMemory ? (
           <MemoryGovernancePage />
         ) : guardedModule === 'agent' || !activeItem || guardedModule === 'memory' ? (
