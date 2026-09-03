@@ -23,9 +23,13 @@ import com.sjherp.domain.gap.GapIssueService;
 import com.sjherp.domain.gap.GitHubIssueGatewayException;
 import com.sjherp.domain.identity.Role;
 import com.sjherp.domain.identity.UserRepository;
+import org.springframework.test.context.TestPropertySource;
 
 @WebMvcTest(GapIssueController.class)
 @Import({SecurityConfig.class, PermissionGuard.class})
+@TestPropertySource(properties = {
+        "sjherp.security.jwt-secret=test-only-secret-0123456789-0123456789-0123456789",
+})
 class GapIssueControllerPermissionTest {
     @Autowired MockMvc mvc;
     @MockitoBean GapIssueService service;
