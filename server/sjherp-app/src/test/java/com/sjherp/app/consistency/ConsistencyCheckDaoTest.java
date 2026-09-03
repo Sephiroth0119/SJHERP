@@ -36,4 +36,29 @@ class ConsistencyCheckDaoTest {
                 .contains("origin_v.source_doc_type = 'PRODUCTION_COST_SETTLEMENT'")
                 .doesNotContain("origin_v.source_type");
     }
+    @Test
+    void glDetailMatches_使用业务明细与控制科目而非同源自比() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        doReturn(List.of()).when(jdbc).query(anyString(), ArgumentMatchers.<RowMapper<Object>>any());
+
+        new ConsistencyCheckDao(jdbc).glDetailMatches();
+
+        var invocation = org.mockito.Mockito.mockingDetails(jdbc).getInvocations().stream()
+                .filter(call -> call.getMethod().getName().equals("query"))
+                .findFirst().orElseThrow();
+        String sql = invocation.getArgument(0, String.class);
+        assertThat(sql).contains("accounts_receivable", "accounts_payable", "1122", "220202")
+                .doesNotContain("general_ledger");
+    }
+
+    @Test
+    void glDetailMatches_只汇总未冲销未结清应收应付() {
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        doReturn(List.of()).when(jdbc).query(anyString(), ArgumentMatchers.<RowMapper<Object>>any());
+        new ConsistencyCheckDao(jdbc).glDetailMatches();
+        var invocation = org.mockito.Mockito.mockingDetails(jdbc).getInvocations().stream()
+                .filter(call -> call.getMethod().getName().equals("query")).findFirst().orElseThrow();
+        String sql = invocation.getArgument(0, String.class);
+        assertThat(sql).contains("ar.status IN ('OPEN','PARTIAL')", "ap.status IN ('OPEN','PARTIAL')");
+    }
 }

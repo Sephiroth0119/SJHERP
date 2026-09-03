@@ -27,6 +27,7 @@ import com.sjherp.app.consistency.ConsistencyCheckDao.ReceivableMatchRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.SalesThreeWayRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.WorkOrderCompletedQtyRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.WorkOrderMaterialRow;
+import com.sjherp.app.consistency.ConsistencyCheckDao.VoucherBalanceRow;
 
 /**
  * 一致性校验服务单测（M3-T13）：逐条规则纯比对方法的边界判定。
@@ -36,6 +37,22 @@ import com.sjherp.app.consistency.ConsistencyCheckDao.WorkOrderMaterialRow;
  * 应付/应收/COGS 相符不报、不符报 ERROR；三单量越界报 WARN。
  */
 class ConsistencyCheckServiceTest {
+
+    @Test
+    void 凭证行约束_空行非法行表头不一致均报错() {
+        assertThat(ConsistencyCheckService.checkVoucherBalance(
+                new VoucherBalanceRow("V-EMPTY", BigDecimal.ZERO, BigDecimal.ZERO,
+                        BigDecimal.ZERO, 0, 0))).isPresent();
+        assertThat(ConsistencyCheckService.checkVoucherBalance(
+                new VoucherBalanceRow("V-INVALID", new BigDecimal("10"), new BigDecimal("10"),
+                        new BigDecimal("10"), 2, 1))).isPresent();
+        assertThat(ConsistencyCheckService.checkVoucherBalance(
+                new VoucherBalanceRow("V-HEADER", new BigDecimal("10"), new BigDecimal("10"),
+                        new BigDecimal("9"), 2, 0))).isPresent();
+        assertThat(ConsistencyCheckService.checkVoucherBalance(
+                new VoucherBalanceRow("V-CLEAN", new BigDecimal("10"), new BigDecimal("10"),
+                        new BigDecimal("10"), 2, 0))).isEmpty();
+    }
 
     // ===================== 规则1/2：库存恒等式 =====================
 
@@ -260,6 +277,10 @@ class ConsistencyCheckServiceTest {
         when(dao.workOrderMaterialConservation()).thenReturn(List.of());
         when(dao.workOrderCompletedQty()).thenReturn(List.of());
         when(dao.costSettlementAdjustMatches()).thenReturn(List.of());
+        when(dao.productionInventoryGlMatches()).thenReturn(List.of());
+        when(dao.glDetailMatches()).thenReturn(List.of());
+        when(dao.voucherBalanceMatches()).thenReturn(List.of());
+        when(dao.auditIntegrityMatches()).thenReturn(List.of());
 
         ConsistencyCheckService service = new ConsistencyCheckService(dao, false,
                 Clock.fixed(Instant.parse("2026-06-13T00:00:00Z"), ZoneOffset.UTC));
@@ -296,6 +317,10 @@ class ConsistencyCheckServiceTest {
                         new BigDecimal("700.00"), new BigDecimal("0")))); // 1 ERROR（diff=0.02>容差，料虚增）
         when(dao.workOrderCompletedQty()).thenReturn(List.of());
         when(dao.costSettlementAdjustMatches()).thenReturn(List.of());
+        when(dao.productionInventoryGlMatches()).thenReturn(List.of());
+        when(dao.glDetailMatches()).thenReturn(List.of());
+        when(dao.voucherBalanceMatches()).thenReturn(List.of());
+        when(dao.auditIntegrityMatches()).thenReturn(List.of());
 
         ConsistencyCheckService service = new ConsistencyCheckService(dao, false,
                 Clock.systemUTC());

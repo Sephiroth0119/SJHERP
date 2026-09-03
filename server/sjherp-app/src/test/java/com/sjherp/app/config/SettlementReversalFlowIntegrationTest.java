@@ -339,6 +339,9 @@ class SettlementReversalFlowIntegrationTest {
         assertThat(docStatus("sales_invoice", sinvNo)).isEqualTo("REVERSED");
         assertThat(receivableStatus(sinvNo)).as("应收 markReversed").isEqualTo("REVERSED");
         assertThat(receivableInAging(customerId)).as("发票红冲后应收剔出账龄").isFalse();
+        ConsistencyReport salesReversalReport = consistencyCheckService.check();
+        assertThat(salesReversalReport.breaks()).noneMatch(b -> b.severity() == ConsistencySeverity.ERROR
+                && (b.checkType().code().equals("GL_DETAIL") || b.checkType().code().equals("AUDIT_INTEGRITY")));
 
         // ---- 一致性：本链路 0 ERROR（核销 rollup 规则 8/9/10 含负额 Σ==settled；REVERSED 子账被跳过） ----
         ConsistencyReport report = consistencyCheckService.check();
@@ -396,6 +399,9 @@ class SettlementReversalFlowIntegrationTest {
 
         // 解锁后应付回到 OPEN（账龄重现）
         assertThat(payableInAging(supplierId)).as("付款红冲后应付回到账龄").isTrue();
+        ConsistencyReport purchaseReversalReport = consistencyCheckService.check();
+        assertThat(purchaseReversalReport.breaks()).noneMatch(b -> b.severity() == ConsistencySeverity.ERROR
+                && (b.checkType().code().equals("GL_DETAIL") || b.checkType().code().equals("AUDIT_INTEGRITY")));
     }
 
     // =====================================================================

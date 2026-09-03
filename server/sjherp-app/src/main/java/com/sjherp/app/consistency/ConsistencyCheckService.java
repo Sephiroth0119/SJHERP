@@ -27,6 +27,9 @@ import com.sjherp.app.consistency.ConsistencyCheckDao.SettlementRollupRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.WorkOrderCompletedQtyRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.WorkOrderCostSettledRow;
 import com.sjherp.app.consistency.ConsistencyCheckDao.WorkOrderMaterialRow;
+import com.sjherp.app.consistency.ConsistencyCheckDao.GlDetailRow;
+import com.sjherp.app.consistency.ConsistencyCheckDao.VoucherBalanceRow;
+import com.sjherp.app.consistency.ConsistencyCheckDao.AuditIntegrityRow;
 
 /**
  * 数据一致性校验服务（M3-T13 检查 Agent 核心引擎，<b>只读</b>）。
@@ -150,8 +153,36 @@ public class ConsistencyCheckService {
         for (ProductionInventoryGlRow row : dao.productionInventoryGlMatches()) {
             checkProductionInventoryGl(row).ifPresent(breaks::add);
         }
+        for (GlDetailRow row : dao.glDetailMatches()) {
+            if (row.detailNet().compareTo(row.ledgerNet()) != 0) {
+                breaks.add(ConsistencyBreak.of(ConsistencyCheckType.GL_DETAIL, row.accountCode(),
+                        row.detailNet(), row.ledgerNet(), ConsistencySeverity.ERROR,
+                        "总账与明细账不一致：" + row.accountCode()));
+            }
+        }
+        for (VoucherBalanceRow row : dao.voucherBalanceMatches()) {
+            checkVoucherBalance(row).ifPresent(breaks::add);
+        }
+        for (AuditIntegrityRow row : dao.auditIntegrityMatches()) {
+            if (row.auditCount() == 0) {
+                breaks.add(ConsistencyBreak.of(ConsistencyCheckType.AUDIT_INTEGRITY, row.voucherNo(),
+                        BigDecimal.ONE, BigDecimal.ZERO, ConsistencySeverity.ERROR,
+                        "已过账凭证缺少匹配的状态/动作审计记录：" + row.voucherNo()));
+            }
+        }
 
         return new ConsistencyReport(clock.instant(), breaks);
+    }
+
+    static java.util.Optional<ConsistencyBreak> checkVoucherBalance(VoucherBalanceRow row) {
+        if (row.lineCount() < 2 || row.invalidLineCount() > 0
+                || row.debitSum().compareTo(row.creditSum()) != 0
+                || row.debitSum().compareTo(row.headerTotal()) != 0) {
+            return java.util.Optional.of(ConsistencyBreak.of(ConsistencyCheckType.VOUCHER_BALANCE,
+                    row.voucherNo(), row.headerTotal(), row.debitSum(), ConsistencySeverity.ERROR,
+                    "凭证行约束/借贷/表头金额不一致：" + row.voucherNo()));
+        }
+        return java.util.Optional.empty();
     }
 
     // ===============================================================

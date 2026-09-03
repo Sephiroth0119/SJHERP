@@ -99,7 +99,11 @@ public enum ConsistencyCheckType {
     COST_SETTLEMENT_ADJUST("COST_SETTLEMENT_ADJUST", "成本结转工费勾稽"),
 
     /** 规则17：生产存货成本与生产成本结算凭证 1405 净借方勾稽，超过 1 分即 ERROR。 */
-    PRODUCTION_INVENTORY_GL("PRODUCTION_INVENTORY_GL", "生产存货与总账1405勾稽");
+    PRODUCTION_INVENTORY_GL("PRODUCTION_INVENTORY_GL", "生产存货与总账1405勾稽"),
+
+    GL_DETAIL("GL_DETAIL", "总账与明细账勾稽"),
+    VOUCHER_BALANCE("VOUCHER_BALANCE", "凭证借贷平衡"),
+    AUDIT_INTEGRITY("AUDIT_INTEGRITY", "审计完整性");
 
     private final String code;
     private final String displayName;

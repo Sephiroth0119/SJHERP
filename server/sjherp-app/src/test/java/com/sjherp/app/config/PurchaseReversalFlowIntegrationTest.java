@@ -33,6 +33,10 @@ import org.testcontainers.utility.DockerImageName;
 
 import com.sjherp.app.gl.AutoVoucherService;
 import com.sjherp.app.gl.VoucherAppService;
+import com.sjherp.app.consistency.ConsistencyCheckDao;
+import com.sjherp.app.consistency.ConsistencyCheckService;
+import com.sjherp.app.consistency.ConsistencyCheckType;
+import com.sjherp.app.consistency.ConsistencySeverity;
 import com.sjherp.app.purchase.PurchaseInvoiceAppService;
 import com.sjherp.app.purchase.PurchaseReceiptAppService;
 import com.sjherp.domain.common.numbering.DefaultDocumentNumberGenerator;
@@ -93,6 +97,7 @@ class PurchaseReversalFlowIntegrationTest {
     private static AccountsPayableRepository payableRepository;
     private static VoucherService voucherService;
     private static AccountingPeriodService accountingPeriodService;
+    private static ConsistencyCheckService consistencyCheckService;
 
     @BeforeAll
     static void setUp() {
@@ -116,6 +121,7 @@ class PurchaseReversalFlowIntegrationTest {
         payableRepository = context.getBean(AccountsPayableRepository.class);
         voucherService = context.getBean(VoucherService.class);
         accountingPeriodService = context.getBean(AccountingPeriodService.class);
+        consistencyCheckService = context.getBean(ConsistencyCheckService.class);
     }
 
     @AfterAll
@@ -131,6 +137,16 @@ class PurchaseReversalFlowIntegrationTest {
     @Import({AuditConfig.class, InventoryInfraConfig.class, PurchaseInfraConfig.class,
             GlInfraConfig.class, ProductRepositoryTestConfig.class})
     static class TestConfig {
+
+        @Bean
+        ConsistencyCheckDao consistencyCheckDao(JdbcTemplate jdbcTemplate) {
+            return new ConsistencyCheckDao(jdbcTemplate);
+        }
+
+        @Bean
+        ConsistencyCheckService consistencyCheckService(ConsistencyCheckDao dao) {
+            return new ConsistencyCheckService(dao, false);
+        }
 
         @Bean
         static PropertySourcesPlaceholderConfigurer propertyPlaceholder() {
@@ -269,6 +285,34 @@ class PurchaseReversalFlowIntegrationTest {
         invoiceAppService.reverse(pinvNo, OPERATOR);
         assertThat(invoiceStatus(pinvNo)).isEqualTo("REVERSED");
         assertThat(payableStatus(pinvNo)).isEqualTo("REVERSED");
+        var reversalReport = consistencyCheckService.check();
+        Long originalVoucherId = jdbc.queryForObject("SELECT id FROM voucher WHERE tenant_id = 0 AND source_doc_no = ? "
+                + "AND status = 'REVERSED' LIMIT 1", Long.class, pinvNo);
+        String originalVoucherNo = jdbc.queryForObject("SELECT doc_no FROM voucher WHERE id = ?", String.class, originalVoucherId);
+        String reversalVoucherNo = jdbc.queryForObject("SELECT doc_no FROM voucher WHERE tenant_id = 0 AND reversal_of_id = ? "
+                + "AND status = 'APPROVED' LIMIT 1", String.class, originalVoucherNo);
+        List<String> voucherNos = List.of(originalVoucherNo, reversalVoucherNo);
+        assertThat(voucherNos).as("采购发票原凭证与红字凭证").hasSize(2);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM voucher WHERE doc_no = ? AND reversal_of_id = ?", Long.class,
+                reversalVoucherNo, originalVoucherNo)).isEqualTo(1L);
+        assertThat(reversalReport.breaks()).noneMatch(b -> b.severity() == ConsistencySeverity.ERROR
+                && b.checkType() == ConsistencyCheckType.GL_DETAIL && "220202".equals(b.key()));
+        assertThat(reversalReport.breaks()).noneMatch(b -> b.severity() == ConsistencySeverity.ERROR
+                && b.checkType() == ConsistencyCheckType.AUDIT_INTEGRITY
+                && voucherNos.contains(b.key()));
+        Long statusAuditId = jdbc.queryForObject("SELECT id FROM audit_log WHERE tenant_id = 0 AND target_type = 'document' "
+                + "AND target_code = ? AND action = 'document.status_changed' ORDER BY id DESC LIMIT 1", Long.class, originalVoucherNo);
+        String originalSummary = jdbc.queryForObject("SELECT summary FROM audit_log WHERE id = ?", String.class, statusAuditId);
+        try {
+            jdbc.update("UPDATE audit_log SET summary = 'APPROVED only (test mutation)' WHERE id = ?", statusAuditId);
+            var brokenAuditReport = consistencyCheckService.check();
+            assertThat(brokenAuditReport.breaks()).anyMatch(b -> b.severity() == ConsistencySeverity.ERROR
+                    && b.checkType() == ConsistencyCheckType.AUDIT_INTEGRITY && originalVoucherNo.equals(b.key()));
+        } finally {
+            jdbc.update("UPDATE audit_log SET summary = ? WHERE id = ?", originalSummary, statusAuditId);
+        }
+        assertThat(consistencyCheckService.check().breaks()).noneMatch(b -> b.severity() == ConsistencySeverity.ERROR
+                && b.checkType() == ConsistencyCheckType.AUDIT_INTEGRITY && originalVoucherNo.equals(b.key()));
         assertThat(invoicedQty(prNo, 1)).as("收货行开票量回退为 0").isEqualByComparingTo("0");
         // 发票自动凭证（220201/220202）原 + 红字 source 维度抵平：220202 净额 0
         assertSourceNetZero("220202", pinvNo);
