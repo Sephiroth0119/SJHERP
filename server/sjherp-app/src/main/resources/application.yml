@@ -4,13 +4,13 @@ spring:
     name: sjherp
 
   # MySQL 数据源。业务数据库为 MySQL 8.x，InnoDB，强事务；金额字段一律 DECIMAL。
-  # 默认值指向开发 VM（192.168.237.133，dq-mysql 容器；新环境可用 deploy/docker-compose.dev.yml 复现）。
-  # 注意：默认密码仅限私有仓库 + 开发环境；生产环境必须用环境变量
-  # SJHERP_DB_URL / SJHERP_DB_USERNAME / SJHERP_DB_PASSWORD 覆盖，禁止把生产口令写进任何文件。
+  # 必须通过环境变量配置，不提供弱默认值（公开仓库安全要求）。
+  # 环境变量：SJHERP_DB_URL / SJHERP_DB_USERNAME / SJHERP_DB_PASSWORD
+  # 本地开发可用 application-local.yml（已被 .gitignore 忽略）覆盖。
   datasource:
-    url: ${SJHERP_DB_URL:jdbc:mysql://192.168.237.133:3306/sjherp}
-    username: ${SJHERP_DB_USERNAME:sjherp_app}
-    password: ${SJHERP_DB_PASSWORD:sjherp_dev_2026}
+    url: ${SJHERP_DB_URL:}
+    username: ${SJHERP_DB_USERNAME:}
+    password: ${SJHERP_DB_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   # Flyway 数据库迁移（脚本位于 sjherp-infra 模块 classpath:db/migration，随应用启动自动执行）
@@ -22,11 +22,17 @@ server:
 
 sjherp:
   # 认证（M2-T05）：JWT HS256。
-  # 警告：jwt-secret 默认值仅限本地开发！生产环境必须用环境变量 SJHERP_JWT_SECRET
-  # 覆盖（≥ 32 字节随机串），否则任何人都能伪造登录态。
+  # jwt-secret 必须通过环境变量 SJHERP_JWT_SECRET 配置（≥ 32 字节随机串）。
+  # 公开仓库不提供弱默认值——启动时校验，未配置或过短会 fail-fast。
+  # 生成方式：openssl rand -base64 32
   security:
-    jwt-secret: ${SJHERP_JWT_SECRET:sjherp-dev-only-secret-change-me-in-production-0123456789}
+    jwt-secret: ${SJHERP_JWT_SECRET:}
     jwt-expire-hours: 12   # token 有效期（小时）
+  # 初始管理员密码（首次启动时创建 admin 账户用）。
+  # 必须通过环境变量 SJHERP_ADMIN_PASSWORD 配置（≥ 8 位、字母+数字）。
+  # 未配置或不符合密码强度要求会 fail-fast。
+  admin:
+    password: ${SJHERP_ADMIN_PASSWORD:}
 
   # 库存与成本（M3-T01，拆解见 docs/M3拆解-库存与成本.md）。
   inventory:

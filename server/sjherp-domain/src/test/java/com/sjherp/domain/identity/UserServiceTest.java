@@ -100,8 +100,9 @@ class UserServiceTest {
 
     @Test
     void 密码强度_字母数字混合且含特殊字符放行() {
-        assertEquals("Admin@2026".length() >= 8, true);
-        User user = service.create("zhangsan", "张三", "Admin@2026", Set.of(Role.SALES), OPERATOR);
+        String validPassword = "Test@Pass123";
+        assertEquals(validPassword.length() >= 8, true);
+        User user = service.create("zhangsan", "张三", validPassword, Set.of(Role.SALES), OPERATOR);
         assertNotNull(user.getId());
     }
 

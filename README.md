@@ -37,12 +37,34 @@ SJHERP/
 
 ### 前置：开发中间件（MySQL + Qdrant）
 
-后端启动时连接 MySQL 并自动执行 Flyway 迁移，二选一：
+后端启动时连接 MySQL 并自动执行 Flyway 迁移。
 
-1. **使用现有开发 VM**：能访问 `192.168.237.133`（MySQL 3306 / Qdrant 6333，`application.yml` 的默认值即指向它），无需额外配置；
-2. **自行起环境**：`MYSQL_ROOT_PASSWORD=xxx docker compose -f deploy/docker-compose.dev.yml up -d`，
-   然后用环境变量 `SJHERP_DB_URL` 指向自己的 MySQL（账号/密码默认 `sjherp_app` / `sjherp_dev_2026`，
-   可用 `SJHERP_DB_USERNAME` / `SJHERP_DB_PASSWORD` 覆盖；生产环境必须覆盖）。
+**启动 MySQL + Qdrant**（使用 docker compose）：
+
+```bash
+# 必须通过环境变量提供数据库密码（不要使用弱密码或默认值）
+export MYSQL_ROOT_PASSWORD=<你的root密码>
+export SJHERP_DB_PASSWORD=<你的应用密码>
+docker compose -f deploy/docker-compose.dev.yml up -d
+```
+
+**配置数据源**（环境变量，必需）：
+
+```bash
+export SJHERP_DB_URL=jdbc:mysql://<你的MySQL主机>:3306/sjherp
+export SJHERP_DB_USERNAME=sjherp_app
+export SJHERP_DB_PASSWORD=<你的数据库密码>
+```
+
+也可创建 `server/sjherp-app/src/main/resources/application-local.yml`（已被 .gitignore 忽略）：
+
+```yaml
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/sjherp
+    username: sjherp_app
+    password: <你的数据库密码>
+```
 
 ### LLM 配置（多 provider，M1-T07）
 
@@ -101,17 +123,32 @@ API Key **绝不写进任何会被 git 跟踪的文件**，二选一：
    mvn spring-boot:run -pl sjherp-app "-Dspring-boot.run.profiles=local"
    ```
 
-### 登录与默认账号（M2-T05）
+### 登录与初始配置（M2-T05）
 
 所有 `/api/**` 接口（除 `POST /api/auth/login` 与 `GET /api/health`）均需登录后携带
 `Authorization: Bearer <token>` 访问，否则返回 401 `{"error":"未登录或登录已过期"}`。
 
-- **初始管理员**：用户名 `admin`，密码 `Admin@2026`（V6 迁移种子数据）。
-  **生产/正式环境部署后必须立即登录修改该密码**（管理员可在用户管理 API 重置）。
+#### 必需的环境变量
+
+在启动前必须配置以下环境变量（应用启动时校验，缺失会 fail-fast）：
+
+```bash
+# JWT 签名密钥（≥ 32 字节随机串，用于签发/验证 token）
+export SJHERP_JWT_SECRET=$(openssl rand -base64 32)
+
+# 初始管理员密码（仅首次启动时设置，≥ 8 位且包含字母和数字）
+export SJHERP_ADMIN_PASSWORD=<你的强密码>
+```
+
+#### 初始管理员
+
+首次启动时，系统自动创建用户名为 `admin` 的管理员账户，密码取自环境变量 `SJHERP_ADMIN_PASSWORD`。
+**如果环境变量未设置或不符合密码强度要求（≥ 8 位、字母+数字），启动会失败**。
+
+#### API 说明
+
 - **登录**：`POST /api/auth/login`，请求体 `{"username","password"}`，响应
   `{"token","displayName","roles"}`；token 为 JWT（HS256），有效期 12 小时。
-- **JWT 密钥**：`application.yml` 中的默认值仅限本地开发，生产环境必须用环境变量
-  `SJHERP_JWT_SECRET`（≥ 32 字节随机串）覆盖，否则任何人都能伪造登录态。
 - **用户管理**（仅 ADMIN 角色）：`/api/identity/users`（列表/新建、`{id}/roles` 改角色、
   `{id}/enable|disable` 启停、`{id}/password` 重置密码）。用户不可删除，离职即停用。
 - **当前用户**：`GET /api/auth/me`。前端登录页 + 右上角退出已对接，token 存 localStorage。
@@ -128,7 +165,7 @@ mvn spring-boot:run -pl sjherp-app "-Dspring-boot.run.profiles=local"   # 不需
 启动后可用 `GET /api/health` 探活；会话 API 见 `server/sjherp-app/.../chat/ChatSessionController.java`
 （POST /api/chat/sessions、GET /api/chat/sessions/{id}、POST /api/chat/sessions/{id}/messages）。
 
-**API 调试文档（仅 local/dev profile）**：先用 `POST /api/auth/login`（用户名 `admin`，密码 `Admin@2026`）获取 token。
+**API 调试文档（仅 local/dev profile）**：先用 `POST /api/auth/login`（用户名 `admin`，密码为你配置的 `SJHERP_ADMIN_PASSWORD`）获取 token。
 - **需鉴权接口推荐 `http://localhost:8080/swagger-ui/index.html`**：点右上角 `Authorize` 填入 token → 各接口 `Try it out` → `Execute`，自动携带 `Authorization: Bearer <token>`。
 - `http://localhost:8080/doc.html`（knife4j）界面更友好，但其「调试」面板的全局 Authorize 不注入鉴权头（纯静态 UI 模式限制），需在「调试 → 请求头部」手动加一行 `Authorization` = token（带不带 `Bearer ` 前缀都行）。
 

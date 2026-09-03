@@ -43,7 +43,7 @@ import jakarta.servlet.http.HttpServletResponse;
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
-@EnableConfigurationProperties(SecurityJwtProperties.class)
+@EnableConfigurationProperties({SecurityJwtProperties.class, AdminProperties.class})
 public class SecurityConfig {
 
     /** 未认证统一响应体（前端 401 全局拦截依赖该文案，不得擅改） */
