@@ -14,11 +14,15 @@ import com.sjherp.app.memory.MemoryProperties;
 import com.sjherp.app.memory.MemoryIndexingService;
 import com.sjherp.app.memory.MemoryIndexStateService;
 import com.sjherp.app.memory.MemoryService;
+import com.sjherp.app.memory.MemoryWriteChannel;
+import com.sjherp.app.memory.WriteMemoryTool;
+import com.sjherp.agent.tool.ToolRegistry;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
 import com.sjherp.domain.memory.EmbeddingClient;
 import com.sjherp.domain.memory.MemoryEntryRepository;
 import com.sjherp.domain.memory.VectorCollectionSpec;
 import com.sjherp.domain.memory.VectorIndex;
+import com.sjherp.domain.gap.GapRecordService;
 import com.sjherp.infra.memory.OllamaEmbeddingClient;
 import com.sjherp.infra.memory.QdrantVectorIndex;
 import com.sjherp.infra.persistence.memory.JdbcMemoryEntryRepository;
@@ -71,6 +75,19 @@ public class MemoryInfraConfig {
                                 DocumentNumberGenerator numberGenerator,
                                 ApplicationEventPublisher events) {
         return new MemoryService(repository, numberGenerator, events);
+    }
+
+    @Bean
+    MemoryWriteChannel memoryWriteChannel(MemoryService memoryService) {
+        return new MemoryWriteChannel(memoryService);
+    }
+
+    @Bean
+    WriteMemoryTool writeMemoryTool(ToolRegistry registry, MemoryWriteChannel channel,
+                                    GapRecordService gapRecordService) {
+        WriteMemoryTool tool = new WriteMemoryTool(channel, gapRecordService);
+        registry.register(tool);
+        return tool;
     }
 
     @Bean

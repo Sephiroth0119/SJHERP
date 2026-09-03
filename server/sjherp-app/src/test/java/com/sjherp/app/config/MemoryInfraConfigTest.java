@@ -18,6 +18,9 @@ import com.sjherp.domain.memory.EmbeddingClient;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
 import com.sjherp.domain.memory.MemoryEntryRepository;
 import com.sjherp.domain.memory.VectorIndex;
+import com.sjherp.agent.tool.ToolRegistry;
+import com.sjherp.app.memory.WriteMemoryTool;
+import com.sjherp.domain.gap.GapRecordService;
 import com.sjherp.infra.memory.QdrantVectorException;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -62,6 +65,8 @@ class MemoryInfraConfigTest {
             assertThat(context).hasSingleBean(EmbeddingClient.class);
             assertThat(context).hasSingleBean(VectorIndex.class);
             assertThat(context).hasSingleBean(MemoryEntryRepository.class);
+            assertThat(context).hasSingleBean(WriteMemoryTool.class);
+            assertThat(context.getBean(ToolRegistry.class).find(WriteMemoryTool.NAME)).isPresent();
         });
     }
 
@@ -81,6 +86,8 @@ class MemoryInfraConfigTest {
                 .withBean(JdbcTemplate.class, () -> mock(JdbcTemplate.class))
                 .withBean(DocumentNumberGenerator.class, () -> mock(DocumentNumberGenerator.class))
                 .withBean(ApplicationEventPublisher.class, () -> mock(ApplicationEventPublisher.class))
+                .withBean(ToolRegistry.class, ToolRegistry::new)
+                .withBean(GapRecordService.class, () -> mock(GapRecordService.class))
                 .withPropertyValues(
                         "sjherp.memory.enabled=true",
                         "sjherp.memory.embedding.provider=ollama",

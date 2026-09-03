@@ -90,4 +90,6 @@ SJHERP/
 
 **M6-T01 系统大记忆基建已完成（2026-07-18）**：V32 `memory_entry` 以 MySQL 保存完整原文、来源、版本链、有效期和索引状态，且无物理删除入口；本地 Ollama `qwen3-embedding:0.6b` 生成固定 1024 维向量，Qdrant Cosine collection 作为可重建派生索引，payload 严格仅含 memory_entry_id/tenant_id/memory_type/memory_status/source_type，禁止标题与原文。真源先事务提交，再做索引；失败落 `FAILED`、指数退避定时重试，支持人工重试与按主键游标全量重建。创建/替代/失效/重试/重建均审计且摘要不含原文；`memory:manage` 仅 ADMIN/BOSS，`/api/memories/**` 全程受控。功能默认关闭，不影响既有 ERP/Agent 启动；聊天召回明确留 M6-T03。业务说明见 docs/业务-系统大记忆.md，设计真源见 docs/superpowers/specs/2026-07-18-m6-memory-foundation-design.md。
 
+**M6-T02 记忆写入通道已完成（2026-07-18）**：新增结构化候选（类型、标题、最多 50 项 facts、来源编号、会话追溯）和 `write_memory` HIGH Agent 工具；仅 `memory:manage` 持有者可执行，框架 HITL 确认后经 `MemoryWriteChannel → MemoryService.createIdempotent` 写入 T01 真源。用户口径/偏好绑定真实 AgentSession，缺口解决方案必须经 GapRecordService 引用真实 GapRecord；稳定 memoryKey 防确认重放，写入受审计并沿用 T01 事务后索引链。未实现 M6-T03 对话召回或 M6-T04 管理前端。
+
 0→1 完整计划见 **docs/产品路线图-0到1.md**（任务编号制，分配 subagent 时引用编号；该文档是计划的单一真源）。当前推进位置与已知技术债以该文档为准。

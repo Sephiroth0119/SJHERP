@@ -120,6 +120,33 @@ class MemoryServiceTest {
                 .isInstanceOf(MemoryEntryNotFoundException.class);
     }
 
+    @Test
+    void 幂等创建命中活动memoryKey时不重复写入或发布事件() {
+        MemoryEntry existing = version1();
+        when(repository.findActiveByMemoryKey("write:session-1:term"))
+                .thenReturn(Optional.of(existing));
+
+        MemoryEntry result = service.createIdempotent(
+                "write:session-1:term", command(), "agent:1");
+
+        assertThat(result).isSameAs(existing);
+        verify(repository).findActiveByMemoryKey("write:session-1:term");
+        org.mockito.Mockito.verifyNoInteractions(numberGenerator, events);
+    }
+
+    @Test
+    void 幂等键命中不同内容时拒绝静默复用() {
+        MemoryEntry existing = version1();
+        when(repository.findActiveByMemoryKey("write:session-1:term"))
+                .thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> service.createIdempotent(
+                "write:session-1:term", replacement(), "agent:1"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("幂等键冲突");
+        org.mockito.Mockito.verifyNoInteractions(numberGenerator, events);
+    }
+
     private static MemoryEntryCommand command() {
         return new MemoryEntryCommand(MemoryType.BUSINESS_TERM, "大客户口径",
                 "年采购金额超过50万元", MemorySourceType.USER_INPUT,
