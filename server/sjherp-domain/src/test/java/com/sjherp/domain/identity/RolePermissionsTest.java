@@ -60,7 +60,9 @@ class RolePermissionsTest {
                 Permission.PRODUCTION_COST,
                 Permission.MEMORY_MANAGE,
                 Permission.DATA_IMPORT,
-                Permission.GAP_TRIAGE), boss);
+                Permission.GAP_TRIAGE,
+                Permission.GAP_ISSUE,
+                Permission.DEVELOPER_AGENT), boss);
         assertFalse(boss.contains(Permission.DEMO_POST_DOCUMENT));
     }
 

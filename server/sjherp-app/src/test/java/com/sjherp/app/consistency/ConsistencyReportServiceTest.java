@@ -53,6 +53,23 @@ class ConsistencyReportServiceTest {
     }
 
     @Test
+    void latestReloadsFullFindingDetailAfterSummaryPageLookup() {
+        ConsistencyCheckRun summary = cleanRun();
+        ConsistencyCheckRun detail = ConsistencyCheckRun.completed(0, summary.runNo(),
+                summary.triggerType(), summary.requestedBy(), summary.startedAt(), summary.completedAt(),
+                summary.analysisStatus(), summary.analysisSummary(), List.of(
+                        new com.sjherp.domain.consistency.ConsistencyFinding(1, "CORE", "GL_DETAIL",
+                                "account=1122", java.math.BigDecimal.ONE, java.math.BigDecimal.ZERO,
+                                com.sjherp.domain.consistency.ConsistencyFinding.Severity.ERROR, "差异")));
+        when(repository.search(0, new ConsistencyRunQuery(1, 1)))
+                .thenReturn(new PageResult<>(List.of(summary), 1, 1, 1));
+        when(repository.findByRunNo(0, summary.runNo())).thenReturn(Optional.of(detail));
+
+        assertThat(service.latest()).containsSame(detail);
+        verify(repository).findByRunNo(0, summary.runNo());
+    }
+
+    @Test
     void reportQueriesAreReadOnlyTransactions() throws Exception {
         assertThat(ConsistencyReportService.class.getMethod("search", int.class, int.class)
                 .getAnnotation(Transactional.class).readOnly()).isTrue();

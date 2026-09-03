@@ -14,6 +14,7 @@ import com.sjherp.agent.tool.ToolRegistry;
 import com.sjherp.agent.tool.ToolRiskLevel;
 import com.sjherp.app.collection.CollectionReceiptAppService;
 import com.sjherp.app.consistency.ConsistencyCheckRunner;
+import com.sjherp.app.consistency.ConsistencyReportService;
 import com.sjherp.app.finance.AgingReportDao;
 import com.sjherp.app.finance.FinancialStatementService;
 import com.sjherp.app.gl.PeriodCloseService;
@@ -80,6 +81,7 @@ class HighRiskToolPermissionTest {
                 mock(SalesInvoiceAppService.class),
                 mock(ReceivableAppService.class),
                 mock(ConsistencyCheckRunner.class),
+                mock(ConsistencyReportService.class),
                 mock(PaymentAccountService.class),
                 mock(CollectionReceiptAppService.class),
                 mock(PaymentDisbursementAppService.class),
@@ -121,7 +123,7 @@ class HighRiskToolPermissionTest {
 
     @Test
     void 注册清单覆盖既有工具规模_防注册清单漂移() {
-        // M4-T08 基线：常驻 69 个（查询 29 NORMAL + 资金账户建档 1 NORMAL + 写 39 HIGH；
+        // M6-T07 基线：常驻 70 个（含 query_consistency_report；查询 37 NORMAL + 资金账户建档 1 NORMAL + 写 32 HIGH；
         // 含 M3-T11 全量 20 工具 [采购收货/发票 10 + 销售出库/发票 10] + M3-T13 run_consistency_check
         // + M4-T04a create_payment_account / search_payment_accounts
         // + M4-T04c 收款单 3 HIGH + 付款单 3 HIGH + query_collection_receipts / query_payment_disbursements 2 NORMAL
@@ -139,10 +141,10 @@ class HighRiskToolPermissionTest {
         //   post 3 HIGH] + 退料 4 [query NORMAL + create/approve/post 3 HIGH] + check_kitting 1 NORMAL
         //   + 报工 4 [query NORMAL + create/approve/post 3 HIGH] + 成本结转 4 [query NORMAL + create/
         //   approve/post 3 HIGH] + query_mrp_run 1 NORMAL）
-        // + 演示 2 个（echo + demo_post_document）= 97（全量注册断言基线）。
+        // + ProductionToolConfig 26 个 + 演示 2 个（echo + demo_post_document）= 98（全量注册断言基线）。
         // 新增工具装配类后此处会先于权限断言提醒维护注册清单。
-        assertTrue(registryWithAllTools().all().size() >= 97,
-                "注册工具数少于 M5-T07 基线（97 个）——若调整了工具装配，请同步维护本测试的注册清单");
+        assertTrue(registryWithAllTools().all().size() >= 98,
+                "注册工具数少于 M6-T07 基线（98 个）——若调整了工具装配，请同步维护本测试的注册清单");
     }
 
     /**

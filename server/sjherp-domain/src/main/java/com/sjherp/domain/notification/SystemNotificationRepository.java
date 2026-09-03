@@ -9,6 +9,9 @@ public interface SystemNotificationRepository {
 
     void save(SystemNotification notification);
 
+    /** Atomically persists a new notification, returning false when its source was already claimed. */
+    boolean saveIfAbsent(SystemNotification notification);
+
     PageResult<SystemNotification> searchForRecipient(long tenantId, long recipientUserId,
                                                        SystemNotificationQuery query);
 

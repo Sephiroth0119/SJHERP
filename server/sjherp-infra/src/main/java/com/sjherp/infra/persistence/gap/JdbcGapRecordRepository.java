@@ -112,6 +112,12 @@ public class JdbcGapRecordRepository implements GapRecordRepository {
         List<GapRecord> rows = jdbc.query(SELECT_COLUMNS + "WHERE id = ?", ROW_MAPPER, id);
         return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
     }
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<GapRecord> findByGapNo(String gapNo) {
+        List<GapRecord> rows = jdbc.query(SELECT_COLUMNS + "WHERE gap_no = ?", ROW_MAPPER, gapNo);
+        return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
+    }
 
     @Override
     @Transactional(readOnly = true)

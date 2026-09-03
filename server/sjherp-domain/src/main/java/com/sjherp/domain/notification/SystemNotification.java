@@ -8,11 +8,11 @@ import com.sjherp.domain.common.audit.AuditTarget;
 /** 接收人范围内唯一、仅支持标记已读的站内通知聚合。 */
 public final class SystemNotification implements AuditTarget {
 
-    public enum Category { CONSISTENCY }
+    public enum Category { CONSISTENCY, GAP_CLOSURE }
 
     public enum Severity { ERROR, WARN, INFO }
 
-    public enum SourceType { CONSISTENCY_REPORT }
+    public enum SourceType { CONSISTENCY_REPORT, GAP_CLOSURE }
 
     private Long id;
     private final long tenantId;

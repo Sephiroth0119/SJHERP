@@ -30,6 +30,7 @@ public class GapInfraConfig {
         return new JdbcGapRecordRepository(jdbcTemplate);
     }
 
+
     /** 编号生成器复用 CatalogInfraConfig 注册的 DocumentNumberGenerator（GAP-年月-序号） */
     @Bean
     public GapRecordService gapRecordService(GapRecordRepository gapRecordRepository,

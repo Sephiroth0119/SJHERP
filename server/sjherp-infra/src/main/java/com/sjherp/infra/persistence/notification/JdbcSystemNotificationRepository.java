@@ -10,6 +10,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -54,6 +55,21 @@ public class JdbcSystemNotificationRepository implements SystemNotificationRepos
         } else {
             updateReadAt(notification);
         }
+    }
+
+    @Override
+    public boolean saveIfAbsent(SystemNotification notification) {
+        Objects.requireNonNull(notification, "notification must not be null");
+        try { jdbc.update("""
+                INSERT INTO system_notification (
+                    tenant_id, recipient_user_id, category, severity, title, content,
+                    source_type, source_ref, read_at, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, notification.tenantId(), notification.recipientUserId(),
+                notification.category().name(), notification.severity().name(), notification.title(),
+                notification.content(), notification.sourceType().name(), notification.sourceRef(),
+                toDbNullable(notification.readAt()), toDb(notification.createdAt())); return true; }
+        catch (DuplicateKeyException duplicate) { return false; }
     }
 
     @Override
