@@ -1,0 +1,17 @@
+package com.sjherp.domain.gap;
+
+import java.util.List;
+import java.util.Optional;
+
+public interface GapIssueCandidateRepository {
+    GapIssueCandidate upsert(GapIssueCandidate candidate);
+    void addSources(long candidateId, List<String> gapNos);
+    List<GapIssueCandidate> findAll();
+    List<GapIssueCandidate> findDispatchable(int maxAttempts, int limit);
+    Optional<GapIssueCandidate> findById(long id);
+    Optional<String> claimForSend(long id);
+    int reclaimExpiredSending(java.time.Instant cutoff);
+    void markApproved(long id, String operator);
+    void markSent(long id, String leaseToken, long number, String url);
+    void markFailed(long id, String leaseToken, String failureType);
+}

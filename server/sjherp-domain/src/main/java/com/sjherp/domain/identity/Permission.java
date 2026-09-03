@@ -251,6 +251,9 @@ public enum Permission {
     /** 缺口状态流转（GapController POST /api/gaps/{id}/status，开发侧操作） */
     GAP_TRIAGE("gap:triage", "缺口状态流转"),
 
+    GAP_ISSUE("gap:issue", "缺口 Issue 治理"),
+    DEVELOPER_AGENT("developer:agent", "开发者 Agent"),
+
     // ------------------------------------------------- 演示（仅 dev/local profile 注册的演示工具）
 
     /** 演示用高风险工具 demo_post_document（dev/local 验证 HITL 链路；生产不注册该工具） */
