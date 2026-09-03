@@ -27,6 +27,8 @@ import com.sjherp.domain.common.audit.AuditTarget;
  */
 public final class SalesInvoice extends BusinessDocument implements AuditTarget {
 
+    private static final BigDecimal MAX_AMOUNT = new BigDecimal("9999999999999999.99");
+
     /** 引用的销售出库单号（开票针对它的已发货数量） */
     private final String salesDeliveryNo;
 
@@ -79,8 +81,13 @@ public final class SalesInvoice extends BusinessDocument implements AuditTarget 
         if (lineNos.size() != lines.size()) {
             throw new IllegalArgumentException("销售发票行号不能重复");
         }
-        return new SalesInvoice(docNo, salesDeliveryNo, customerId, invoiceDate, dueDate, remark,
-                lines, createdBy);
+        SalesInvoice invoice = new SalesInvoice(docNo, salesDeliveryNo, customerId, invoiceDate,
+                dueDate, remark, lines, createdBy);
+        if (invoice.totalAmount().compareTo(MAX_AMOUNT) > 0) {
+            throw new IllegalArgumentException("销售发票总金额超过系统可保存范围: "
+                    + invoice.totalAmount().toPlainString());
+        }
+        return invoice;
     }
 
     /**

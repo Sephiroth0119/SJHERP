@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 import com.sjherp.app.sales.SalesOrderAppService.CreateResult;
+import com.sjherp.domain.common.DocumentStatus;
 import com.sjherp.domain.common.PageResult;
 import com.sjherp.domain.sales.SalesDelivery;
 import com.sjherp.domain.sales.SalesDeliveryLine;
@@ -161,6 +162,44 @@ public final class SalesDtos {
         }
     }
 
+    /**
+     * 销售发票建单的已过账出库单窄读投影。
+     *
+     * <p>只在 {@code sales:invoice} 权限边界内返回，且只保留仍有可开票数量的行。
+     */
+    public record SalesInvoiceDeliveryOptionResponse(
+            String docNo, String salesOrderNo, long warehouseId, String remark, String status,
+            List<SalesInvoiceDeliveryLineOptionResponse> lines) {
+
+        public static boolean isInvoiceable(SalesDelivery delivery) {
+            return delivery.getStatus() == DocumentStatus.COMPLETED
+                    && delivery.getLines().stream()
+                    .anyMatch(line -> line.outstandingInvoiceableQty().signum() > 0);
+        }
+
+        public static SalesInvoiceDeliveryOptionResponse from(SalesDelivery delivery) {
+            List<SalesInvoiceDeliveryLineOptionResponse> lines = delivery.getLines().stream()
+                    .filter(line -> line.outstandingInvoiceableQty().signum() > 0)
+                    .map(SalesInvoiceDeliveryLineOptionResponse::from)
+                    .toList();
+            return new SalesInvoiceDeliveryOptionResponse(
+                    delivery.getDocNo(), delivery.getSalesOrderNo(), delivery.getWarehouseId(),
+                    delivery.getRemark(), delivery.getStatus().name(), lines);
+        }
+    }
+
+    /** 出库单未开完行投影；数量、已开票量和剩余量仍按 BigDecimal 字符串承载。 */
+    public record SalesInvoiceDeliveryLineOptionResponse(
+            int deliveryLineNo, long productId, String quantity, String invoicedQty,
+            String outstandingInvoiceableQty) {
+
+        static SalesInvoiceDeliveryLineOptionResponse from(SalesDeliveryLine line) {
+            return new SalesInvoiceDeliveryLineOptionResponse(
+                    line.getLineNo(), line.getProductId(), plain(line.getQuantity()), plain(line.getInvoicedQty()),
+                    plain(line.outstandingInvoiceableQty()));
+        }
+    }
+
     // ================================================================
     // T10 销售发票
     // ================================================================
@@ -230,6 +269,13 @@ public final class SalesDtos {
 
         public static PageResponse<SalesDeliveryResponse> ofDeliveries(PageResult<SalesDelivery> result) {
             return new PageResponse<>(result.items().stream().map(SalesDeliveryResponse::from).toList(),
+                    result.total(), result.page(), result.size());
+        }
+
+        public static PageResponse<SalesInvoiceDeliveryOptionResponse> ofInvoiceDeliveryOptions(
+                PageResult<SalesDelivery> result) {
+            return new PageResponse<>(
+                    result.items().stream().map(SalesInvoiceDeliveryOptionResponse::from).toList(),
                     result.total(), result.page(), result.size());
         }
 

@@ -5,6 +5,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
 
 import javax.sql.DataSource;
@@ -298,6 +304,168 @@ class SalesPostingIntegrationTest {
         assertThat(sinv1Ar).isEqualTo(1L);
     }
 
+    @Test
+    void 同一发票并发过账仅一次生效_出库累计和应收不重复() throws Exception {
+        long warehouseId = nextId();
+        long productId = nextId();
+        long customerId = nextId();
+        String suffix = Long.toString(System.nanoTime(), 36);
+        String orderNo = "SO-ITC-" + suffix;
+        String deliveryNo = "SD-ITC-" + suffix;
+        String invoiceNo = "SINV-ITC-" + suffix;
+
+        inventoryService.inbound(opening(warehouseId, productId, "20", "10.00", suffix), OPERATOR);
+        txTemplate.executeWithoutResult(s -> salesOrderService.create(orderNo, customerId,
+                java.time.LocalDate.of(2026, 8, 2), null,
+                List.of(new SalesOrderLineInput(productId, new BigDecimal("10"), new BigDecimal("20"))),
+                OPERATOR));
+        txTemplate.executeWithoutResult(s -> salesOrderService.approve(orderNo, OPERATOR));
+        txTemplate.executeWithoutResult(s -> salesDeliveryService.create(deliveryNo, orderNo, warehouseId,
+                null, List.of(new SalesDeliveryLineInput(1, productId, new BigDecimal("10"))), OPERATOR));
+        txTemplate.executeWithoutResult(s -> salesDeliveryService.approve(deliveryNo, OPERATOR));
+        txTemplate.executeWithoutResult(s -> salesDeliveryService.post(deliveryNo, OPERATOR));
+        txTemplate.executeWithoutResult(s -> salesInvoiceService.create(invoiceNo, deliveryNo, customerId,
+                java.time.LocalDate.of(2026, 8, 2), null, null,
+                List.of(new SalesInvoiceLineInput(1, productId, new BigDecimal("4"), new BigDecimal("25"))),
+                OPERATOR));
+        txTemplate.executeWithoutResult(s -> salesInvoiceService.approve(invoiceNo, OPERATOR));
+
+        CountDownLatch firstPosted = new CountDownLatch(1);
+        CountDownLatch releaseFirst = new CountDownLatch(1);
+        CountDownLatch secondAttemptingPost = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<SalesInvoice> first = executor.submit(() -> txTemplate.execute(status -> {
+                SalesInvoice result = salesInvoiceService.post(invoiceNo, OPERATOR);
+                firstPosted.countDown();
+                await(releaseFirst);
+                return result;
+            }));
+            assertThat(firstPosted.await(5, TimeUnit.SECONDS)).isTrue();
+
+            Future<Throwable> second = executor.submit(() -> {
+                try {
+                    txTemplate.executeWithoutResult(status -> {
+                        secondAttemptingPost.countDown();
+                        salesInvoiceService.post(invoiceNo, OPERATOR);
+                    });
+                    return null;
+                } catch (Throwable cause) {
+                    return cause;
+                }
+            });
+            assertThat(secondAttemptingPost.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThatThrownBy(() -> second.get(300, TimeUnit.MILLISECONDS))
+                    .isInstanceOf(TimeoutException.class);
+
+            releaseFirst.countDown();
+            assertThat(first.get(5, TimeUnit.SECONDS).getStatus().name()).isEqualTo("COMPLETED");
+            assertThat(second.get(5, TimeUnit.SECONDS))
+                    .isInstanceOf(RuntimeException.class)
+                    .hasMessageContaining("状态");
+        } finally {
+            releaseFirst.countDown();
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+        }
+
+        assertThat(jdbc.queryForObject("SELECT invoiced_qty FROM sales_delivery_line "
+                        + "WHERE sales_delivery_id = (SELECT id FROM sales_delivery WHERE tenant_id = 0 AND doc_no = ?) "
+                        + "AND tenant_id = 0 AND line_no = 1", BigDecimal.class, deliveryNo))
+                .isEqualByComparingTo("4");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM accounts_receivable "
+                        + "WHERE tenant_id = 0 AND source_doc_no = ?", Long.class, invoiceNo))
+                .isEqualTo(1L);
+        assertThat(jdbc.queryForObject("SELECT status FROM sales_invoice "
+                        + "WHERE tenant_id = 0 AND doc_no = ?", String.class, invoiceNo))
+                .isEqualTo("COMPLETED");
+    }
+
+    @Test
+    void 不同发票并发争用同一出库剩余量_仅首笔成功且无死锁() throws Exception {
+        long warehouseId = nextId();
+        long productId = nextId();
+        long customerId = nextId();
+        String suffix = Long.toString(System.nanoTime(), 36);
+        String orderNo = "SO-ITD-" + suffix;
+        String deliveryNo = "SD-ITD-" + suffix;
+        String firstInvoiceNo = "SINV1-ITD-" + suffix;
+        String secondInvoiceNo = "SINV2-ITD-" + suffix;
+
+        inventoryService.inbound(opening(warehouseId, productId, "20", "10.00", suffix), OPERATOR);
+        txTemplate.executeWithoutResult(s -> salesOrderService.create(orderNo, customerId,
+                java.time.LocalDate.of(2026, 8, 2), null,
+                List.of(new SalesOrderLineInput(productId, new BigDecimal("10"), new BigDecimal("20"))),
+                OPERATOR));
+        txTemplate.executeWithoutResult(s -> salesOrderService.approve(orderNo, OPERATOR));
+        txTemplate.executeWithoutResult(s -> salesDeliveryService.create(deliveryNo, orderNo, warehouseId,
+                null, List.of(new SalesDeliveryLineInput(1, productId, new BigDecimal("10"))), OPERATOR));
+        txTemplate.executeWithoutResult(s -> salesDeliveryService.approve(deliveryNo, OPERATOR));
+        txTemplate.executeWithoutResult(s -> salesDeliveryService.post(deliveryNo, OPERATOR));
+        for (String invoiceNo : List.of(firstInvoiceNo, secondInvoiceNo)) {
+            txTemplate.executeWithoutResult(s -> salesInvoiceService.create(invoiceNo, deliveryNo, customerId,
+                    java.time.LocalDate.of(2026, 8, 2), null, null,
+                    List.of(new SalesInvoiceLineInput(1, productId, new BigDecimal("6"),
+                            new BigDecimal("25"))), OPERATOR));
+            txTemplate.executeWithoutResult(s -> salesInvoiceService.approve(invoiceNo, OPERATOR));
+        }
+
+        CountDownLatch firstPosted = new CountDownLatch(1);
+        CountDownLatch releaseFirst = new CountDownLatch(1);
+        CountDownLatch secondAttemptingPost = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> first = executor.submit(() -> txTemplate.executeWithoutResult(status -> {
+                salesInvoiceService.post(firstInvoiceNo, OPERATOR);
+                firstPosted.countDown();
+                await(releaseFirst);
+            }));
+            assertThat(firstPosted.await(5, TimeUnit.SECONDS)).isTrue();
+
+            Future<Throwable> second = executor.submit(() -> {
+                try {
+                    txTemplate.executeWithoutResult(status -> {
+                        secondAttemptingPost.countDown();
+                        salesInvoiceService.post(secondInvoiceNo, OPERATOR);
+                    });
+                    return null;
+                } catch (Throwable cause) {
+                    return cause;
+                }
+            });
+            assertThat(secondAttemptingPost.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThatThrownBy(() -> second.get(300, TimeUnit.MILLISECONDS))
+                    .isInstanceOf(TimeoutException.class);
+
+            releaseFirst.countDown();
+            first.get(5, TimeUnit.SECONDS);
+            assertThat(second.get(5, TimeUnit.SECONDS))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("累计开票数量");
+        } finally {
+            releaseFirst.countDown();
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(5, TimeUnit.SECONDS)).isTrue();
+        }
+
+        assertThat(jdbc.queryForObject("SELECT invoiced_qty FROM sales_delivery_line "
+                        + "WHERE sales_delivery_id = (SELECT id FROM sales_delivery WHERE tenant_id = 0 AND doc_no = ?) "
+                        + "AND tenant_id = 0 AND line_no = 1", BigDecimal.class, deliveryNo))
+                .isEqualByComparingTo("6");
+        assertThat(jdbc.queryForObject("SELECT status FROM sales_invoice "
+                        + "WHERE tenant_id = 0 AND doc_no = ?", String.class, firstInvoiceNo))
+                .isEqualTo("COMPLETED");
+        assertThat(jdbc.queryForObject("SELECT status FROM sales_invoice "
+                        + "WHERE tenant_id = 0 AND doc_no = ?", String.class, secondInvoiceNo))
+                .isEqualTo("APPROVED");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM accounts_receivable "
+                        + "WHERE tenant_id = 0 AND source_doc_no = ?", Long.class, firstInvoiceNo))
+                .isEqualTo(1L);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM accounts_receivable "
+                        + "WHERE tenant_id = 0 AND source_doc_no = ?", Long.class, secondInvoiceNo))
+                .isZero();
+    }
+
     // ---------------------------------------------------------------
     // 工具
     // ---------------------------------------------------------------
@@ -307,6 +475,17 @@ class SalesPostingIntegrationTest {
         return new InboundCommand(warehouseId, productId, InventoryTxnType.OPENING,
                 new BigDecimal(quantity), new BigDecimal(unitCost), null,
                 "OPENING", "OP-IT-" + key, 1, "OPENING:OP-IT-" + key + ":1");
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(5, TimeUnit.SECONDS)) {
+                throw new AssertionError("等待释放销售发票过账事务超时");
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("等待销售发票过账事务时被中断", exception);
+        }
     }
 
     private static InboundCommand purchaseIn(long warehouseId, long productId, String quantity,

@@ -18,6 +18,7 @@ import { PurchaseInvoiceWorkbench } from './components/PurchaseInvoiceWorkbench'
 import { PurchaseOrderWorkbench } from './components/PurchaseOrderWorkbench';
 import { PurchaseReceiptWorkbench } from './components/PurchaseReceiptWorkbench';
 import { SalesDeliveryWorkbench } from './components/SalesDeliveryWorkbench';
+import { SalesInvoiceWorkbench } from './components/SalesInvoiceWorkbench';
 import { SalesOrderWorkbench } from './components/SalesOrderWorkbench';
 import { MODULE_NAV_ITEMS, type ModuleKey } from './types/navigation';
 import {
@@ -147,13 +148,16 @@ export function App() {
 }
 
 function SalesWorkbench({ permissions }: { permissions: string[] }) {
-  const [tab, setTab] = useState<'customer' | 'order' | 'delivery'>('customer');
+  const [tab, setTab] = useState<'customer' | 'order' | 'delivery' | 'invoice'>('customer');
   const canUseSalesOrders = permissions.includes('sales:order');
   const canUseSalesDeliveries = permissions.includes('sales:delivery');
+  const canUseSalesInvoices = permissions.includes('sales:invoice');
   const activeTab = tab === 'order' && canUseSalesOrders
     ? 'order'
     : tab === 'delivery' && canUseSalesDeliveries
       ? 'delivery'
+      : tab === 'invoice' && canUseSalesInvoices
+        ? 'invoice'
       : 'customer';
 
   return <>
@@ -161,11 +165,14 @@ function SalesWorkbench({ permissions }: { permissions: string[] }) {
       <button type="button" role="tab" aria-selected={activeTab === 'customer'} className={activeTab === 'customer' ? 'memory-tab-active' : ''} onClick={() => setTab('customer')}>客户档案</button>
       {canUseSalesOrders && <button type="button" role="tab" aria-selected={activeTab === 'order'} className={activeTab === 'order' ? 'memory-tab-active' : ''} onClick={() => setTab('order')}>销售订单</button>}
       {canUseSalesDeliveries && <button type="button" role="tab" aria-selected={activeTab === 'delivery'} className={activeTab === 'delivery' ? 'memory-tab-active' : ''} onClick={() => setTab('delivery')}>销售出库</button>}
+      {canUseSalesInvoices && <button type="button" role="tab" aria-selected={activeTab === 'invoice'} className={activeTab === 'invoice' ? 'memory-tab-active' : ''} onClick={() => setTab('invoice')}>销售发票</button>}
     </div>
     {activeTab === 'order'
       ? <SalesOrderWorkbench />
       : activeTab === 'delivery'
         ? <SalesDeliveryWorkbench />
+        : activeTab === 'invoice'
+          ? <SalesInvoiceWorkbench />
       : <CustomerWorkbench permissions={permissions} />}
   </>;
 }
