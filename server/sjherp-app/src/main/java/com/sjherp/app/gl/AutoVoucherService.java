@@ -5,9 +5,15 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.function.Supplier;
 
+import com.sjherp.domain.catalog.Product;
+import com.sjherp.domain.catalog.ProductRepository;
 import com.sjherp.domain.collection.CollectionReceipt;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
 import com.sjherp.domain.common.numbering.DocumentNumberRule;
@@ -19,7 +25,9 @@ import com.sjherp.domain.gl.VoucherSourceType;
 import com.sjherp.domain.payment.PaymentDisbursement;
 import com.sjherp.domain.purchase.PurchaseInvoice;
 import com.sjherp.domain.purchase.PurchaseReceipt;
+import com.sjherp.domain.purchase.PurchaseReceiptLine;
 import com.sjherp.domain.sales.SalesDelivery;
+import com.sjherp.domain.sales.SalesDeliveryLine;
 import com.sjherp.domain.sales.SalesInvoice;
 
 /**
@@ -57,8 +65,6 @@ public class AutoVoucherService {
 
     // ---------------- 科目编码常量（拆解 §1.2，对应 V19/V20 预置科目） ----------------
 
-    /** 1405 库存商品（资产/借） */
-    private static final String ACC_INVENTORY = "1405";
     /** 220201 应付账款—暂估应付款（负债/贷，货到票未到暂估，V20 新增） */
     private static final String ACC_PAYABLE_ESTIMATED = "220201";
     /** 220202 应付账款—应付账款（负债/贷，正式应付，与 accounts_payable 子账勾稽，V20 新增） */
@@ -91,14 +97,21 @@ public class AutoVoucherService {
     private final VoucherService voucherService;
     private final AccountingPeriodService accountingPeriodService;
     private final DocumentNumberGenerator numberGenerator;
+    private final ProductRepository productRepository;
+    private final InventoryAccountPolicy inventoryAccountPolicy;
 
     public AutoVoucherService(VoucherService voucherService,
                               AccountingPeriodService accountingPeriodService,
-                              DocumentNumberGenerator numberGenerator) {
+                              DocumentNumberGenerator numberGenerator,
+                              ProductRepository productRepository,
+                              InventoryAccountPolicy inventoryAccountPolicy) {
         this.voucherService = Objects.requireNonNull(voucherService, "voucherService 不能为空");
         this.accountingPeriodService = Objects.requireNonNull(accountingPeriodService,
                 "accountingPeriodService 不能为空");
         this.numberGenerator = Objects.requireNonNull(numberGenerator, "numberGenerator 不能为空");
+        this.productRepository = Objects.requireNonNull(productRepository, "productRepository 不能为空");
+        this.inventoryAccountPolicy = Objects.requireNonNull(inventoryAccountPolicy,
+                "inventoryAccountPolicy 不能为空");
     }
 
     /**
@@ -111,11 +124,9 @@ public class AutoVoucherService {
         Objects.requireNonNull(receipt, "采购入库单不能为空");
         BigDecimal amount = receipt.totalAmount();
         String summary = VoucherSourceType.PURCHASE_RECEIPT.label() + " " + receipt.getDocNo();
-        List<VoucherLineInput> lines = List.of(
-                debitLine(ACC_INVENTORY, amount, summary),
-                creditLine(ACC_PAYABLE_ESTIMATED, amount, summary));
         generate(VoucherSourceType.PURCHASE_RECEIPT, receipt.getDocNo(), amount,
-                receipt.getReceiptDate(), summary, lines, operator);
+                receipt.getReceiptDate(), summary,
+                () -> purchaseReceiptLines(receipt, amount, summary), operator);
     }
 
     /**
@@ -129,11 +140,11 @@ public class AutoVoucherService {
         Objects.requireNonNull(invoice, "采购发票不能为空");
         BigDecimal amount = invoice.totalAmount();
         String summary = VoucherSourceType.PURCHASE_INVOICE.label() + " " + invoice.getDocNo();
-        List<VoucherLineInput> lines = List.of(
-                debitLine(ACC_PAYABLE_ESTIMATED, amount, summary),
-                creditLine(ACC_PAYABLE_FORMAL, amount, summary));
         generate(VoucherSourceType.PURCHASE_INVOICE, invoice.getDocNo(), amount,
-                invoice.getInvoiceDate(), summary, lines, operator);
+                invoice.getInvoiceDate(), summary,
+                () -> List.of(
+                        debitLine(ACC_PAYABLE_ESTIMATED, amount, summary),
+                        creditLine(ACC_PAYABLE_FORMAL, amount, summary)), operator);
     }
 
     /**
@@ -152,11 +163,9 @@ public class AutoVoucherService {
         // 语义脆弱，见对抗校验）。TODO：给 SalesDelivery 补 deliveryDate 业务日后改用之。
         LocalDate voucherDate = LocalDate.now(ZoneOffset.UTC);
         String summary = VoucherSourceType.SALES_DELIVERY.label() + " " + delivery.getDocNo();
-        List<VoucherLineInput> lines = List.of(
-                debitLine(ACC_COGS, amount, summary),
-                creditLine(ACC_INVENTORY, amount, summary));
         generate(VoucherSourceType.SALES_DELIVERY, delivery.getDocNo(), amount,
-                voucherDate, summary, lines, operator);
+                voucherDate, summary,
+                () -> salesDeliveryLines(delivery, amount, summary), operator);
     }
 
     /**
@@ -169,11 +178,11 @@ public class AutoVoucherService {
         Objects.requireNonNull(invoice, "销售发票不能为空");
         BigDecimal amount = invoice.totalAmount();
         String summary = VoucherSourceType.SALES_INVOICE.label() + " " + invoice.getDocNo();
-        List<VoucherLineInput> lines = List.of(
-                debitLine(ACC_RECEIVABLE, amount, summary),
-                creditLine(ACC_REVENUE, amount, summary));
         generate(VoucherSourceType.SALES_INVOICE, invoice.getDocNo(), amount,
-                invoice.getInvoiceDate(), summary, lines, operator);
+                invoice.getInvoiceDate(), summary,
+                () -> List.of(
+                        debitLine(ACC_RECEIVABLE, amount, summary),
+                        creditLine(ACC_REVENUE, amount, summary)), operator);
     }
 
     /**
@@ -195,11 +204,11 @@ public class AutoVoucherService {
         Objects.requireNonNull(glAccountCode, "资金账户 GL 科目不能为空");
         BigDecimal amount = receipt.totalAmount();
         String summary = VoucherSourceType.COLLECTION_RECEIPT.label() + " " + receipt.getDocNo();
-        List<VoucherLineInput> lines = List.of(
-                debitLine(glAccountCode, amount, summary),
-                creditLine(ACC_RECEIVABLE, amount, summary));
         generate(VoucherSourceType.COLLECTION_RECEIPT, receipt.getDocNo(), amount,
-                receipt.getReceiptDate(), summary, lines, operator);
+                receipt.getReceiptDate(), summary,
+                () -> List.of(
+                        debitLine(glAccountCode, amount, summary),
+                        creditLine(ACC_RECEIVABLE, amount, summary)), operator);
     }
 
     /**
@@ -220,11 +229,11 @@ public class AutoVoucherService {
         Objects.requireNonNull(glAccountCode, "资金账户 GL 科目不能为空");
         BigDecimal amount = disbursement.totalAmount();
         String summary = VoucherSourceType.PAYMENT_DISBURSEMENT.label() + " " + disbursement.getDocNo();
-        List<VoucherLineInput> lines = List.of(
-                debitLine(ACC_PAYABLE_FORMAL, amount, summary),
-                creditLine(glAccountCode, amount, summary));
         generate(VoucherSourceType.PAYMENT_DISBURSEMENT, disbursement.getDocNo(), amount,
-                disbursement.getPaymentDate(), summary, lines, operator);
+                disbursement.getPaymentDate(), summary,
+                () -> List.of(
+                        debitLine(ACC_PAYABLE_FORMAL, amount, summary),
+                        creditLine(glAccountCode, amount, summary)), operator);
     }
 
     // ---------------------------------------------------------------
@@ -232,7 +241,7 @@ public class AutoVoucherService {
     // ---------------------------------------------------------------
 
     private void generate(VoucherSourceType sourceType, String sourceDocNo, BigDecimal amount,
-                          LocalDate voucherDate, String summary, List<VoucherLineInput> lines,
+                          LocalDate voucherDate, String summary, Supplier<List<VoucherLineInput>> linesSupplier,
                           String operator) {
         // ① 金额≤0 跳过（无金额无凭证；否则 Voucher.create「总额>0」会抛 VoucherNotBalancedException）
         if (amount == null || amount.signum() <= 0) {
@@ -242,6 +251,7 @@ public class AutoVoucherService {
         if (!voucherService.findBySourceDocNo(sourceDocNo).isEmpty()) {
             return;
         }
+        List<VoucherLineInput> lines = linesSupplier.get();
         // ③ 由凭证日期推算账期 + 生成 VCH- 号（按凭证日期所属年月段计序）
         YearMonth yearMonth = YearMonth.from(voucherDate);
         String period = yearMonth.format(PERIOD_FORMAT);
@@ -259,6 +269,59 @@ public class AutoVoucherService {
      * 账期已存在（无论 OPEN/CLOSED）不做任何处理——CLOSED 的关账守卫在 {@link VoucherService#post}。
      * 并发首单 open 撞 {@code uk_period} 唯一键时容错（撞键即视为已存在，小企业并发低，已知风险）。
      */
+    /** 按采购入库行的商品存货分类汇总借方科目，并校验行金额与单据总额一致。 */
+    private List<VoucherLineInput> purchaseReceiptLines(PurchaseReceipt receipt, BigDecimal expectedAmount,
+                                                         String summary) {
+        Map<String, BigDecimal> amountsByAccount = new LinkedHashMap<>();
+        for (PurchaseReceiptLine line : Objects.requireNonNull(receipt.getLines(), "采购入库单行不能为空")) {
+            addAmountByInventoryAccount(amountsByAccount, line.getProductId(), line.getAmount());
+        }
+        assertClassifiedTotal(receipt.getDocNo(), "采购入库", expectedAmount, amountsByAccount);
+
+        List<VoucherLineInput> lines = new ArrayList<>();
+        amountsByAccount.forEach((accountCode, amount) -> lines.add(debitLine(accountCode, amount, summary)));
+        lines.add(creditLine(ACC_PAYABLE_ESTIMATED, expectedAmount, summary));
+        return lines;
+    }
+
+    private List<VoucherLineInput> salesDeliveryLines(SalesDelivery delivery, BigDecimal expectedAmount,
+                                                       String summary) {
+        Map<String, BigDecimal> amountsByAccount = new LinkedHashMap<>();
+        for (SalesDeliveryLine line : Objects.requireNonNull(delivery.getLines(), "销售出库单行不能为空")) {
+            addAmountByInventoryAccount(amountsByAccount, line.getProductId(), line.getCogsAmount());
+        }
+        assertClassifiedTotal(delivery.getDocNo(), "销售出库", expectedAmount, amountsByAccount);
+
+        List<VoucherLineInput> lines = new ArrayList<>();
+        lines.add(debitLine(ACC_COGS, expectedAmount, summary));
+        amountsByAccount.forEach((accountCode, amount) -> lines.add(creditLine(accountCode, amount, summary)));
+        return lines;
+    }
+
+    private void addAmountByInventoryAccount(Map<String, BigDecimal> amountsByAccount, long productId,
+                                              BigDecimal amount) {
+        BigDecimal lineAmount = Objects.requireNonNull(amount, "已过账单据行成本不能为空");
+        if (lineAmount.signum() < 0) {
+            throw new IllegalArgumentException("已过账单据行成本不能为负: " + lineAmount.toPlainString());
+        }
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new IllegalArgumentException("商品不存在: " + productId));
+        String accountCode = inventoryAccountPolicy.accountFor(product.getInventoryCategory());
+        amountsByAccount.merge(accountCode, lineAmount, BigDecimal::add);
+    }
+
+    private static void assertClassifiedTotal(String docNo, String documentType, BigDecimal expectedAmount,
+                                              Map<String, BigDecimal> amountsByAccount) {
+        BigDecimal classifiedTotal = amountsByAccount.values().stream()
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (classifiedTotal.compareTo(expectedAmount) != 0) {
+            throw new IllegalStateException(documentType + "单据金额与行成本不一致，拒绝生成凭证: " + docNo
+                    + "，单据=" + expectedAmount.toPlainString()
+                    + "，行汇总=" + classifiedTotal.toPlainString());
+        }
+    }
+
+    /** 确保凭证所属账期存在；不存在时首次自动开账，已关闭账期仍由凭证过账守卫拒绝。 */
     private void ensurePeriodExists(String period, String operator) {
         try {
             accountingPeriodService.get(period);

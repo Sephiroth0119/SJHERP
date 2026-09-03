@@ -21,6 +21,7 @@ import com.sjherp.agent.tool.ToolResult;
 import com.sjherp.agent.tool.ToolRiskLevel;
 import com.sjherp.domain.catalog.Product;
 import com.sjherp.domain.catalog.ProductCommand;
+import com.sjherp.domain.catalog.InventoryCategory;
 import com.sjherp.domain.catalog.ProductService;
 import com.sjherp.domain.catalog.Unit;
 import com.sjherp.domain.catalog.UnitService;
@@ -56,11 +57,15 @@ class CreateProductToolTest {
 
     @Test
     void 单位按名称解析成功_命令映射正确() {
-        Product created = Product.restore(9L, "SKU-202606-0009", "螺丝刀", null, null, 1L, null,
+        Product created = Product.restore(9L, "SKU-202606-0009", "螺丝刀", null, null,
+                InventoryCategory.RAW_MATERIAL, 1L, null,
                 ArchiveStatus.ENABLED, null, List.of(), "agent:1", Instant.now(), "agent:1", Instant.now());
         when(productService.create(any(), any())).thenReturn(created);
 
-        ToolResult result = tool.execute(Map.of("name", "螺丝刀", "base_unit", "个"), context);
+        ToolResult result = tool.execute(Map.of(
+                "name", "螺丝刀",
+                "base_unit", "个",
+                "inventory_category", "RAW_MATERIAL"), context);
 
         ArgumentCaptor<ProductCommand> captor = ArgumentCaptor.forClass(ProductCommand.class);
         verify(productService).create(captor.capture(), eq("agent:1"));
@@ -68,11 +73,13 @@ class CreateProductToolTest {
         assertThat(command.code()).isNull(); // 编码自动生成
         assertThat(command.name()).isEqualTo("螺丝刀");
         assertThat(command.baseUnitId()).isEqualTo(1L);
+        assertThat(command.inventoryCategory()).isEqualTo(InventoryCategory.RAW_MATERIAL);
 
         assertThat(result.success()).isTrue();
         assertThat(result.data())
                 .containsEntry("code", "SKU-202606-0009")
-                .containsEntry("baseUnit", "个");
+                .containsEntry("baseUnit", "个")
+                .containsEntry("inventoryCategory", "RAW_MATERIAL");
     }
 
     @Test
@@ -102,7 +109,10 @@ class CreateProductToolTest {
         when(productService.create(any(), any()))
                 .thenThrow(new IllegalArgumentException("商品名称不能超过 200 个字符"));
 
-        ToolResult result = tool.execute(Map.of("name", "超长名称", "base_unit", "个"), context);
+        ToolResult result = tool.execute(Map.of(
+                "name", "超长名称",
+                "base_unit", "个",
+                "inventory_category", "MERCHANDISE"), context);
 
         assertThat(result.success()).isFalse();
         assertThat(result.error()).contains("商品名称不能超过 200 个字符");
@@ -114,5 +124,21 @@ class CreateProductToolTest {
                 .validate(tool.parameterSchema(), Map.of("spec", "500ml"));
         assertThat(errors).anyMatch(e -> e.contains("name"));
         assertThat(errors).anyMatch(e -> e.contains("base_unit"));
+    }
+
+    @Test
+    void schema校验_缺少存货类别或类别非法时拒绝() {
+        JsonSchemaToolArgumentValidator validator = new JsonSchemaToolArgumentValidator();
+
+        List<String> missing = validator.validate(tool.parameterSchema(), Map.of(
+                "name", "螺丝刀", "base_unit", "个"));
+        assertThat(missing).anyMatch(error -> error.contains("inventory_category"));
+
+        ToolResult invalid = tool.execute(Map.of(
+                "name", "螺丝刀",
+                "base_unit", "个",
+                "inventory_category", "UNKNOWN"), context);
+        assertThat(invalid.success()).isFalse();
+        assertThat(invalid.error()).contains("存货类别");
     }
 }

@@ -52,6 +52,26 @@ sjherp:
     # 巡检 cron（默认每日凌晨 3 点）。仅 enabled=true 时生效。
     cron: "0 0 3 * * *"
 
+  # 系统大记忆基建（M6-T01）：MySQL 为完整真源，Ollama/Qdrant 仅在显式开启后连接。
+  # 默认关闭，既有开发/测试环境无需安装本地服务即可启动。
+  memory:
+    enabled: ${SJHERP_MEMORY_ENABLED:false}
+    embedding:
+      provider: ollama
+      base-url: ${SJHERP_OLLAMA_URL:http://localhost:11434}
+      model: ${SJHERP_OLLAMA_MODEL:qwen3-embedding:0.6b}
+      dimension: 1024
+      timeout-seconds: 60
+    vector:
+      provider: qdrant
+      base-url: ${SJHERP_QDRANT_URL:http://localhost:6333}
+      collection: sjherp-memory-qwen3-0_6b-1024-v1
+      distance: COSINE
+    indexing:
+      retry-delay-seconds: 30
+      batch-size: 50
+      max-retries: 8
+
   # LLM 接入（M1-T07 多 provider 配置化，切换模型不改代码）。
   # - providers（map）：provider 名 → 连接配置（base-url / model / api-key / temperature /
   #   timeout-seconds）。所有 provider 走 OpenAI 兼容协议（OpenAiCompatibleLlmClient 一套实现），

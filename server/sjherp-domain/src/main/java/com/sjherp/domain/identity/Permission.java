@@ -218,6 +218,34 @@ public enum Permission {
      */
     PRODUCTION_WO("production:wo", "生产工单"),
 
+    /**
+     * 生产领料与退料（M5-T04）：领料单建单/审核/过账 + 退料单建单/审核/过账 + 齐套检查
+     * （REST /api/production/material-issues、/material-returns、/kitting-check）。
+     * 三控制器类级 @PreAuthorize **全程受控**（含查询与齐套只读端点——生产执行动作 + 暴露库存缺口经营敏感数据）。
+     * 授 ADMIN/BOSS（本批不引入 PRODUCTION 角色）。
+     */
+    PRODUCTION_MATERIAL("production:material", "生产领料与退料"),
+
+    /**
+     * 报工与完工入库（M5-T05）：报工单建单/审核/过账 + 完工入库
+     * （REST /api/production/reports，全程受控）。
+     * 授 ADMIN/BOSS。
+     */
+    PRODUCTION_REPORT("production:report", "报工与完工入库"),
+
+    /**
+     * 生产成本归集与结转（M5-T06，成本结转是会计动作）：月末成本结转单（PC-）建单/审核/过账
+     * （REST /api/production/cost-settlements，全程受控）。过账时按约当产量法分摊完工/在产工费，
+     * 经 CostAdjustCommand 追加完工工费到产成品库存并出 GL（料/工费归集 + 完工结转）。
+     * 授 ADMIN/BOSS/ACCOUNTANT（D8）。
+     */
+    PRODUCTION_COST("production:cost", "生产成本归集与结转"),
+
+    // ------------------------------------------------- 系统大记忆（M6-T01）
+
+    /** 大记忆真源、版本治理及派生索引的管理入口（REST /api/memories/**） */
+    MEMORY_MANAGE("memory:manage", "大记忆管理"),
+
     // ------------------------------------------------- 流程缺口
 
     /** 缺口状态流转（GapController POST /api/gaps/{id}/status，开发侧操作） */

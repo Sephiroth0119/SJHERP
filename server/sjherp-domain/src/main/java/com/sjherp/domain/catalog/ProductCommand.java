@@ -13,7 +13,9 @@ import java.util.List;
  * @param barcode         条码，可空
  * @param remark          备注，可空
  * @param unitConversions 多单位换算表，可空（视为无换算）
+ * @param inventoryCategory 存货分类（必填，会计科目由应用层策略映射）
  */
 public record ProductCommand(String code, String name, String spec, Long categoryId, Long baseUnitId,
-                             String barcode, String remark, List<UnitConversion> unitConversions) {
+                             String barcode, String remark, List<UnitConversion> unitConversions,
+                             InventoryCategory inventoryCategory) {
 }

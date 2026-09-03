@@ -151,10 +151,16 @@ public final class AgentLoop {
 
             if (!response.hasToolCalls()) {
                 if (hasTools && request.finalJsonMode() == FinalJsonMode.JSON_SEPARATE_FINAL_CALL) {
-                    // 厂商不支持 tools+json_object 同时携带：终轮单独再调一次（丢弃本次自由文本）
+                    // 厂商不支持 tools+json_object 同时携带：终轮单独再调一次
                     checkDeadline(request, deadline);
                     LlmResponse finalResponse = observedChat(request, messages, finalRoundOptions(request), ++llmRound);
-                    return AgentLoopResult.completed(finalResponse.content(), records);
+                    // 终轮 json_object 偶发返回空内容（DeepSeek 已知抖动）：退回本轮自由文本，
+                    // 由上层 parseReply 降级为纯文本回复，避免给用户「请重试」死胡同。
+                    String finalText = finalResponse.content();
+                    if (finalText == null || finalText.isBlank()) {
+                        finalText = response.content();
+                    }
+                    return AgentLoopResult.completed(finalText, records);
                 }
                 return AgentLoopResult.completed(response.content(), records);
             }

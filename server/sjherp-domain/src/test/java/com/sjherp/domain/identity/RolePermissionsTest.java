@@ -55,6 +55,10 @@ class RolePermissionsTest {
                 Permission.PRODUCTION_PLAN,
                 Permission.PRODUCTION_MRP,
                 Permission.PRODUCTION_WO,
+                Permission.PRODUCTION_MATERIAL,
+                Permission.PRODUCTION_REPORT,
+                Permission.PRODUCTION_COST,
+                Permission.MEMORY_MANAGE,
                 Permission.DATA_IMPORT,
                 Permission.GAP_TRIAGE), boss);
         assertFalse(boss.contains(Permission.DEMO_POST_DOCUMENT));
@@ -94,11 +98,21 @@ class RolePermissionsTest {
         assertEquals(EnumSet.of(Permission.PURCHASE_INVOICE, Permission.SALES_INVOICE,
                         Permission.FINANCE_ACCOUNT, Permission.FINANCE_PERIOD, Permission.FINANCE_VOUCHER,
                         Permission.FINANCE_SETTLEMENT, Permission.FINANCE_PAYMENT_ACCOUNT,
-                        Permission.FINANCE_REPORT),
+                        Permission.FINANCE_REPORT, Permission.PRODUCTION_COST),
                 RolePermissions.permissionsOf(Role.ACCOUNTANT));
         // 账期重开是高敏操作，ACCOUNTANT 不持有（仅 ADMIN/BOSS）
         assertFalse(RolePermissions.permissionsOf(Role.ACCOUNTANT)
                 .contains(Permission.FINANCE_PERIOD_REOPEN));
+    }
+
+    @Test
+    void 大记忆管理仅管理员和老板持有() {
+        assertTrue(RolePermissions.permissionsOf(Role.ADMIN).contains(Permission.MEMORY_MANAGE));
+        assertTrue(RolePermissions.permissionsOf(Role.BOSS).contains(Permission.MEMORY_MANAGE));
+        assertFalse(RolePermissions.permissionsOf(Role.ACCOUNTANT).contains(Permission.MEMORY_MANAGE));
+        assertFalse(RolePermissions.permissionsOf(Role.PURCHASER).contains(Permission.MEMORY_MANAGE));
+        assertFalse(RolePermissions.permissionsOf(Role.SALES).contains(Permission.MEMORY_MANAGE));
+        assertFalse(RolePermissions.permissionsOf(Role.WAREHOUSE).contains(Permission.MEMORY_MANAGE));
     }
 
     @Test
@@ -247,6 +261,20 @@ class RolePermissionsTest {
         assertFalse(RolePermissions.isGrantedCode(Set.of(Role.PURCHASER), "finance:report"));
         assertFalse(RolePermissions.isGrantedCode(Set.of(Role.SALES), "finance:report"));
         assertFalse(RolePermissions.isGrantedCode(Set.of(Role.WAREHOUSE), "finance:report"));
+        // 生产领料与退料（M5-T04）：ADMIN/BOSS 持有，其余角色拒绝
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.BOSS), "production:material"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.ADMIN), "production:material"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.ACCOUNTANT), "production:material"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.PURCHASER), "production:material"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.SALES), "production:material"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.WAREHOUSE), "production:material"));
+        // 生产成本归集与结转（M5-T06，成本是会计动作 D8）：ADMIN/BOSS/ACCOUNTANT 持有，其余角色拒绝
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.ACCOUNTANT), "production:cost"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.BOSS), "production:cost"));
+        assertTrue(RolePermissions.isGrantedCode(Set.of(Role.ADMIN), "production:cost"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.PURCHASER), "production:cost"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.SALES), "production:cost"));
+        assertFalse(RolePermissions.isGrantedCode(Set.of(Role.WAREHOUSE), "production:cost"));
     }
 
     @Test

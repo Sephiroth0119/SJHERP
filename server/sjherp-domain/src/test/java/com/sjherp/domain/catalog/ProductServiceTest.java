@@ -63,7 +63,8 @@ class ProductServiceTest {
 
     private ProductCommand command(String code, String name) {
         return new ProductCommand(code, name, "500ml", categoryId, bottleUnitId, "6901234567890",
-                "测试商品", List.of(new UnitConversion(boxUnitId, new BigDecimal("12"))));
+                "测试商品", List.of(new UnitConversion(boxUnitId, new BigDecimal("12"))),
+                InventoryCategory.MERCHANDISE);
     }
 
     @Test
@@ -98,28 +99,49 @@ class ProductServiceTest {
     }
 
     @Test
+    void 更新存货类别_已有库存流水被拒_未发生流水可修改() {
+        Product product = service.create(command("COLA-001", "可乐"), OPERATOR);
+        ProductService guarded = serviceWithStockChecker(productStockAndTransactions(false, true));
+
+        ProductCommand rawMaterial = new ProductCommand("COLA-001", "可乐", "500ml", categoryId,
+                bottleUnitId, "6901234567890", "测试商品",
+                List.of(new UnitConversion(boxUnitId, new BigDecimal("12"))),
+                InventoryCategory.RAW_MATERIAL);
+        IllegalArgumentException rejected = assertThrows(IllegalArgumentException.class,
+                () -> guarded.update(product.getId(), rawMaterial, OPERATOR));
+        assertTrue(rejected.getMessage().contains("已有库存流水"));
+        assertEquals(InventoryCategory.MERCHANDISE, guarded.get(product.getId()).getInventoryCategory());
+
+        ProductService unguarded = serviceWithStockChecker(productStockAndTransactions(false, false));
+        Product updated = unguarded.update(product.getId(), rawMaterial, OPERATOR);
+        assertEquals(InventoryCategory.RAW_MATERIAL, updated.getInventoryCategory());
+    }
+
+    @Test
     void 基本单位不存在被拒绝() {
-        ProductCommand cmd = new ProductCommand(null, "可乐", null, null, 999L, null, null, null);
+        ProductCommand cmd = new ProductCommand(null, "可乐", null, null, 999L, null, null, null,
+                InventoryCategory.MERCHANDISE);
         assertThrows(CatalogNotFoundException.class, () -> service.create(cmd, OPERATOR));
     }
 
     @Test
     void 类目不存在被拒绝() {
-        ProductCommand cmd = new ProductCommand(null, "可乐", null, 999L, bottleUnitId, null, null, null);
+        ProductCommand cmd = new ProductCommand(null, "可乐", null, 999L, bottleUnitId, null, null, null,
+                InventoryCategory.MERCHANDISE);
         assertThrows(CatalogNotFoundException.class, () -> service.create(cmd, OPERATOR));
     }
 
     @Test
     void 换算单位不存在被拒绝() {
         ProductCommand cmd = new ProductCommand(null, "可乐", null, null, bottleUnitId, null, null,
-                List.of(new UnitConversion(999L, new BigDecimal("12"))));
+                List.of(new UnitConversion(999L, new BigDecimal("12"))), InventoryCategory.MERCHANDISE);
         assertThrows(CatalogNotFoundException.class, () -> service.create(cmd, OPERATOR));
     }
 
     @Test
     void 基本单位登记换算率被拒绝() {
         ProductCommand cmd = new ProductCommand(null, "可乐", null, null, bottleUnitId, null, null,
-                List.of(new UnitConversion(bottleUnitId, new BigDecimal("1"))));
+                List.of(new UnitConversion(bottleUnitId, new BigDecimal("1"))), InventoryCategory.MERCHANDISE);
         assertThrows(IllegalArgumentException.class, () -> service.create(cmd, OPERATOR));
     }
 
@@ -127,7 +149,7 @@ class ProductServiceTest {
     void 换算单位重复登记被拒绝() {
         ProductCommand cmd = new ProductCommand(null, "可乐", null, null, bottleUnitId, null, null,
                 List.of(new UnitConversion(boxUnitId, new BigDecimal("12")),
-                        new UnitConversion(boxUnitId, new BigDecimal("24"))));
+                        new UnitConversion(boxUnitId, new BigDecimal("24"))), InventoryCategory.MERCHANDISE);
         assertThrows(IllegalArgumentException.class, () -> service.create(cmd, OPERATOR));
     }
 
@@ -166,6 +188,30 @@ class ProductServiceTest {
             @Override
             public boolean productHasStock(long productId) {
                 return hasStock;
+            }
+
+            @Override
+            public boolean productHasTransactions(long productId) {
+                return false;
+            }
+        };
+    }
+
+    private static StockChecker productStockAndTransactions(boolean hasStock, boolean hasTransactions) {
+        return new StockChecker() {
+            @Override
+            public boolean warehouseHasStock(long warehouseId) {
+                return false;
+            }
+
+            @Override
+            public boolean productHasStock(long productId) {
+                return hasStock;
+            }
+
+            @Override
+            public boolean productHasTransactions(long productId) {
+                return hasTransactions;
             }
         };
     }

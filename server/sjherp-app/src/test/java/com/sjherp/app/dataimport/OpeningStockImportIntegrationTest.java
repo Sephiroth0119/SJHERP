@@ -297,7 +297,8 @@ class OpeningStockImportIntegrationTest {
     }
 
     private static void createProduct(String code, String name, long unitId) {
-        productService.create(new ProductCommand(code, name, null, null, unitId, null, null, java.util.List.of()),
+        productService.create(new ProductCommand(code, name, null, null, unitId, null, null, java.util.List.of(),
+                        com.sjherp.domain.catalog.InventoryCategory.MERCHANDISE),
                 OPERATOR);
     }
 

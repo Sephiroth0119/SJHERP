@@ -129,7 +129,7 @@ class PurchaseReversalFlowIntegrationTest {
     @EnableTransactionManagement
     @EnableAspectJAutoProxy(proxyTargetClass = true)
     @Import({AuditConfig.class, InventoryInfraConfig.class, PurchaseInfraConfig.class,
-            GlInfraConfig.class})
+            GlInfraConfig.class, ProductRepositoryTestConfig.class})
     static class TestConfig {
 
         @Bean

@@ -10,7 +10,10 @@ import static org.mockito.Mockito.when;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
+import java.net.URI;
+import java.time.Instant;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -24,6 +27,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.aop.aspectj.annotation.AspectJProxyFactory;
 import org.springframework.beans.factory.config.BeanDefinition;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
 import org.springframework.core.type.filter.RegexPatternTypeFilter;
 
@@ -37,6 +41,10 @@ import com.sjherp.domain.catalog.UnitRepository;
 import com.sjherp.domain.catalog.UnitService;
 import com.sjherp.domain.common.audit.Audited;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
+import com.sjherp.app.memory.MemoryIndexStateService;
+import com.sjherp.app.memory.MemoryIndexingService;
+import com.sjherp.app.memory.MemoryProperties;
+import com.sjherp.app.memory.MemoryService;
 import com.sjherp.domain.gap.BusinessModule;
 import com.sjherp.domain.gap.GapRecordCommand;
 import com.sjherp.domain.gap.GapRecordRepository;
@@ -46,6 +54,15 @@ import com.sjherp.domain.identity.PasswordHasher;
 import com.sjherp.domain.identity.Role;
 import com.sjherp.domain.identity.UserRepository;
 import com.sjherp.domain.identity.UserService;
+import com.sjherp.domain.memory.EmbeddingClient;
+import com.sjherp.domain.memory.EmbeddingPurpose;
+import com.sjherp.domain.memory.EmbeddingVector;
+import com.sjherp.domain.memory.MemoryEntry;
+import com.sjherp.domain.memory.MemoryEntryCommand;
+import com.sjherp.domain.memory.MemoryEntryRepository;
+import com.sjherp.domain.memory.MemorySourceType;
+import com.sjherp.domain.memory.MemoryType;
+import com.sjherp.domain.memory.VectorIndex;
 import com.sjherp.domain.partner.CustomerCommand;
 import com.sjherp.domain.partner.CustomerRepository;
 import com.sjherp.domain.partner.CustomerService;
@@ -118,7 +135,8 @@ class AuditWriteCoverageTest {
 
         ProductService service = proxied(new ProductService(productRepository, categoryRepository,
                 unitRepository, numberGenerator("SKU-202606-0001")));
-        service.create(new ProductCommand(null, "可乐", null, null, 1L, null, null, null), OPERATOR);
+        service.create(new ProductCommand(null, "可乐", null, null, 1L, null, null, null,
+                com.sjherp.domain.catalog.InventoryCategory.MERCHANDISE), OPERATOR);
 
         assertAudit("product.create", "product");
     }
@@ -201,6 +219,113 @@ class AuditWriteCoverageTest {
                 "缺导入能力", BusinessModule.GENERAL, GapSeverity.MEDIUM, "7"), OPERATOR);
 
         assertAudit("gap.create", "gap");
+    }
+
+    @Test
+    void 大记忆创建产生审计记录且摘要不含原文() {
+        MemoryEntryRepository repository = mock(MemoryEntryRepository.class);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            MemoryEntry entry = invocation.getArgument(0);
+            entry.assignId(11L);
+            return null;
+        }).when(repository).save(any(MemoryEntry.class));
+        MemoryService service = proxied(new MemoryService(repository,
+                numberGenerator("MEM-202607-0001"), mock(ApplicationEventPublisher.class)));
+
+        service.create(memoryCommand("大客户口径", "年采购金额超过50万元"), OPERATOR);
+
+        AuditLogEntry entry = capturedEntry();
+        assertEquals("memory.create", entry.action());
+        assertEquals("memory", entry.targetType());
+        assertEquals(OPERATOR, entry.operator());
+        assertTrue(!entry.summary().contains("年采购金额超过50万元"),
+                "大记忆审计摘要不得包含原文: " + entry.summary());
+    }
+
+    @Test
+    void 大记忆替代产生审计记录() {
+        MemoryEntryRepository repository = mock(MemoryEntryRepository.class);
+        MemoryEntry previous = memoryEntry();
+        when(repository.findByMemoryNo(previous.getMemoryNo())).thenReturn(Optional.of(previous));
+        org.mockito.Mockito.doAnswer(invocation -> {
+            MemoryEntry entry = invocation.getArgument(0);
+            if (entry.getId() == null) {
+                entry.assignId(12L);
+            }
+            return null;
+        }).when(repository).save(any(MemoryEntry.class));
+        MemoryService service = proxied(new MemoryService(repository,
+                numberGenerator("MEM-202607-0002"), mock(ApplicationEventPublisher.class)));
+
+        service.replace(previous.getMemoryNo(), memoryCommand("大客户口径V2", "新口径"), OPERATOR);
+
+        assertAudit("memory.replace", "memory");
+    }
+
+    @Test
+    void 大记忆失效产生审计记录() {
+        MemoryEntryRepository repository = mock(MemoryEntryRepository.class);
+        MemoryEntry persisted = memoryEntry();
+        when(repository.findByMemoryNo(persisted.getMemoryNo())).thenReturn(Optional.of(persisted));
+        MemoryService service = proxied(new MemoryService(repository,
+                numberGenerator("MEM-unused"), mock(ApplicationEventPublisher.class)));
+
+        service.expire(persisted.getMemoryNo(), OPERATOR);
+
+        assertAudit("memory.expire", "memory");
+    }
+
+    @Test
+    void 大记忆手工重试产生审计记录() {
+        MemoryEntryRepository repository = mock(MemoryEntryRepository.class);
+        MemoryEntry persisted = memoryEntry();
+        when(repository.findByMemoryNo(persisted.getMemoryNo())).thenReturn(Optional.of(persisted));
+        EmbeddingClient embedding = mock(EmbeddingClient.class);
+        when(embedding.embed(persisted.getContent(), EmbeddingPurpose.DOCUMENT))
+                .thenReturn(new EmbeddingVector("qwen3-embedding:0.6b", 1024,
+                        Collections.nCopies(1024, 0.1f)));
+        MemoryIndexingService service = proxied(new MemoryIndexingService(repository, embedding,
+                mock(VectorIndex.class), mock(MemoryIndexStateService.class), memoryProperties()));
+
+        service.retryIndex(persisted.getMemoryNo(), OPERATOR);
+
+        assertAudit("memory.retry_index", "memory_index");
+    }
+
+    @Test
+    void 大记忆全量重建产生审计记录() {
+        MemoryEntryRepository repository = mock(MemoryEntryRepository.class);
+        when(repository.findActiveAfterId(0, 50)).thenReturn(List.of());
+        MemoryIndexingService service = proxied(new MemoryIndexingService(repository,
+                mock(EmbeddingClient.class), mock(VectorIndex.class),
+                mock(MemoryIndexStateService.class), memoryProperties()));
+
+        service.rebuildIndex(OPERATOR);
+
+        assertAudit("memory.rebuild_index", "memory_index");
+    }
+
+    private static MemoryEntryCommand memoryCommand(String title, String content) {
+        return new MemoryEntryCommand(MemoryType.BUSINESS_TERM, title, content,
+                MemorySourceType.USER_INPUT, "session-1", null, null);
+    }
+
+    private static MemoryEntry memoryEntry() {
+        Instant now = Instant.parse("2026-07-18T00:00:00Z");
+        MemoryEntry entry = MemoryEntry.create("MEM-202607-0001", "MEM-202607-0001", 1,
+                MemoryType.BUSINESS_TERM, "大客户口径", "年采购金额超过50万元",
+                MemorySourceType.USER_INPUT, "session-1", now, null, OPERATOR, now);
+        entry.assignId(11L);
+        return entry;
+    }
+
+    private static MemoryProperties memoryProperties() {
+        return new MemoryProperties(true,
+                new MemoryProperties.Embedding("ollama", URI.create("http://localhost:11434"),
+                        "qwen3-embedding:0.6b", 1024, 60),
+                new MemoryProperties.Vector("qdrant", URI.create("http://localhost:6333"),
+                        "sjherp-memory-qwen3-0_6b-1024-v1", "COSINE"),
+                new MemoryProperties.Indexing(30, 50, 8));
     }
 
     // ---------------------------------------------------------------

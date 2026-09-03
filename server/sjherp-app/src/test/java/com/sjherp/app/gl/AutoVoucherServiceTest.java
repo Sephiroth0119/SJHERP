@@ -15,12 +15,16 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
+import com.sjherp.domain.catalog.InventoryCategory;
+import com.sjherp.domain.catalog.Product;
+import com.sjherp.domain.catalog.ProductRepository;
 import com.sjherp.domain.gl.AccountingPeriodNotFoundException;
 import com.sjherp.domain.gl.AccountingPeriodService;
 import com.sjherp.domain.gl.PeriodClosedException;
@@ -29,7 +33,9 @@ import com.sjherp.domain.gl.VoucherService;
 import com.sjherp.domain.gl.VoucherSourceType;
 import com.sjherp.domain.purchase.PurchaseInvoice;
 import com.sjherp.domain.purchase.PurchaseReceipt;
+import com.sjherp.domain.purchase.PurchaseReceiptLine;
 import com.sjherp.domain.sales.SalesDelivery;
+import com.sjherp.domain.sales.SalesDeliveryLine;
 import com.sjherp.domain.sales.SalesInvoice;
 
 /**
@@ -64,6 +70,8 @@ class AutoVoucherServiceTest {
     private VoucherService voucherService;
     private AccountingPeriodService accountingPeriodService;
     private DocumentNumberGenerator numberGenerator;
+    private ProductRepository productRepository;
+    private InventoryAccountPolicy inventoryAccountPolicy;
     private AutoVoucherService service;
 
     @BeforeEach
@@ -71,7 +79,10 @@ class AutoVoucherServiceTest {
         voucherService = mock(VoucherService.class);
         accountingPeriodService = mock(AccountingPeriodService.class);
         numberGenerator = mock(DocumentNumberGenerator.class);
-        service = new AutoVoucherService(voucherService, accountingPeriodService, numberGenerator);
+        productRepository = mock(ProductRepository.class);
+        inventoryAccountPolicy = new InventoryAccountPolicy();
+        service = new AutoVoucherService(voucherService, accountingPeriodService, numberGenerator,
+                productRepository, inventoryAccountPolicy);
         // 默认：来源单据尚无凭证（非幂等命中）+ 账期已存在（get 不抛）+ 编号生成
         when(voucherService.findBySourceDocNo(anyString())).thenReturn(List.of());
         when(numberGenerator.generate(any(), any())).thenReturn("VCH-202606-0001");
@@ -87,6 +98,7 @@ class AutoVoucherServiceTest {
         when(receipt.getDocNo()).thenReturn("PR-202606-0001");
         when(receipt.totalAmount()).thenReturn(new BigDecimal("1800.00"));
         when(receipt.getReceiptDate()).thenReturn(LocalDate.of(2026, 6, 13));
+        stubReceiptLine(receipt, 10L, new BigDecimal("1800.00"));
 
         service.generateForPurchaseReceipt(receipt, OPERATOR);
 
@@ -95,6 +107,31 @@ class AutoVoucherServiceTest {
         assertCredit(lines, ACC_PAYABLE_ESTIMATED, "1800.00");
         assertBalanced(lines);
         verifyPostedAfterCreate();
+    }
+
+    @Test
+    void 采购入库_混合原料和商品_分别借1403和1405_借贷平衡() {
+        PurchaseReceipt receipt = mock(PurchaseReceipt.class);
+        when(receipt.getDocNo()).thenReturn("PR-MIX-0001");
+        when(receipt.totalAmount()).thenReturn(new BigDecimal("300.00"));
+        when(receipt.getReceiptDate()).thenReturn(LocalDate.of(2026, 6, 13));
+        PurchaseReceiptLine rawLine = mock(PurchaseReceiptLine.class);
+        when(rawLine.getProductId()).thenReturn(1L);
+        when(rawLine.getAmount()).thenReturn(new BigDecimal("100.00"));
+        PurchaseReceiptLine goodsLine = mock(PurchaseReceiptLine.class);
+        when(goodsLine.getProductId()).thenReturn(2L);
+        when(goodsLine.getAmount()).thenReturn(new BigDecimal("200.00"));
+        when(receipt.getLines()).thenReturn(List.of(rawLine, goodsLine));
+        stubProductCategory(1L, InventoryCategory.RAW_MATERIAL);
+        stubProductCategory(2L, InventoryCategory.MERCHANDISE);
+
+        service.generateForPurchaseReceipt(receipt, OPERATOR);
+
+        List<VoucherLineInput> lines = captureLines("PR-MIX-0001");
+        assertDebit(lines, "1403", "100.00");
+        assertDebit(lines, "1405", "200.00");
+        assertCredit(lines, ACC_PAYABLE_ESTIMATED, "300.00");
+        assertBalanced(lines);
     }
 
     @Test
@@ -120,6 +157,7 @@ class AutoVoucherServiceTest {
         when(delivery.totalCogs()).thenReturn(new BigDecimal("1200.00"));
         when(delivery.getCreatedAt()).thenReturn(LocalDate.of(2026, 6, 15)
                 .atStartOfDay().toInstant(ZoneOffset.UTC));
+        stubDeliveryLine(delivery, 11L, new BigDecimal("1200.00"));
 
         service.generateForSalesDelivery(delivery, OPERATOR);
 
@@ -128,6 +166,30 @@ class AutoVoucherServiceTest {
         assertCredit(lines, ACC_INVENTORY, "1200.00");
         assertBalanced(lines);
         verifyPostedAfterCreate();
+    }
+
+    @Test
+    void 销售出库_原料和产成品混合出库_分别贷记1403和1405_借贷平衡() {
+        SalesDelivery delivery = mock(SalesDelivery.class);
+        when(delivery.getDocNo()).thenReturn("SD-MIX-0001");
+        when(delivery.totalCogs()).thenReturn(new BigDecimal("300.00"));
+        SalesDeliveryLine rawLine = mock(SalesDeliveryLine.class);
+        when(rawLine.getProductId()).thenReturn(1L);
+        when(rawLine.getCogsAmount()).thenReturn(new BigDecimal("100.00"));
+        SalesDeliveryLine finishedLine = mock(SalesDeliveryLine.class);
+        when(finishedLine.getProductId()).thenReturn(3L);
+        when(finishedLine.getCogsAmount()).thenReturn(new BigDecimal("200.00"));
+        when(delivery.getLines()).thenReturn(List.of(rawLine, finishedLine));
+        stubProductCategory(1L, InventoryCategory.RAW_MATERIAL);
+        stubProductCategory(3L, InventoryCategory.FINISHED_GOOD);
+
+        service.generateForSalesDelivery(delivery, OPERATOR);
+
+        List<VoucherLineInput> lines = captureLines("SD-MIX-0001");
+        assertDebit(lines, ACC_COGS, "300.00");
+        assertCredit(lines, "1403", "100.00");
+        assertCredit(lines, "1405", "200.00");
+        assertBalanced(lines);
     }
 
     @Test
@@ -156,6 +218,7 @@ class AutoVoucherServiceTest {
         when(receipt.getDocNo()).thenReturn("PR-202606-0007");
         when(receipt.totalAmount()).thenReturn(new BigDecimal("100.00"));
         when(receipt.getReceiptDate()).thenReturn(LocalDate.of(2026, 6, 13));
+        stubReceiptLine(receipt, 12L, new BigDecimal("100.00"));
 
         service.generateForPurchaseReceipt(receipt, OPERATOR);
 
@@ -174,6 +237,7 @@ class AutoVoucherServiceTest {
         SalesDelivery delivery = mock(SalesDelivery.class);
         when(delivery.getDocNo()).thenReturn("SD-NOW-0001");
         when(delivery.totalCogs()).thenReturn(new BigDecimal("50.00"));
+        stubDeliveryLine(delivery, 13L, new BigDecimal("50.00"));
         // 出库单无业务日：凭证日=过账日（now，UTC），账期=当月（不依赖脆弱的 createdAt 语义）
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
         String expectedPeriod = String.format("%04d%02d", today.getYear(), today.getMonthValue());
@@ -200,6 +264,7 @@ class AutoVoucherServiceTest {
         when(receipt.getDocNo()).thenReturn("PR-202606-0001");
         when(receipt.totalAmount()).thenReturn(new BigDecimal("1800.00"));
         when(receipt.getReceiptDate()).thenReturn(LocalDate.of(2026, 6, 13));
+        stubReceiptLine(receipt, 14L, new BigDecimal("1800.00"));
 
         service.generateForPurchaseReceipt(receipt, OPERATOR);
 
@@ -283,6 +348,7 @@ class AutoVoucherServiceTest {
         when(receipt.getDocNo()).thenReturn("PR-202606-0001");
         when(receipt.totalAmount()).thenReturn(new BigDecimal("1800.00"));
         when(receipt.getReceiptDate()).thenReturn(LocalDate.of(2026, 6, 13));
+        stubReceiptLine(receipt, 15L, new BigDecimal("1800.00"));
 
         service.generateForPurchaseReceipt(receipt, OPERATOR);
 
@@ -301,6 +367,7 @@ class AutoVoucherServiceTest {
         when(receipt.getDocNo()).thenReturn("PR-202606-0001");
         when(receipt.totalAmount()).thenReturn(new BigDecimal("1800.00"));
         when(receipt.getReceiptDate()).thenReturn(LocalDate.of(2026, 6, 13));
+        stubReceiptLine(receipt, 17L, new BigDecimal("1800.00"));
 
         service.generateForPurchaseReceipt(receipt, OPERATOR);
 
@@ -319,6 +386,7 @@ class AutoVoucherServiceTest {
         when(receipt.getDocNo()).thenReturn("PR-202606-0001");
         when(receipt.totalAmount()).thenReturn(new BigDecimal("1800.00"));
         when(receipt.getReceiptDate()).thenReturn(LocalDate.of(2026, 6, 13));
+        stubReceiptLine(receipt, 16L, new BigDecimal("1800.00"));
 
         // 异常必须外抛（不静默吞），由外层事务回滚整个业务过账（拆解 §5）
         assertThatThrownBy(() -> service.generateForPurchaseReceipt(receipt, OPERATOR))
@@ -392,5 +460,27 @@ class AutoVoucherServiceTest {
     /** 建草稿后立即过账（createFromSource → post 成对，同来源单号、同操作人）。 */
     private void verifyPostedAfterCreate() {
         verify(voucherService).post(eq("VCH-202606-0001"), eq(OPERATOR));
+    }
+
+    private void stubProductCategory(long productId, InventoryCategory category) {
+        Product product = mock(Product.class);
+        when(product.getInventoryCategory()).thenReturn(category);
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+    }
+
+    private void stubReceiptLine(PurchaseReceipt receipt, long productId, BigDecimal amount) {
+        PurchaseReceiptLine line = mock(PurchaseReceiptLine.class);
+        when(line.getProductId()).thenReturn(productId);
+        when(line.getAmount()).thenReturn(amount);
+        when(receipt.getLines()).thenReturn(List.of(line));
+        stubProductCategory(productId, InventoryCategory.MERCHANDISE);
+    }
+
+    private void stubDeliveryLine(SalesDelivery delivery, long productId, BigDecimal cogsAmount) {
+        SalesDeliveryLine line = mock(SalesDeliveryLine.class);
+        when(line.getProductId()).thenReturn(productId);
+        when(line.getCogsAmount()).thenReturn(cogsAmount);
+        when(delivery.getLines()).thenReturn(List.of(line));
+        stubProductCategory(productId, InventoryCategory.MERCHANDISE);
     }
 }

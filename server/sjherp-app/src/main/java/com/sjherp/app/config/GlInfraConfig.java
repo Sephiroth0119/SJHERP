@@ -5,6 +5,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import com.sjherp.app.gl.AutoVoucherService;
+import com.sjherp.app.gl.InventoryAccountPolicy;
+import com.sjherp.domain.catalog.ProductRepository;
 import com.sjherp.domain.common.event.DomainEventPublisher;
 import com.sjherp.domain.common.numbering.DocumentNumberGenerator;
 import com.sjherp.domain.gl.AccountRepository;
@@ -90,7 +92,9 @@ public class GlInfraConfig {
     @Bean
     public AutoVoucherService autoVoucherService(VoucherService voucherService,
                                                  AccountingPeriodService accountingPeriodService,
-                                                 DocumentNumberGenerator documentNumberGenerator) {
-        return new AutoVoucherService(voucherService, accountingPeriodService, documentNumberGenerator);
+                                                 DocumentNumberGenerator documentNumberGenerator,
+                                                 ProductRepository productRepository) {
+        return new AutoVoucherService(voucherService, accountingPeriodService, documentNumberGenerator,
+                productRepository, new InventoryAccountPolicy());
     }
 }

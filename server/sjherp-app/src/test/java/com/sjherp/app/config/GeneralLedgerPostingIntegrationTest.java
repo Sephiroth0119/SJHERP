@@ -103,7 +103,7 @@ class GeneralLedgerPostingIntegrationTest {
     @Configuration
     @EnableTransactionManagement
     @EnableAspectJAutoProxy(proxyTargetClass = true)
-    @Import({AuditConfig.class, GlInfraConfig.class})
+    @Import({AuditConfig.class, GlInfraConfig.class, ProductRepositoryTestConfig.class})
     static class TestConfig {
 
         @Bean

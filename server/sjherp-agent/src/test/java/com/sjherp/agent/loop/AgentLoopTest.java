@@ -409,6 +409,23 @@ class AgentLoopTest {
     }
 
     @Test
+    void separateFinalCallBlankFallsBackToFreeText() {
+        // 回归：终轮 json_object 偶发返回空内容时，应退回本轮自由文本，
+        // 而非把空串抛给上层（否则用户只会看到「模型未返回内容，请重试」死胡同）。
+        StubTool echo = StubTool.normal("echo");
+        FakeLlmClient client = new FakeLlmClient(
+                new LlmResponse("请提供单价以便创建采购单"),
+                new LlmResponse("   "));
+        AgentLoopResult result = loop(client).run(request(List.of(echo))
+                .finalJsonMode(FinalJsonMode.JSON_SEPARATE_FINAL_CALL)
+                .build());
+
+        assertEquals(2, client.callCount());
+        assertEquals("请提供单价以便创建采购单", result.finalText());
+        assertFalse(result.isPendingConfirmation());
+    }
+
+    @Test
     void withToolsModeRequestsJsonOnToolRounds() {
         StubTool echo = StubTool.normal("echo");
         FakeLlmClient client = new FakeLlmClient(new LlmResponse("{\"text\":\"final\"}"));
