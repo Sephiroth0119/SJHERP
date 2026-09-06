@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Optional;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.sjherp.domain.common.PageResult;
@@ -75,6 +76,15 @@ class ConsistencyReportServiceTest {
                 .getAnnotation(Transactional.class).readOnly()).isTrue();
         assertThat(ConsistencyReportService.class.getMethod("get", String.class)
                 .getAnnotation(Transactional.class).readOnly()).isTrue();
+    }
+
+    @Test
+    void springInjectionConstructorIsExplicitlyAutowired() throws Exception {
+        var injectionCtor = ConsistencyReportService.class.getConstructor(
+                ConsistencyCheckRunRepository.class);
+        assertThat(injectionCtor.getAnnotation(Autowired.class))
+                .as("双构造器下必须显式标注 @Autowired，否则 Spring 无法选择注入点")
+                .isNotNull();
     }
 
     private static ConsistencyCheckRun cleanRun() {

@@ -7,6 +7,7 @@ import java.time.ZoneOffset;
 import java.util.Objects;
 import java.util.Optional;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +24,7 @@ public class ConsistencyReportService {
     private final ConsistencyCheckRunRepository repository;
     private final Clock clock;
 
+    @Autowired
     public ConsistencyReportService(ConsistencyCheckRunRepository repository) {
         this(repository, Clock.systemUTC());
     }
