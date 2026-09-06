@@ -360,6 +360,43 @@ test('create, approve, and post share a synchronous in-flight guard and post req
   assert.match(transitionSource, /生成会计凭证/);
 });
 
+test('purchase receipt post/approve lock is visible and resets when opening detail', () => {
+  const source = readFileSync(
+    new URL('../src/components/PurchaseReceiptWorkbench.tsx', import.meta.url),
+    'utf8',
+  );
+  const chooseSource = source.slice(
+    source.indexOf('const choose ='),
+    source.indexOf('const applySearch ='),
+  );
+  const transitionSource = source.slice(
+    source.indexOf("const transition = async"),
+    source.indexOf('const warehouseName ='),
+  );
+
+  assert.match(chooseSource, /mutationInFlight\.current = false/);
+  assert.match(transitionSource, /if\s*\(\s*!selected\s*\)/);
+  assert.match(transitionSource, /setError\(/);
+  assert.doesNotMatch(
+    transitionSource,
+    /if\s*\(\s*!selected\s*\|\|\s*mutationInFlight\.current\s*\)\s*return/,
+  );
+  assert.match(transitionSource, /正在处理，请稍候/);
+  assert.match(
+    transitionSource,
+    /过账将增加库存、回写采购订单到货量并生成会计凭证。此操作不可直接撤销，确认继续过账吗？/,
+  );
+
+  const confirmIndex = transitionSource.indexOf('window.confirm');
+  const lockIndex = transitionSource.indexOf('mutationInFlight.current = true');
+  assert.ok(confirmIndex >= 0, 'post must call window.confirm');
+  assert.ok(lockIndex >= 0, 'post must set the in-flight lock');
+  assert.ok(
+    confirmIndex < lockIndex,
+    'window.confirm must run before the in-flight lock is set',
+  );
+});
+
 test('purchase receipt workbench isolates stale responses and supports same-filter refresh', () => {
   const source = readFileSync(
     new URL('../src/components/PurchaseReceiptWorkbench.tsx', import.meta.url),

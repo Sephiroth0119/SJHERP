@@ -4,6 +4,10 @@ import react from '@vitejs/plugin-react';
 // Vite 配置：React 插件 + 开发代理（后端就绪后将 /api 转发到 Spring Boot）
 export default defineConfig({
   plugins: [react()],
+  build: {
+    // 生产包直接输出 UTF-8 中文，避免 ascii 转义成字面 \uXXXX
+    charset: 'utf8',
+  },
   server: {
     port: 5173,
     proxy: {

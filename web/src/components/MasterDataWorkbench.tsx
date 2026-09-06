@@ -75,7 +75,7 @@ function MasterDataWorkbench<I extends BaseItem, F>({
         setError(
           cause instanceof ApiError
             ? cause.message
-            : "\u5217\u8868\u52a0\u8f7d\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5",
+            : "列表加载失败，请重试",
         );
         setLoading(false);
       });
@@ -98,7 +98,7 @@ function MasterDataWorkbench<I extends BaseItem, F>({
       .catch(() => {
         if (requestId === detailRequest.current)
           setError(
-            "\u8be6\u60c5\u52a0\u8f7d\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5",
+            "详情加载失败，请重试",
           );
       });
   };
@@ -119,13 +119,13 @@ function MasterDataWorkbench<I extends BaseItem, F>({
         : await config.create(form);
       setSelected(result);
       setEditing(false);
-      setNotice("\u6863\u6848\u5df2\u4fdd\u5b58");
+      setNotice("档案已保存");
       setReload((n) => n + 1);
     } catch (cause) {
       setError(
         cause instanceof ApiError
           ? cause.message
-          : "\u4fdd\u5b58\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5\u8f93\u5165",
+          : "保存失败，请检查输入",
       );
     } finally {
       setSaving(false);
@@ -144,15 +144,15 @@ function MasterDataWorkbench<I extends BaseItem, F>({
       setSelected(result);
       setNotice(
         result.status === "ENABLED"
-          ? "\u5df2\u542f\u7528"
-          : "\u5df2\u505c\u7528",
+          ? "已启用"
+          : "已停用",
       );
       setReload((n) => n + 1);
     } catch (cause) {
       setError(
         cause instanceof ApiError
           ? cause.message
-          : "\u72b6\u6001\u66f4\u65b0\u5931\u8d25",
+          : "状态更新失败",
       );
     } finally {
       setSaving(false);
@@ -168,7 +168,7 @@ function MasterDataWorkbench<I extends BaseItem, F>({
           </p>
           <h1>{config.title}</h1>
           <p>
-            \u67e5\u627e\u3001\u7ef4\u62a4\u65e5\u5e38\u4e1a\u52a1\u4f7f\u7528\u7684\u57fa\u7840\u8d44\u6599\u3002
+            查找、维护日常业务使用的基础资料。
           </p>
         </div>
         {canCreate && (
@@ -183,7 +183,7 @@ function MasterDataWorkbench<I extends BaseItem, F>({
               setNotice("");
             }}
           >
-            \u65b0\u5efa{config.title.replace("\u6863\u6848", "")}
+            新建{config.title.replace("档案", "")}
           </button>
         )}
       </header>
@@ -191,7 +191,7 @@ function MasterDataWorkbench<I extends BaseItem, F>({
         <div className="memory-error" role="alert">
           {error}
           <button type="button" onClick={() => setReload((n) => n + 1)}>
-            \u91cd\u8bd5
+            重试
           </button>
         </div>
       )}
@@ -202,7 +202,7 @@ function MasterDataWorkbench<I extends BaseItem, F>({
       )}
       <div className="customer-toolbar">
         <input
-          aria-label={`\u641c\u7d22${config.title}`}
+          aria-label={`搜索${config.title}`}
           placeholder={config.placeholder}
           value={draftKeyword}
           onChange={(e) => setDraftKeyword(e.target.value)}
@@ -211,36 +211,37 @@ function MasterDataWorkbench<I extends BaseItem, F>({
           }}
         />
         <select
-          aria-label="\u72b6\u6001"
+          aria-label="状态"
           value={draftStatus}
           onChange={(e) => setDraftStatus(e.target.value)}
         >
-          <option value="">\u5168\u90e8\u72b6\u6001</option>
-          <option value="ENABLED">\u542f\u7528</option>
-          <option value="DISABLED">\u505c\u7528</option>
+          <option value="">全部状态</option>
+          <option value="ENABLED">启用</option>
+          <option value="DISABLED">停用</option>
         </select>
         <button type="button" className="memory-button" onClick={apply}>
-          \u67e5\u8be2
+          查询
         </button>
       </div>
       <div className="customer-layout">
         <div className="customer-list-panel">
           {loading ? (
-            <p className="memory-empty">\u6b63\u5728\u52a0\u8f7d\u2026</p>
+            <p className="memory-empty">正在加载…</p>
           ) : items.length === 0 ? (
             <p className="memory-empty">
-              \u6682\u65e0{config.title}锛?              {canCreate
-                ? "\u53ef\u4ee5\u65b0\u5efa\u4e00\u6761\u3002"
-                : "\u8bf7\u8c03\u6574\u7b5b\u9009\u6761\u4ef6\u3002"}
+              暂无{config.title}，
+              {canCreate
+                ? "可以新建一条。"
+                : "请调整筛选条件。"}
             </p>
           ) : (
             <table className="memory-table">
               <thead>
                 <tr>
-                  <th>\u7f16\u7801</th>
-                  <th>\u540d\u79f0</th>
+                  <th>编码</th>
+                  <th>名称</th>
                   <th>{config.thirdLabel}</th>
-                  <th>\u72b6\u6001</th>
+                  <th>状态</th>
                 </tr>
               </thead>
               <tbody>
@@ -268,8 +269,8 @@ function MasterDataWorkbench<I extends BaseItem, F>({
                         className={`customer-status customer-status-${item.status.toLowerCase()}`}
                       >
                         {item.status === "ENABLED"
-                          ? "\u542f\u7528"
-                          : "\u505c\u7528"}
+                          ? "启用"
+                          : "停用"}
                       </span>
                     </td>
                   </tr>
@@ -280,7 +281,7 @@ function MasterDataWorkbench<I extends BaseItem, F>({
           {total > 0 && (
             <div className="memory-pagination">
               <span>
-                \u5171 {total} 鏉?路 \u7b2c {page} \u9875
+                共 {total} 条 · 第 {page} 页
               </span>
               <span>
                 <button
@@ -288,14 +289,14 @@ function MasterDataWorkbench<I extends BaseItem, F>({
                   disabled={page <= 1 || loading}
                   onClick={() => setPage((n) => n - 1)}
                 >
-                  \u4e0a\u4e00\u9875
+                  上一页
                 </button>
                 <button
                   type="button"
                   disabled={page * 20 >= total || loading}
                   onClick={() => setPage((n) => n + 1)}
                 >
-                  \u4e0b\u4e00\u9875
+                  下一页
                 </button>
               </span>
             </div>
@@ -305,8 +306,8 @@ function MasterDataWorkbench<I extends BaseItem, F>({
           {editing ? (
             <form className="customer-form" onSubmit={save}>
               <h2>
-                {selected ? "\u7f16\u8f91" : "\u65b0\u5efa"}
-                {config.title.replace("\u6863\u6848", "")}
+                {selected ? "编辑" : "新建"}
+                {config.title.replace("档案", "")}
               </h2>
               {config.fields(form, setForm, Boolean(selected))}
               <div className="customer-actions">
@@ -315,7 +316,7 @@ function MasterDataWorkbench<I extends BaseItem, F>({
                   className="memory-button memory-button-primary"
                   disabled={saving}
                 >
-                  {saving ? "\u4fdd\u5b58\u4e2d\u2026" : "\u4fdd\u5b58"}
+                  {saving ? "保存中…" : "保存"}
                 </button>
                 <button
                   type="button"
@@ -323,7 +324,7 @@ function MasterDataWorkbench<I extends BaseItem, F>({
                   disabled={saving}
                   onClick={() => setEditing(false)}
                 >
-                  \u53d6\u6d88
+                  取消
                 </button>
               </div>
             </form>
@@ -345,7 +346,7 @@ function MasterDataWorkbench<I extends BaseItem, F>({
                       setNotice("");
                     }}
                   >
-                    \u7f16\u8f91
+                    编辑
                   </button>
                   <button
                     type="button"
@@ -354,15 +355,15 @@ function MasterDataWorkbench<I extends BaseItem, F>({
                     onClick={() => void toggle()}
                   >
                     {selected.status === "ENABLED"
-                      ? "\u505c\u7528"
-                      : "\u542f\u7528"}
+                      ? "停用"
+                      : "启用"}
                   </button>
                 </div>
               )}
             </>
           ) : (
             <p className="memory-empty">
-              \u9009\u62e9\u5de6\u4fa7\u8bb0\u5f55\u67e5\u770b\u8be6\u60c5\u3002
+              选择左侧记录查看详情。
             </p>
           )}
         </aside>
@@ -390,13 +391,13 @@ const warehouseEmpty: WarehouseForm = {
   locationEnabled: false,
 };
 const supplierConfig: Config<api.Supplier, SupplierForm> = {
-  title: "\u4f9b\u5e94\u5546\u6863\u6848",
-  kicker: "\u91c7\u8d2d / \u57fa\u7840\u6863\u6848",
+  title: "供应商档案",
+  kicker: "采购 / 基础档案",
   createPermission: "partner:create_supplier",
   writePermission: "partner:write",
   empty: supplierEmpty,
   placeholder:
-    "\u7f16\u7801\u3001\u540d\u79f0\u3001\u8054\u7cfb\u4eba\u6216\u7535\u8bdd",
+    "编码、名称、联系人或电话",
   search: api.searchSuppliers,
   get: api.getSupplier,
   create: api.createSupplier,
@@ -411,37 +412,37 @@ const supplierConfig: Config<api.Supplier, SupplierForm> = {
     taxNo: i.taxNo ?? "",
     settlementMethod: i.settlementMethod,
   }),
-  thirdLabel: "\u8054\u7cfb\u4eba",
+  thirdLabel: "联系人",
   third: (i) => i.contactPerson ?? "—",
   fields: supplierFields,
   details: (i) => (
     <dl>
-      <dt>\u8054\u7cfb\u4eba</dt>
+      <dt>联系人</dt>
       <dd>{i.contactPerson ?? "—"}</dd>
-      <dt>\u7535\u8bdd</dt>
+      <dt>电话</dt>
       <dd>{i.contactPhone ?? "—"}</dd>
-      <dt>\u5730\u5740</dt>
+      <dt>地址</dt>
       <dd>{i.address ?? "—"}</dd>
-      <dt>\u7a0e\u53f7</dt>
+      <dt>税号</dt>
       <dd>{i.taxNo ?? "—"}</dd>
-      <dt>\u7ed3\u7b97\u65b9\u5f0f</dt>
+      <dt>结算方式</dt>
       <dd>
         {i.settlementMethod === "MONTHLY"
-          ? "\u6708\u7ed3"
+          ? "月结"
           : i.settlementMethod === "CASH"
-            ? "\u73b0\u7ed3"
-            : "\u9884\u4ed8"}
+            ? "现结"
+            : "预付"}
       </dd>
     </dl>
   ),
 };
 const warehouseConfig: Config<api.Warehouse, WarehouseForm> = {
-  title: "\u4ed3\u5e93\u6863\u6848",
-  kicker: "\u5e93\u5b58 / \u57fa\u7840\u6863\u6848",
+  title: "仓库档案",
+  kicker: "库存 / 基础档案",
   createPermission: "warehouse:create_warehouse",
   writePermission: "warehouse:write",
   empty: warehouseEmpty,
-  placeholder: "\u7f16\u7801\u3001\u540d\u79f0\u3001\u8d1f\u8d23\u4eba",
+  placeholder: "编码、名称、负责人",
   search: api.searchWarehouses,
   get: api.getWarehouse,
   create: api.createWarehouse,
@@ -454,17 +455,17 @@ const warehouseConfig: Config<api.Warehouse, WarehouseForm> = {
     manager: i.manager ?? "",
     locationEnabled: i.locationEnabled,
   }),
-  thirdLabel: "\u8d1f\u8d23\u4eba",
+  thirdLabel: "负责人",
   third: (i) => i.manager ?? "—",
   fields: warehouseFields,
   details: (i) => (
     <dl>
-      <dt>\u8d1f\u8d23\u4eba</dt>
+      <dt>负责人</dt>
       <dd>{i.manager ?? "—"}</dd>
-      <dt>\u5730\u5740</dt>
+      <dt>地址</dt>
       <dd>{i.address ?? "—"}</dd>
-      <dt>\u5e93\u4f4d\u7ba1\u7406</dt>
-      <dd>{i.locationEnabled ? "\u542f\u7528" : "\u672a\u542f\u7528"}</dd>
+      <dt>库位管理</dt>
+      <dd>{i.locationEnabled ? "启用" : "未启用"}</dd>
     </dl>
   ),
 };
@@ -477,7 +478,7 @@ function supplierFields(
   return (
     <>
       <label>
-        \u540d\u79f0
+        名称
         <input
           value={f.name}
           maxLength={200}
@@ -486,7 +487,7 @@ function supplierFields(
         />
       </label>
       <label>
-        \u7f16\u7801
+        编码
         <input
           value={f.code}
           maxLength={50}
@@ -495,7 +496,7 @@ function supplierFields(
         />
       </label>
       <label>
-        \u8054\u7cfb\u4eba
+        联系人
         <input
           value={f.contactPerson}
           maxLength={64}
@@ -503,7 +504,7 @@ function supplierFields(
         />
       </label>
       <label>
-        \u8054\u7cfb\u7535\u8bdd
+        联系电话
         <input
           value={f.contactPhone}
           maxLength={32}
@@ -511,7 +512,7 @@ function supplierFields(
         />
       </label>
       <label>
-        \u5730\u5740
+        地址
         <input
           value={f.address}
           maxLength={255}
@@ -519,7 +520,7 @@ function supplierFields(
         />
       </label>
       <label>
-        \u7a0e\u53f7
+        税号
         <input
           value={f.taxNo}
           maxLength={64}
@@ -527,7 +528,7 @@ function supplierFields(
         />
       </label>
       <label>
-        \u7ed3\u7b97\u65b9\u5f0f
+        结算方式
         <select
           value={f.settlementMethod}
           onChange={(e) =>
@@ -538,9 +539,9 @@ function supplierFields(
             })
           }
         >
-          <option value="MONTHLY">\u6708\u7ed3</option>
-          <option value="CASH">\u73b0\u7ed3</option>
-          <option value="PREPAID">\u9884\u4ed8</option>
+          <option value="MONTHLY">月结</option>
+          <option value="CASH">现结</option>
+          <option value="PREPAID">预付</option>
         </select>
       </label>
     </>
@@ -554,7 +555,7 @@ function warehouseFields(
   return (
     <>
       <label>
-        \u540d\u79f0
+        名称
         <input
           value={f.name}
           maxLength={200}
@@ -563,7 +564,7 @@ function warehouseFields(
         />
       </label>
       <label>
-        \u7f16\u7801
+        编码
         <input
           value={f.code}
           maxLength={50}
@@ -572,7 +573,7 @@ function warehouseFields(
         />
       </label>
       <label>
-        \u5730\u5740
+        地址
         <input
           value={f.address}
           maxLength={255}
@@ -580,7 +581,7 @@ function warehouseFields(
         />
       </label>
       <label>
-        \u8d1f\u8d23\u4eba
+        负责人
         <input
           value={f.manager}
           maxLength={64}
@@ -593,7 +594,7 @@ function warehouseFields(
           checked={f.locationEnabled}
           onChange={(e) => set({ ...f, locationEnabled: e.target.checked })}
         />
-        \u542f\u7528\u5e93\u4f4d\u7ba1\u7406
+        启用库位管理
       </label>
     </>
   );

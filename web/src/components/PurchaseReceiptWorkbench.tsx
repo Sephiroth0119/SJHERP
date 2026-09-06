@@ -168,6 +168,7 @@ export function PurchaseReceiptWorkbench() {
   };
 
   const choose = (receipt: receiptApi.PurchaseReceipt) => {
+    mutationInFlight.current = false;
     const version = ++detailVersion.current;
     setSelected(receipt);
     setEditing(false);
@@ -242,7 +243,14 @@ export function PurchaseReceiptWorkbench() {
   };
 
   const transition = async (action: 'approve' | 'post') => {
-    if (!selected || mutationInFlight.current) return;
+    if (!selected) {
+      setError('请先选择采购入库单');
+      return;
+    }
+    if (mutationInFlight.current) {
+      setError('正在处理，请稍候');
+      return;
+    }
     if (
       action === 'post' &&
       !window.confirm(
