@@ -69,6 +69,7 @@ export function PurchaseReceiptWorkbench() {
   const [productNames, setProductNames] = useState<Map<number, string>>(
     new Map(),
   );
+  const [postConfirming, setPostConfirming] = useState(false);
   const listVersion = useRef(0);
   const detailVersion = useRef(0);
   const mutationInFlight = useRef(false);
@@ -165,10 +166,12 @@ export function PurchaseReceiptWorkbench() {
     invalidateDetail();
     setSelected(null);
     setEditing(false);
+    setPostConfirming(false);
   };
 
   const choose = (receipt: receiptApi.PurchaseReceipt) => {
     mutationInFlight.current = false;
+    setPostConfirming(false);
     const version = ++detailVersion.current;
     setSelected(receipt);
     setEditing(false);
@@ -242,21 +245,26 @@ export function PurchaseReceiptWorkbench() {
     }
   };
 
-  const transition = async (action: 'approve' | 'post') => {
+  const transition = async (
+    action: 'approve' | 'post',
+    options: { confirmed?: boolean } = {},
+  ) => {
     if (!selected) {
       setError('请先选择采购入库单');
       return;
     }
     if (mutationInFlight.current) {
-      setError('正在处理，请稍候');
-      return;
+      if (!saving) {
+        mutationInFlight.current = false;
+      } else {
+        setError('正在处理，请稍候');
+        return;
+      }
     }
-    if (
-      action === 'post' &&
-      !window.confirm(
-        '过账将增加库存、回写采购订单到货量并生成会计凭证。此操作不可直接撤销，确认继续过账吗？',
-      )
-    ) {
+    if (action === 'post' && !options.confirmed) {
+      setPostConfirming(true);
+      setError('');
+      setNotice('');
       return;
     }
     mutationInFlight.current = true;
@@ -282,7 +290,12 @@ export function PurchaseReceiptWorkbench() {
     } finally {
       setSaving(false);
       mutationInFlight.current = false;
+      setPostConfirming(false);
     }
+  };
+
+  const cancelPostConfirm = () => {
+    setPostConfirming(false);
   };
 
   const warehouseName = (id: number) =>
@@ -479,8 +492,11 @@ export function PurchaseReceiptWorkbench() {
               warehouseName={warehouseName}
               productName={productName}
               saving={saving}
+              postConfirming={postConfirming}
               onApprove={() => void transition('approve')}
-              onPost={() => void transition('post')}
+              onRequestPost={() => void transition('post')}
+              onConfirmPost={() => void transition('post', { confirmed: true })}
+              onCancelPost={cancelPostConfirm}
             />
           ) : (
             <p className="memory-empty">选择左侧入库单查看详情。</p>
@@ -1013,8 +1029,11 @@ interface PurchaseReceiptDetailsProps {
   warehouseName: (id: number) => string;
   productName: (id: number) => string;
   saving: boolean;
+  postConfirming: boolean;
   onApprove: () => void;
-  onPost: () => void;
+  onRequestPost: () => void;
+  onConfirmPost: () => void;
+  onCancelPost: () => void;
 }
 
 function PurchaseReceiptDetails({
@@ -1022,8 +1041,11 @@ function PurchaseReceiptDetails({
   warehouseName,
   productName,
   saving,
+  postConfirming,
   onApprove,
-  onPost,
+  onRequestPost,
+  onConfirmPost,
+  onCancelPost,
 }: PurchaseReceiptDetailsProps) {
   return (
     <>
@@ -1079,19 +1101,55 @@ function PurchaseReceiptDetails({
       )}
       {receipt.status === 'APPROVED' && (
         <>
-          <p className="reference-picker-error">
-            过账将增加库存、回写采购订单到货量并生成会计凭证，完成后不能直接修改。
-          </p>
-          <div className="customer-actions">
-            <button
-              type="button"
-              className="memory-button memory-button-primary"
-              disabled={saving}
-              onClick={onPost}
+          {postConfirming ? (
+            <div
+              className="purchase-receipt-post-confirm"
+              role="alertdialog"
+              aria-labelledby="purchase-receipt-post-confirm-title"
+              aria-describedby="purchase-receipt-post-confirm-copy"
             >
-              {saving ? '处理中…' : '过账'}
-            </button>
-          </div>
+              <strong id="purchase-receipt-post-confirm-title">
+                确认过账
+              </strong>
+              <p id="purchase-receipt-post-confirm-copy">
+                过账将增加库存、回写采购订单到货量并生成会计凭证。此操作不可直接撤销，确认继续过账吗？
+              </p>
+              <div className="customer-actions">
+                <button
+                  type="button"
+                  className="memory-button memory-button-primary"
+                  disabled={saving}
+                  onClick={onConfirmPost}
+                >
+                  {saving ? '处理中…' : '确认过账'}
+                </button>
+                <button
+                  type="button"
+                  className="memory-button"
+                  disabled={saving}
+                  onClick={onCancelPost}
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <p className="reference-picker-error">
+                过账将增加库存、回写采购订单到货量并生成会计凭证，完成后不能直接修改。
+              </p>
+              <div className="customer-actions">
+                <button
+                  type="button"
+                  className="memory-button memory-button-primary"
+                  disabled={saving}
+                  onClick={onRequestPost}
+                >
+                  {saving ? '处理中…' : '过账'}
+                </button>
+              </div>
+            </>
+          )}
         </>
       )}
     </>
