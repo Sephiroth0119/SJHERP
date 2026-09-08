@@ -996,6 +996,31 @@ body {
   background: #fef2f2;
 }
 
+.purchase-receipt-post-confirm {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid #f59e0b;
+  border-radius: 7px;
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.purchase-receipt-post-confirm strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+}
+
+.purchase-receipt-post-confirm p {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.purchase-receipt-post-confirm .customer-actions {
+  margin: 0;
+}
+
 .sales-invoice-impact {
   margin: 18px 0 0;
   padding: 11px 12px;
