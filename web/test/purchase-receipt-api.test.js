@@ -355,9 +355,11 @@ test('create, approve, and post share a synchronous in-flight guard and post req
     assert.match(mutationSource, /finally \{/);
     assert.match(mutationSource, /mutationInFlight\.current = false/);
   }
-  assert.match(transitionSource, /window\.confirm\s*\(/);
-  assert.match(transitionSource, /增加库存/);
-  assert.match(transitionSource, /生成会计凭证/);
+  assert.doesNotMatch(source, /window\.confirm\s*\(/);
+  assert.match(source, /确认过账/);
+  assert.match(source, /增加库存/);
+  assert.match(source, /生成会计凭证/);
+  assert.match(source, /不可直接撤销/);
 });
 
 test('purchase receipt post/approve lock is visible and resets when opening detail', () => {
@@ -375,26 +377,56 @@ test('purchase receipt post/approve lock is visible and resets when opening deta
   );
 
   assert.match(chooseSource, /mutationInFlight\.current = false/);
+  assert.match(chooseSource, /setPostConfirming\(false\)/);
   assert.match(transitionSource, /if\s*\(\s*!selected\s*\)/);
+  assert.match(transitionSource, /请先选择采购入库单/);
   assert.match(transitionSource, /setError\(/);
   assert.doesNotMatch(
     transitionSource,
     /if\s*\(\s*!selected\s*\|\|\s*mutationInFlight\.current\s*\)\s*return/,
   );
   assert.match(transitionSource, /正在处理，请稍候/);
+  assert.match(transitionSource, /if\s*\(\s*!saving\s*\)/);
+  assert.match(transitionSource, /mutationInFlight\.current = false/);
+  assert.doesNotMatch(transitionSource, /window\.confirm/);
   assert.match(
-    transitionSource,
+    source,
     /过账将增加库存、回写采购订单到货量并生成会计凭证。此操作不可直接撤销，确认继续过账吗？/,
   );
 
-  const confirmIndex = transitionSource.indexOf('window.confirm');
+  const armIndex = transitionSource.indexOf('setPostConfirming(true)');
   const lockIndex = transitionSource.indexOf('mutationInFlight.current = true');
-  assert.ok(confirmIndex >= 0, 'post must call window.confirm');
+  assert.ok(armIndex >= 0, 'first 过账 click must arm in-page confirmation');
   assert.ok(lockIndex >= 0, 'post must set the in-flight lock');
   assert.ok(
-    confirmIndex < lockIndex,
-    'window.confirm must run before the in-flight lock is set',
+    armIndex < lockIndex,
+    'in-page confirmation must arm before the in-flight lock is set',
   );
+});
+
+test('purchase receipt post confirmation lives in the detail panel and cancel does not post', () => {
+  const source = readFileSync(
+    new URL('../src/components/PurchaseReceiptWorkbench.tsx', import.meta.url),
+    'utf8',
+  );
+  const detailsStart = source.indexOf('function PurchaseReceiptDetails');
+  assert.ok(detailsStart >= 0, 'detail panel must exist');
+  const detailsSource = source.slice(detailsStart);
+  assert.match(detailsSource, /postConfirming/);
+  assert.match(detailsSource, /role="alertdialog"/);
+  assert.match(detailsSource, /确认过账/);
+  assert.match(detailsSource, /取消/);
+  assert.match(detailsSource, /onConfirmPost/);
+  assert.match(detailsSource, /onCancelPost/);
+  assert.match(detailsSource, /onRequestPost/);
+
+  const cancelSource = source.slice(
+    source.indexOf('const cancelPostConfirm'),
+    source.indexOf('const warehouseName ='),
+  );
+  assert.match(cancelSource, /setPostConfirming\(false\)/);
+  assert.doesNotMatch(cancelSource, /postPurchaseReceipt/);
+  assert.doesNotMatch(cancelSource, /mutationInFlight\.current = true/);
 });
 
 test('purchase receipt workbench isolates stale responses and supports same-filter refresh', () => {
