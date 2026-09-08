@@ -35,7 +35,11 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   return (
     <div className="login-page">
       <section className="login-hero" aria-label="SJHERP">
-        <img className="login-hero-photo" src="/assets/login-hero.png" alt="" />
+            <img
+              className="login-hero-photo"
+              src="http://sjh-pic.oss-cn-hangzhou.aliyuncs.com/img/image.png"
+              alt=""
+            />
         <div className="login-hero-overlay" aria-hidden="true" />
         <div className="login-hero-brand">
           <span className="login-brand-name">SJHERP</span>
