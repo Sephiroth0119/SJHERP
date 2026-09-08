@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -14,7 +14,9 @@ const cssSource = [
 ].join('\n');
 const unicodeEscape = /\\u[0-9a-fA-F]{4}/;
 const garbledMarker = /鏉|锛\?/;
-const heroPath = join(webRoot, 'public/assets/login-hero.png');
+const heroUrl = 'http://sjh-pic.oss-cn-hangzhou.aliyuncs.com/img/image.png';
+const publicHeroPath = join(webRoot, 'public/assets/login-hero.png');
+const distHeroPath = join(webRoot, '../web-dist/assets/login-hero.png');
 
 test('login page keeps the real auth login call and does not hardcode demo passwords', () => {
   assert.match(loginSource, /import \{ login \} from '\.\.\/api\/authApi'/);
@@ -27,9 +29,10 @@ test('login page keeps the real auth login call and does not hardcode demo passw
   assert.doesNotMatch(loginSource, /admin123|password123|demo@|changeme/i);
 });
 
-test('login page uses the warehouse hero asset with SJHERP wordmark copy', () => {
+test('login page uses the public warehouse URL with SJHERP wordmark copy', () => {
   assert.match(loginSource, /className="login-hero"/);
-  assert.match(loginSource, /\/assets\/login-hero\.png/);
+  assert.match(loginSource, new RegExp(heroUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.doesNotMatch(loginSource, /\/assets\/login-hero\.png/);
   assert.match(loginSource, />SJHERP</);
   assert.match(loginSource, />Agent 原生 ERP</);
   assert.match(loginSource, />用户名</);
@@ -39,16 +42,9 @@ test('login page uses the warehouse hero asset with SJHERP wordmark copy', () =>
   assert.doesNotMatch(loginSource, garbledMarker);
 });
 
-test('warehouse hero photograph is stored under public/assets', () => {
-  assert.equal(existsSync(heroPath), true, 'expected web/public/assets/login-hero.png');
-  const size = statSync(heroPath).size;
-  assert.ok(size > 50_000, `hero photo too small to be the warehouse visual (${size} bytes)`);
-  const header = readFileSync(heroPath).subarray(0, 8);
-  assert.deepEqual(
-    [...header],
-    [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
-    'hero asset must remain a PNG photograph',
-  );
+test('login page does not ship a local warehouse photograph', () => {
+  assert.equal(existsSync(publicHeroPath), false, 'public/assets/login-hero.png must be removed');
+  assert.equal(existsSync(distHeroPath), false, 'web-dist/assets/login-hero.png must be removed');
 });
 
 test('login CSS is a split-screen enterprise layout with restrained motion', () => {
