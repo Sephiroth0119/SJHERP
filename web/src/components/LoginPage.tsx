@@ -6,6 +6,7 @@
 import { useState, type FormEvent } from 'react';
 import { login } from '../api/authApi';
 import { ApiError, type AuthUser } from '../api/http';
+import './LoginPage.css';
 
 interface LoginPageProps {
   onLogin: (user: AuthUser) => void;
@@ -33,39 +34,46 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
   return (
     <div className="login-page">
-      <form className="login-card" onSubmit={handleSubmit}>
-        <div className="login-brand">
+      <section className="login-hero" aria-label="SJHERP">
+        <img className="login-hero-photo" src="/assets/login-hero.png" alt="" />
+        <div className="login-hero-overlay" aria-hidden="true" />
+        <div className="login-hero-brand">
           <span className="login-brand-name">SJHERP</span>
           <span className="login-brand-sub">Agent 原生 ERP</span>
         </div>
-        <label className="login-field">
-          <span>用户名</span>
-          <input
-            type="text"
-            value={username}
-            autoComplete="username"
-            autoFocus
-            onChange={(e) => setUsername(e.target.value)}
-          />
-        </label>
-        <label className="login-field">
-          <span>密码</span>
-          <input
-            type="password"
-            value={password}
-            autoComplete="current-password"
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </label>
-        {error && <div className="login-error">{error}</div>}
-        <button
-          type="submit"
-          className="login-submit"
-          disabled={pending || username.trim() === '' || password === ''}
-        >
-          {pending ? '登录中…' : '登录'}
-        </button>
-      </form>
+      </section>
+      <section className="login-panel">
+        <form className="login-card" onSubmit={handleSubmit}>
+          <h1 className="login-card-title">登录</h1>
+          <label className="login-field">
+            <span>用户名</span>
+            <input
+              type="text"
+              value={username}
+              autoComplete="username"
+              autoFocus
+              onChange={(e) => setUsername(e.target.value)}
+            />
+          </label>
+          <label className="login-field">
+            <span>密码</span>
+            <input
+              type="password"
+              value={password}
+              autoComplete="current-password"
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </label>
+          {error && <div className="login-error">{error}</div>}
+          <button
+            type="submit"
+            className="login-submit"
+            disabled={pending || username.trim() === '' || password === ''}
+          >
+            {pending ? '登录中…' : '登录'}
+          </button>
+        </form>
+      </section>
     </div>
   );
 }
