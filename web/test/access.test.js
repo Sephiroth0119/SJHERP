@@ -22,6 +22,12 @@ test('permission grants expose only modules allowed by the signed-in permission 
   assert.equal(canAccessModule('purchase', ['purchase:order']), true);
 });
 
+test('finance settlement permission unlocks purchase and sales payment pages', () => {
+  assert.equal(canAccessModule('purchase', ['finance:settlement']), true);
+  assert.equal(canAccessModule('sales', ['finance:settlement']), true);
+  assert.equal(canAccessModule('purchase', ['sales:order']), false);
+});
+
 test('unknown or unrelated permission codes do not unlock navigation', () => {
   const permissions = ['sales:order', 'finance:voucher', 'permission:from-a-new-server'];
   assert.deepEqual(
