@@ -15,8 +15,11 @@ import { NotificationBell } from './components/NotificationBell';
 import { SupplierWorkbench, WarehouseWorkbench } from './components/MasterDataWorkbench';
 import { ProductWorkbench } from './components/ProductWorkbench';
 import { CollectionWorkbench } from './components/CollectionWorkbench';
+import { FundAccountWorkbench } from './components/FundAccountWorkbench';
 import { InventoryLedgerWorkbench } from './components/InventoryLedgerWorkbench';
+import { PayableLedgerWorkbench } from './components/PayableLedgerWorkbench';
 import { PaymentWorkbench } from './components/PaymentWorkbench';
+import { ReceivableLedgerWorkbench } from './components/ReceivableLedgerWorkbench';
 import { PurchaseInvoiceWorkbench } from './components/PurchaseInvoiceWorkbench';
 import { StockCountWorkbench } from './components/StockCountWorkbench';
 import { TransferWorkbench } from './components/TransferWorkbench';
@@ -140,6 +143,8 @@ export function App() {
           <PurchaseWorkbench permissions={permissions} />
         ) : guardedModule === 'inventory' ? (
           <InventoryWorkbench permissions={permissions} />
+        ) : guardedModule === 'finance' ? (
+          <FinanceWorkbench permissions={permissions} />
         ) : guardedModule === 'memory' && canManageMemory ? (
           <MemoryGovernancePage />
         ) : guardedModule === 'agent' || !activeItem || guardedModule === 'memory' ? (
@@ -258,5 +263,36 @@ function InventoryWorkbench({ permissions }: { permissions: string[] }) {
           : activeTab === 'product'
             ? <ProductWorkbench permissions={permissions} />
             : <WarehouseWorkbench permissions={permissions} />}
+  </>;
+}
+
+function FinanceWorkbench({ permissions }: { permissions: string[] }) {
+  const [tab, setTab] = useState<'fund' | 'payable' | 'receivable'>('fund');
+  const canWriteFunds = permissions.includes('finance:payment_account');
+  const canViewSettlements = permissions.includes('finance:settlement');
+  const canUseReceivables = permissions.includes('sales:invoice');
+  const activeTab = tab === 'receivable' && canUseReceivables
+    ? 'receivable'
+    : tab === 'payable'
+      ? 'payable'
+      : 'fund';
+
+  return <>
+    <div className="memory-tabs purchase-workbench-tabs" role="tablist" aria-label="财务工作台">
+      <button type="button" role="tab" aria-selected={activeTab === 'fund'}
+        className={activeTab === 'fund' ? 'memory-tab-active' : ''}
+        onClick={() => setTab('fund')}>资金账户</button>
+      <button type="button" role="tab" aria-selected={activeTab === 'payable'}
+        className={activeTab === 'payable' ? 'memory-tab-active' : ''}
+        onClick={() => setTab('payable')}>应付台账</button>
+      {canUseReceivables && <button type="button" role="tab" aria-selected={activeTab === 'receivable'}
+        className={activeTab === 'receivable' ? 'memory-tab-active' : ''}
+        onClick={() => setTab('receivable')}>应收台账</button>}
+    </div>
+    {activeTab === 'payable'
+      ? <PayableLedgerWorkbench canViewSettlements={canViewSettlements} />
+      : activeTab === 'receivable'
+        ? <ReceivableLedgerWorkbench canViewSettlements={canViewSettlements} />
+        : <FundAccountWorkbench canWrite={canWriteFunds} />}
   </>;
 }
