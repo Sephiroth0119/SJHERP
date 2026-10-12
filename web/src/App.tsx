@@ -14,6 +14,8 @@ import { CustomerWorkbench } from './components/CustomerWorkbench';
 import { NotificationBell } from './components/NotificationBell';
 import { SupplierWorkbench, WarehouseWorkbench } from './components/MasterDataWorkbench';
 import { ProductWorkbench } from './components/ProductWorkbench';
+import { CollectionWorkbench } from './components/CollectionWorkbench';
+import { PaymentWorkbench } from './components/PaymentWorkbench';
 import { PurchaseInvoiceWorkbench } from './components/PurchaseInvoiceWorkbench';
 import { PurchaseOrderWorkbench } from './components/PurchaseOrderWorkbench';
 import { PurchaseReceiptWorkbench } from './components/PurchaseReceiptWorkbench';
@@ -148,16 +150,19 @@ export function App() {
 }
 
 function SalesWorkbench({ permissions }: { permissions: string[] }) {
-  const [tab, setTab] = useState<'customer' | 'order' | 'delivery' | 'invoice'>('customer');
+  const [tab, setTab] = useState<'customer' | 'order' | 'delivery' | 'invoice' | 'collection'>('customer');
   const canUseSalesOrders = permissions.includes('sales:order');
   const canUseSalesDeliveries = permissions.includes('sales:delivery');
   const canUseSalesInvoices = permissions.includes('sales:invoice');
+  const canUseCollections = permissions.includes('finance:settlement');
   const activeTab = tab === 'order' && canUseSalesOrders
     ? 'order'
     : tab === 'delivery' && canUseSalesDeliveries
       ? 'delivery'
       : tab === 'invoice' && canUseSalesInvoices
         ? 'invoice'
+      : tab === 'collection' && canUseCollections
+        ? 'collection'
       : 'customer';
 
   return <>
@@ -166,6 +171,7 @@ function SalesWorkbench({ permissions }: { permissions: string[] }) {
       {canUseSalesOrders && <button type="button" role="tab" aria-selected={activeTab === 'order'} className={activeTab === 'order' ? 'memory-tab-active' : ''} onClick={() => setTab('order')}>销售订单</button>}
       {canUseSalesDeliveries && <button type="button" role="tab" aria-selected={activeTab === 'delivery'} className={activeTab === 'delivery' ? 'memory-tab-active' : ''} onClick={() => setTab('delivery')}>销售出库</button>}
       {canUseSalesInvoices && <button type="button" role="tab" aria-selected={activeTab === 'invoice'} className={activeTab === 'invoice' ? 'memory-tab-active' : ''} onClick={() => setTab('invoice')}>销售发票</button>}
+      {canUseCollections && <button type="button" role="tab" aria-selected={activeTab === 'collection'} className={activeTab === 'collection' ? 'memory-tab-active' : ''} onClick={() => setTab('collection')}>收款</button>}
     </div>
     {activeTab === 'order'
       ? <SalesOrderWorkbench />
@@ -173,23 +179,28 @@ function SalesWorkbench({ permissions }: { permissions: string[] }) {
         ? <SalesDeliveryWorkbench />
         : activeTab === 'invoice'
           ? <SalesInvoiceWorkbench />
+        : activeTab === 'collection'
+          ? <CollectionWorkbench />
       : <CustomerWorkbench permissions={permissions} />}
   </>;
 }
 
 function PurchaseWorkbench({ permissions }: { permissions: string[] }) {
   const [tab, setTab] = useState<
-    'supplier' | 'order' | 'receipt' | 'invoice'
+    'supplier' | 'order' | 'receipt' | 'invoice' | 'payment'
   >('supplier');
   const canUseOrders = permissions.includes('purchase:order');
   const canUseReceipts = permissions.includes('purchase:receipt');
   const canUseInvoices = permissions.includes('purchase:invoice');
+  const canUsePayments = permissions.includes('finance:settlement');
   const activeTab = tab === 'order' && canUseOrders
     ? 'order'
     : tab === 'receipt' && canUseReceipts
       ? 'receipt'
       : tab === 'invoice' && canUseInvoices
         ? 'invoice'
+      : tab === 'payment' && canUsePayments
+        ? 'payment'
       : 'supplier';
 
   return <>
@@ -198,6 +209,7 @@ function PurchaseWorkbench({ permissions }: { permissions: string[] }) {
       {canUseOrders && <button type="button" role="tab" aria-selected={activeTab === 'order'} className={activeTab === 'order' ? 'memory-tab-active' : ''} onClick={() => setTab('order')}>采购订单</button>}
       {canUseReceipts && <button type="button" role="tab" aria-selected={activeTab === 'receipt'} className={activeTab === 'receipt' ? 'memory-tab-active' : ''} onClick={() => setTab('receipt')}>采购入库</button>}
       {canUseInvoices && <button type="button" role="tab" aria-selected={activeTab === 'invoice'} className={activeTab === 'invoice' ? 'memory-tab-active' : ''} onClick={() => setTab('invoice')}>采购发票</button>}
+      {canUsePayments && <button type="button" role="tab" aria-selected={activeTab === 'payment'} className={activeTab === 'payment' ? 'memory-tab-active' : ''} onClick={() => setTab('payment')}>付款</button>}
     </div>
     {activeTab === 'order'
       ? <PurchaseOrderWorkbench />
@@ -205,6 +217,8 @@ function PurchaseWorkbench({ permissions }: { permissions: string[] }) {
         ? <PurchaseReceiptWorkbench />
         : activeTab === 'invoice'
           ? <PurchaseInvoiceWorkbench />
+        : activeTab === 'payment'
+          ? <PaymentWorkbench />
       : <SupplierWorkbench permissions={permissions} />}
   </>;
 }

@@ -13,11 +13,11 @@ export const MODULE_NAV_ITEMS: readonly ModuleNavItem[] = [
   { key: 'agent', label: 'Agent 助手', description: '通过对话完成业务操作（主入口）' },
   {
     key: 'purchase', label: '采购', description: '采购订单 → 入库 → 应付 → 付款',
-    requiredPermissions: ['purchase:order', 'purchase:receipt', 'purchase:invoice'],
+    requiredPermissions: ['purchase:order', 'purchase:receipt', 'purchase:invoice', 'finance:settlement'],
   },
   {
     key: 'sales', label: '销售', description: '销售订单 → 出库 → 应收 → 收款',
-    requiredPermissions: ['sales:order', 'sales:delivery', 'sales:invoice'],
+    requiredPermissions: ['sales:order', 'sales:delivery', 'sales:invoice', 'finance:settlement'],
   },
   {
     key: 'inventory', label: '库存', description: '库存台账、盘点、调拨、存货成本核算',
