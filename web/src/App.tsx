@@ -15,6 +15,7 @@ import { NotificationBell } from './components/NotificationBell';
 import { SupplierWorkbench, WarehouseWorkbench } from './components/MasterDataWorkbench';
 import { ProductWorkbench } from './components/ProductWorkbench';
 import { CollectionWorkbench } from './components/CollectionWorkbench';
+import { PayableAgingWorkbench, ReceivableAgingWorkbench } from './components/AgingReportWorkbench';
 import { FundAccountWorkbench } from './components/FundAccountWorkbench';
 import { InventoryLedgerWorkbench } from './components/InventoryLedgerWorkbench';
 import { PayableLedgerWorkbench } from './components/PayableLedgerWorkbench';
@@ -268,18 +269,25 @@ function InventoryWorkbench({ permissions }: { permissions: string[] }) {
 }
 
 function FinanceWorkbench({ permissions }: { permissions: string[] }) {
-  const [tab, setTab] = useState<'fund' | 'voucher' | 'payable' | 'receivable'>('fund');
+  const [tab, setTab] = useState<
+    'fund' | 'voucher' | 'payable' | 'receivable' | 'receivableAging' | 'payableAging'
+  >('fund');
   const canWriteFunds = permissions.includes('finance:payment_account');
   const canViewSettlements = permissions.includes('finance:settlement');
+  const canViewAging = permissions.includes('finance:settlement');
   const canUseReceivables = permissions.includes('sales:invoice');
   const canUseVouchers = permissions.includes('finance:voucher');
   const activeTab = tab === 'receivable' && canUseReceivables
     ? 'receivable'
     : tab === 'voucher' && canUseVouchers
       ? 'voucher'
-      : tab === 'payable'
-        ? 'payable'
-        : 'fund';
+      : tab === 'receivableAging' && canViewAging
+        ? 'receivableAging'
+        : tab === 'payableAging' && canViewAging
+          ? 'payableAging'
+          : tab === 'payable'
+            ? 'payable'
+            : 'fund';
 
   return <>
     <div className="memory-tabs purchase-workbench-tabs" role="tablist" aria-label="财务工作台">
@@ -292,16 +300,26 @@ function FinanceWorkbench({ permissions }: { permissions: string[] }) {
       <button type="button" role="tab" aria-selected={activeTab === 'payable'}
         className={activeTab === 'payable' ? 'memory-tab-active' : ''}
         onClick={() => setTab('payable')}>应付台账</button>
+      {canViewAging && <button type="button" role="tab" aria-selected={activeTab === 'payableAging'}
+        className={activeTab === 'payableAging' ? 'memory-tab-active' : ''}
+        onClick={() => setTab('payableAging')}>应付账龄</button>}
       {canUseReceivables && <button type="button" role="tab" aria-selected={activeTab === 'receivable'}
         className={activeTab === 'receivable' ? 'memory-tab-active' : ''}
         onClick={() => setTab('receivable')}>应收台账</button>}
+      {canViewAging && <button type="button" role="tab" aria-selected={activeTab === 'receivableAging'}
+        className={activeTab === 'receivableAging' ? 'memory-tab-active' : ''}
+        onClick={() => setTab('receivableAging')}>应收账龄</button>}
     </div>
     {activeTab === 'payable'
       ? <PayableLedgerWorkbench canViewSettlements={canViewSettlements} />
       : activeTab === 'receivable'
         ? <ReceivableLedgerWorkbench canViewSettlements={canViewSettlements} />
-        : activeTab === 'voucher'
-          ? <VoucherWorkbench canWrite={canUseVouchers} />
-          : <FundAccountWorkbench canWrite={canWriteFunds} />}
+        : activeTab === 'payableAging'
+          ? <PayableAgingWorkbench />
+          : activeTab === 'receivableAging'
+            ? <ReceivableAgingWorkbench />
+            : activeTab === 'voucher'
+              ? <VoucherWorkbench canWrite={canUseVouchers} />
+              : <FundAccountWorkbench canWrite={canWriteFunds} />}
   </>;
 }
