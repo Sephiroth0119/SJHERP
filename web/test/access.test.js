@@ -28,6 +28,13 @@ test('finance settlement permission unlocks purchase and sales payment pages', (
   assert.equal(canAccessModule('purchase', ['sales:order']), false);
 });
 
+test('any inventory permission unlocks the inventory module for ledger query', () => {
+  assert.equal(canAccessModule('inventory', ['inventory:count']), true);
+  assert.equal(canAccessModule('inventory', ['inventory:transfer']), true);
+  assert.equal(canAccessModule('inventory', ['inventory:adjust']), true);
+  assert.equal(canAccessModule('inventory', ['purchase:order']), false);
+});
+
 test('unknown or unrelated permission codes do not unlock navigation', () => {
   const permissions = ['sales:order', 'finance:voucher', 'permission:from-a-new-server'];
   assert.deepEqual(

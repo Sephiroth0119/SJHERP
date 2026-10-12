@@ -15,8 +15,11 @@ import { NotificationBell } from './components/NotificationBell';
 import { SupplierWorkbench, WarehouseWorkbench } from './components/MasterDataWorkbench';
 import { ProductWorkbench } from './components/ProductWorkbench';
 import { CollectionWorkbench } from './components/CollectionWorkbench';
+import { InventoryLedgerWorkbench } from './components/InventoryLedgerWorkbench';
 import { PaymentWorkbench } from './components/PaymentWorkbench';
 import { PurchaseInvoiceWorkbench } from './components/PurchaseInvoiceWorkbench';
+import { StockCountWorkbench } from './components/StockCountWorkbench';
+import { TransferWorkbench } from './components/TransferWorkbench';
 import { PurchaseOrderWorkbench } from './components/PurchaseOrderWorkbench';
 import { PurchaseReceiptWorkbench } from './components/PurchaseReceiptWorkbench';
 import { SalesDeliveryWorkbench } from './components/SalesDeliveryWorkbench';
@@ -224,12 +227,36 @@ function PurchaseWorkbench({ permissions }: { permissions: string[] }) {
 }
 
 function InventoryWorkbench({ permissions }: { permissions: string[] }) {
-  const [tab, setTab] = useState<'warehouse' | 'product'>('warehouse');
+  const [tab, setTab] = useState<'warehouse' | 'product' | 'count' | 'transfer' | 'ledger'>('warehouse');
+  const canUseCount = permissions.includes('inventory:count');
+  const canUseTransfer = permissions.includes('inventory:transfer');
+  const canAdjust = permissions.includes('inventory:adjust');
+  const activeTab = tab === 'count' && canUseCount
+    ? 'count'
+    : tab === 'transfer' && canUseTransfer
+      ? 'transfer'
+      : tab === 'ledger'
+        ? 'ledger'
+        : tab === 'product'
+          ? 'product'
+          : 'warehouse';
+
   return <>
-    <div className="memory-tabs inventory-workbench-tabs" role="tablist" aria-label="库存基础档案">
-      <button type="button" role="tab" aria-selected={tab === 'warehouse'} className={tab === 'warehouse' ? 'memory-tab-active' : ''} onClick={() => setTab('warehouse')}>仓库档案</button>
-      <button type="button" role="tab" aria-selected={tab === 'product'} className={tab === 'product' ? 'memory-tab-active' : ''} onClick={() => setTab('product')}>商品档案</button>
+    <div className="memory-tabs inventory-workbench-tabs" role="tablist" aria-label="库存工作台">
+      <button type="button" role="tab" aria-selected={activeTab === 'warehouse'} className={activeTab === 'warehouse' ? 'memory-tab-active' : ''} onClick={() => setTab('warehouse')}>仓库档案</button>
+      <button type="button" role="tab" aria-selected={activeTab === 'product'} className={activeTab === 'product' ? 'memory-tab-active' : ''} onClick={() => setTab('product')}>商品档案</button>
+      {canUseCount && <button type="button" role="tab" aria-selected={activeTab === 'count'} className={activeTab === 'count' ? 'memory-tab-active' : ''} onClick={() => setTab('count')}>盘点</button>}
+      {canUseTransfer && <button type="button" role="tab" aria-selected={activeTab === 'transfer'} className={activeTab === 'transfer' ? 'memory-tab-active' : ''} onClick={() => setTab('transfer')}>调拨</button>}
+      <button type="button" role="tab" aria-selected={activeTab === 'ledger'} className={activeTab === 'ledger' ? 'memory-tab-active' : ''} onClick={() => setTab('ledger')}>台账</button>
     </div>
-    {tab === 'warehouse' ? <WarehouseWorkbench permissions={permissions} /> : <ProductWorkbench permissions={permissions} />}
+    {activeTab === 'count'
+      ? <StockCountWorkbench />
+      : activeTab === 'transfer'
+        ? <TransferWorkbench />
+        : activeTab === 'ledger'
+          ? <InventoryLedgerWorkbench canAdjust={canAdjust} />
+          : activeTab === 'product'
+            ? <ProductWorkbench permissions={permissions} />
+            : <WarehouseWorkbench permissions={permissions} />}
   </>;
 }

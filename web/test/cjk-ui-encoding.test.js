@@ -38,3 +38,25 @@ test('Vite production build emits UTF-8 instead of escaped ASCII', () => {
   const source = readFileSync(new URL('../vite.config.ts', import.meta.url), 'utf8');
   assert.match(source, /charset:\s*['"]utf8['"]/);
 });
+
+test('inventory workbenches use real UTF-8 Chinese, not escaped or garbled literals', () => {
+  const files = [
+    '../src/components/StockCountWorkbench.tsx',
+    '../src/components/TransferWorkbench.tsx',
+    '../src/components/InventoryLedgerWorkbench.tsx',
+  ];
+  for (const file of files) {
+    const source = readFileSync(new URL(file, import.meta.url), 'utf8');
+    assert.doesNotMatch(source, unicodeEscape);
+    assert.doesNotMatch(source, garbledMarker);
+  }
+  const count = readFileSync(new URL('../src/components/StockCountWorkbench.tsx', import.meta.url), 'utf8');
+  assert.match(count, /库存盘点/);
+  assert.match(count, /录入本行/);
+  const transfer = readFileSync(new URL('../src/components/TransferWorkbench.tsx', import.meta.url), 'utf8');
+  assert.match(transfer, /库存调拨/);
+  assert.match(transfer, /金额守恒/);
+  const ledger = readFileSync(new URL('../src/components/InventoryLedgerWorkbench.tsx', import.meta.url), 'utf8');
+  assert.match(ledger, /库存台账/);
+  assert.match(ledger, /加权单价/);
+});
