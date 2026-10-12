@@ -44,6 +44,7 @@ test('finance workbenches use real UTF-8 Chinese, not escaped or garbled literal
     '../src/components/FundAccountWorkbench.tsx',
     '../src/components/PayableLedgerWorkbench.tsx',
     '../src/components/ReceivableLedgerWorkbench.tsx',
+    '../src/components/VoucherWorkbench.tsx',
   ];
   for (const file of files) {
     const source = readFileSync(new URL(file, import.meta.url), 'utf8');
@@ -59,6 +60,9 @@ test('finance workbenches use real UTF-8 Chinese, not escaped or garbled literal
   const receivables = readFileSync(new URL('../src/components/ReceivableLedgerWorkbench.tsx', import.meta.url), 'utf8');
   assert.match(receivables, /应收台账/);
   assert.match(receivables, /openAmount/);
+  const vouchers = readFileSync(new URL('../src/components/VoucherWorkbench.tsx', import.meta.url), 'utf8');
+  assert.match(vouchers, /记账凭证/);
+  assert.match(vouchers, /确认过账/);
 });
 
 test('inventory workbenches use real UTF-8 Chinese, not escaped or garbled literals', () => {

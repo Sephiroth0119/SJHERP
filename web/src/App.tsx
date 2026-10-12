@@ -20,6 +20,7 @@ import { InventoryLedgerWorkbench } from './components/InventoryLedgerWorkbench'
 import { PayableLedgerWorkbench } from './components/PayableLedgerWorkbench';
 import { PaymentWorkbench } from './components/PaymentWorkbench';
 import { ReceivableLedgerWorkbench } from './components/ReceivableLedgerWorkbench';
+import { VoucherWorkbench } from './components/VoucherWorkbench';
 import { PurchaseInvoiceWorkbench } from './components/PurchaseInvoiceWorkbench';
 import { StockCountWorkbench } from './components/StockCountWorkbench';
 import { TransferWorkbench } from './components/TransferWorkbench';
@@ -267,21 +268,27 @@ function InventoryWorkbench({ permissions }: { permissions: string[] }) {
 }
 
 function FinanceWorkbench({ permissions }: { permissions: string[] }) {
-  const [tab, setTab] = useState<'fund' | 'payable' | 'receivable'>('fund');
+  const [tab, setTab] = useState<'fund' | 'voucher' | 'payable' | 'receivable'>('fund');
   const canWriteFunds = permissions.includes('finance:payment_account');
   const canViewSettlements = permissions.includes('finance:settlement');
   const canUseReceivables = permissions.includes('sales:invoice');
+  const canUseVouchers = permissions.includes('finance:voucher');
   const activeTab = tab === 'receivable' && canUseReceivables
     ? 'receivable'
-    : tab === 'payable'
-      ? 'payable'
-      : 'fund';
+    : tab === 'voucher' && canUseVouchers
+      ? 'voucher'
+      : tab === 'payable'
+        ? 'payable'
+        : 'fund';
 
   return <>
     <div className="memory-tabs purchase-workbench-tabs" role="tablist" aria-label="财务工作台">
       <button type="button" role="tab" aria-selected={activeTab === 'fund'}
         className={activeTab === 'fund' ? 'memory-tab-active' : ''}
         onClick={() => setTab('fund')}>资金账户</button>
+      {canUseVouchers && <button type="button" role="tab" aria-selected={activeTab === 'voucher'}
+        className={activeTab === 'voucher' ? 'memory-tab-active' : ''}
+        onClick={() => setTab('voucher')}>凭证</button>}
       <button type="button" role="tab" aria-selected={activeTab === 'payable'}
         className={activeTab === 'payable' ? 'memory-tab-active' : ''}
         onClick={() => setTab('payable')}>应付台账</button>
@@ -293,6 +300,8 @@ function FinanceWorkbench({ permissions }: { permissions: string[] }) {
       ? <PayableLedgerWorkbench canViewSettlements={canViewSettlements} />
       : activeTab === 'receivable'
         ? <ReceivableLedgerWorkbench canViewSettlements={canViewSettlements} />
-        : <FundAccountWorkbench canWrite={canWriteFunds} />}
+        : activeTab === 'voucher'
+          ? <VoucherWorkbench canWrite={canUseVouchers} />
+          : <FundAccountWorkbench canWrite={canWriteFunds} />}
   </>;
 }
