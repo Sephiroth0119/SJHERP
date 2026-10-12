@@ -39,6 +39,28 @@ test('Vite production build emits UTF-8 instead of escaped ASCII', () => {
   assert.match(source, /charset:\s*['"]utf8['"]/);
 });
 
+test('finance workbenches use real UTF-8 Chinese, not escaped or garbled literals', () => {
+  const files = [
+    '../src/components/FundAccountWorkbench.tsx',
+    '../src/components/PayableLedgerWorkbench.tsx',
+    '../src/components/ReceivableLedgerWorkbench.tsx',
+  ];
+  for (const file of files) {
+    const source = readFileSync(new URL(file, import.meta.url), 'utf8');
+    assert.doesNotMatch(source, unicodeEscape);
+    assert.doesNotMatch(source, garbledMarker);
+  }
+  const funds = readFileSync(new URL('../src/components/FundAccountWorkbench.tsx', import.meta.url), 'utf8');
+  assert.match(funds, /资金账户/);
+  assert.match(funds, /映射 GL 科目/);
+  const payables = readFileSync(new URL('../src/components/PayableLedgerWorkbench.tsx', import.meta.url), 'utf8');
+  assert.match(payables, /应付台账/);
+  assert.match(payables, /核销轨迹/);
+  const receivables = readFileSync(new URL('../src/components/ReceivableLedgerWorkbench.tsx', import.meta.url), 'utf8');
+  assert.match(receivables, /应收台账/);
+  assert.match(receivables, /openAmount/);
+});
+
 test('inventory workbenches use real UTF-8 Chinese, not escaped or garbled literals', () => {
   const files = [
     '../src/components/StockCountWorkbench.tsx',
