@@ -103,7 +103,7 @@ export function PayableLedgerWorkbench({ canViewSettlements }: { canViewSettleme
       })
       .catch((cause: unknown) => {
         if (settlementVersion.current.isCurrent(version)) {
-          setSettlementError(errorMessage(cause, '核销轨迹加载失败。查看核销需要 finance:settlement 权限。'));
+          setSettlementError(errorMessage(cause, '核销流水加载失败。查看核销需要 finance:settlement 权限。'));
         }
       });
   };
@@ -134,7 +134,7 @@ export function PayableLedgerWorkbench({ canViewSettlements }: { canViewSettleme
       <div>
         <p className="page-kicker">财务 / 应付台账</p>
         <h1>应付台账</h1>
-        <p>只读查看采购发票过账生成的应付；核销写动作仍走采购付款单。默认列出未核销（OPEN）。</p>
+        <p>只读查看采购发票过账生成的应付；核销写动作仍走采购付款单。默认列出未核销（OPEN）。选中一行可查看该笔应付的核销流水（GET /api/settlements?type=PAYABLE&amp;targetId=），没有全局列表。</p>
       </div>
     </header>
     <div className="purchase-order-filters">
@@ -288,18 +288,20 @@ function PayableDetails({ payable, supplierName, canViewSettlements, settlements
       <dt>已核销</dt><dd>{payable.settledAmount}</dd>
       <dt>未核销 outstandingAmount</dt><dd>{payable.outstandingAmount}</dd>
     </dl>
-    <h3>核销轨迹</h3>
-    {!canViewSettlements && <p className="memory-empty">核销轨迹需要 finance:settlement 权限。</p>}
+    <h3>核销流水</h3>
+    <p>仅本笔应付（targetId=#{payable.id}）的只读核销记录；无全局流水、不可在此核销。</p>
+    {!canViewSettlements && <p className="memory-empty">核销流水需要 finance:settlement 权限。</p>}
     {settlementError && <div className="memory-error" role="alert">{settlementError}</div>}
     {canViewSettlements && settlements.length === 0 && !settlementError
       && <p className="memory-empty">暂无核销记录。</p>}
     {settlements.length > 0 && <div className="memory-table-wrap"><table className="memory-table"><thead><tr>
-      <th>记录</th><th>金额</th><th>来源单</th><th>收付款单</th><th>日期</th>
+      <th>记录</th><th>金额</th><th>来源单</th><th>收付款单</th><th>日期</th><th>操作人</th>
     </tr></thead><tbody>{settlements.map((record) => <tr key={record.id}>
       <td>#{record.id}</td><td>{record.amount}</td>
       <td>{record.targetSourceDocNo || '—'}</td>
       <td>{record.paymentDocNo || '—'}</td>
       <td>{record.settlementDate || record.createdAt || '—'}</td>
+      <td>{record.createdBy || '—'}</td>
     </tr>)}</tbody></table></div>}
   </>;
 }
