@@ -46,6 +46,9 @@ test('finance workbenches use real UTF-8 Chinese, not escaped or garbled literal
     '../src/components/ReceivableLedgerWorkbench.tsx',
     '../src/components/AgingReportWorkbench.tsx',
     '../src/components/VoucherWorkbench.tsx',
+    '../src/components/GlAccountWorkbench.tsx',
+    '../src/components/PeriodCloseWorkbench.tsx',
+    '../src/components/FinancialStatementWorkbench.tsx',
   ];
   for (const file of files) {
     const source = readFileSync(new URL(file, import.meta.url), 'utf8');
@@ -68,6 +71,15 @@ test('finance workbenches use real UTF-8 Chinese, not escaped or garbled literal
   const vouchers = readFileSync(new URL('../src/components/VoucherWorkbench.tsx', import.meta.url), 'utf8');
   assert.match(vouchers, /记账凭证/);
   assert.match(vouchers, /确认过账/);
+  const accounts = readFileSync(new URL('../src/components/GlAccountWorkbench.tsx', import.meta.url), 'utf8');
+  assert.match(accounts, /科目档案/);
+  assert.match(accounts, /预置科目不可停用/);
+  const periods = readFileSync(new URL('../src/components/PeriodCloseWorkbench.tsx', import.meta.url), 'utf8');
+  assert.match(periods, /账期关账/);
+  assert.match(periods, /确认关账/);
+  const statements = readFileSync(new URL('../src/components/FinancialStatementWorkbench.tsx', import.meta.url), 'utf8');
+  assert.match(statements, /资产负债表/);
+  assert.match(statements, /利润表/);
 });
 
 test('inventory workbenches use real UTF-8 Chinese, not escaped or garbled literals', () => {
