@@ -16,7 +16,10 @@ import { SupplierWorkbench, WarehouseWorkbench } from './components/MasterDataWo
 import { ProductWorkbench } from './components/ProductWorkbench';
 import { CollectionWorkbench } from './components/CollectionWorkbench';
 import { PayableAgingWorkbench, ReceivableAgingWorkbench } from './components/AgingReportWorkbench';
+import { BalanceSheetWorkbench, IncomeStatementWorkbench } from './components/FinancialStatementWorkbench';
 import { FundAccountWorkbench } from './components/FundAccountWorkbench';
+import { GlAccountWorkbench } from './components/GlAccountWorkbench';
+import { PeriodCloseWorkbench } from './components/PeriodCloseWorkbench';
 import { InventoryLedgerWorkbench } from './components/InventoryLedgerWorkbench';
 import { PayableLedgerWorkbench } from './components/PayableLedgerWorkbench';
 import { PaymentWorkbench } from './components/PaymentWorkbench';
@@ -270,21 +273,35 @@ function InventoryWorkbench({ permissions }: { permissions: string[] }) {
 
 function FinanceWorkbench({ permissions }: { permissions: string[] }) {
   const [tab, setTab] = useState<
-    'fund' | 'voucher' | 'payable' | 'receivable' | 'receivableAging' | 'payableAging'
+    | 'fund' | 'account' | 'voucher' | 'period'
+    | 'payable' | 'receivable' | 'receivableAging' | 'payableAging'
+    | 'balanceSheet' | 'incomeStatement'
   >('fund');
   const canWriteFunds = permissions.includes('finance:payment_account');
   const canViewSettlements = permissions.includes('finance:settlement');
   const canViewAging = permissions.includes('finance:settlement');
   const canUseReceivables = permissions.includes('sales:invoice');
   const canUseVouchers = permissions.includes('finance:voucher');
+  const canManageAccounts = permissions.includes('finance:account');
+  const canManagePeriods = permissions.includes('finance:period');
+  const canReopenPeriods = permissions.includes('finance:period_reopen');
+  const canViewReports = permissions.includes('finance:report');
   const activeTab = tab === 'receivable' && canUseReceivables
     ? 'receivable'
     : tab === 'voucher' && canUseVouchers
       ? 'voucher'
+      : tab === 'account' && canManageAccounts
+        ? 'account'
+        : tab === 'period' && canManagePeriods
+          ? 'period'
       : tab === 'receivableAging' && canViewAging
         ? 'receivableAging'
         : tab === 'payableAging' && canViewAging
           ? 'payableAging'
+          : tab === 'balanceSheet' && canViewReports
+            ? 'balanceSheet'
+            : tab === 'incomeStatement' && canViewReports
+              ? 'incomeStatement'
           : tab === 'payable'
             ? 'payable'
             : 'fund';
@@ -294,9 +311,15 @@ function FinanceWorkbench({ permissions }: { permissions: string[] }) {
       <button type="button" role="tab" aria-selected={activeTab === 'fund'}
         className={activeTab === 'fund' ? 'memory-tab-active' : ''}
         onClick={() => setTab('fund')}>资金账户</button>
+      {canManageAccounts && <button type="button" role="tab" aria-selected={activeTab === 'account'}
+        className={activeTab === 'account' ? 'memory-tab-active' : ''}
+        onClick={() => setTab('account')}>科目</button>}
       {canUseVouchers && <button type="button" role="tab" aria-selected={activeTab === 'voucher'}
         className={activeTab === 'voucher' ? 'memory-tab-active' : ''}
         onClick={() => setTab('voucher')}>凭证</button>}
+      {canManagePeriods && <button type="button" role="tab" aria-selected={activeTab === 'period'}
+        className={activeTab === 'period' ? 'memory-tab-active' : ''}
+        onClick={() => setTab('period')}>账期关账</button>}
       <button type="button" role="tab" aria-selected={activeTab === 'payable'}
         className={activeTab === 'payable' ? 'memory-tab-active' : ''}
         onClick={() => setTab('payable')}>应付台账</button>
@@ -309,6 +332,12 @@ function FinanceWorkbench({ permissions }: { permissions: string[] }) {
       {canViewAging && <button type="button" role="tab" aria-selected={activeTab === 'receivableAging'}
         className={activeTab === 'receivableAging' ? 'memory-tab-active' : ''}
         onClick={() => setTab('receivableAging')}>应收账龄</button>}
+      {canViewReports && <button type="button" role="tab" aria-selected={activeTab === 'balanceSheet'}
+        className={activeTab === 'balanceSheet' ? 'memory-tab-active' : ''}
+        onClick={() => setTab('balanceSheet')}>资产负债表</button>}
+      {canViewReports && <button type="button" role="tab" aria-selected={activeTab === 'incomeStatement'}
+        className={activeTab === 'incomeStatement' ? 'memory-tab-active' : ''}
+        onClick={() => setTab('incomeStatement')}>利润表</button>}
     </div>
     {activeTab === 'payable'
       ? <PayableLedgerWorkbench canViewSettlements={canViewSettlements} />
@@ -320,6 +349,14 @@ function FinanceWorkbench({ permissions }: { permissions: string[] }) {
             ? <ReceivableAgingWorkbench />
             : activeTab === 'voucher'
               ? <VoucherWorkbench canWrite={canUseVouchers} />
+              : activeTab === 'account'
+                ? <GlAccountWorkbench canWrite={canManageAccounts} />
+                : activeTab === 'period'
+                  ? <PeriodCloseWorkbench canClose={canManagePeriods} canReopen={canReopenPeriods} />
+                  : activeTab === 'balanceSheet'
+                    ? <BalanceSheetWorkbench />
+                    : activeTab === 'incomeStatement'
+                      ? <IncomeStatementWorkbench />
               : <FundAccountWorkbench canWrite={canWriteFunds} />}
   </>;
 }

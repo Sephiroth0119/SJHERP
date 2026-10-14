@@ -48,11 +48,13 @@ export function normalizeAuthUser(value: unknown): AuthUser | null {
  */
 export class ApiError extends Error {
   readonly status?: number;
+  readonly reasons: string[];
 
-  constructor(message: string, status?: number) {
+  constructor(message: string, status?: number, reasons: string[] = []) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.reasons = reasons;
   }
 }
 
@@ -136,12 +138,16 @@ export async function request<T>(path: string, init?: RequestInitLite): Promise<
   }
 
   if (!response.ok) {
-    // 契约：错误响应体为 { "error": "..." }，解析失败时退回通用文案
+    // 契约：错误响应体为 { "error": "..." }，关账闸门另可带 reasons[]
     let message = `请求失败（HTTP ${response.status}）`;
+    let reasons: string[] = [];
     try {
-      const body = (await response.json()) as { error?: unknown };
+      const body = (await response.json()) as { error?: unknown; reasons?: unknown };
       if (typeof body.error === 'string' && body.error !== '') {
         message = body.error;
+      }
+      if (Array.isArray(body.reasons)) {
+        reasons = body.reasons.filter((item): item is string => typeof item === 'string' && item !== '');
       }
     } catch {
       // 响应体不是 JSON，忽略，用通用文案
@@ -151,7 +157,7 @@ export async function request<T>(path: string, init?: RequestInitLite): Promise<
       endFrontendSession();
       unauthorizedHandler?.();
     }
-    throw new ApiError(message, response.status);
+    throw new ApiError(message, response.status, reasons);
   }
 
   try {
