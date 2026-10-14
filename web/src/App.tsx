@@ -8,8 +8,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { ChatPanel } from './components/chat/ChatPanel';
 import { LoginPage } from './components/LoginPage';
-import { ModulePlaceholder } from './components/ModulePlaceholder';
 import { MemoryGovernancePage } from './components/memory/MemoryGovernancePage';
+import { ProductionWorkbench } from './components/ProductionWorkbench';
 import { CustomerWorkbench } from './components/CustomerWorkbench';
 import { NotificationBell } from './components/NotificationBell';
 import { SupplierWorkbench, WarehouseWorkbench } from './components/MasterDataWorkbench';
@@ -30,7 +30,7 @@ import { PurchaseReceiptWorkbench } from './components/PurchaseReceiptWorkbench'
 import { SalesDeliveryWorkbench } from './components/SalesDeliveryWorkbench';
 import { SalesInvoiceWorkbench } from './components/SalesInvoiceWorkbench';
 import { SalesOrderWorkbench } from './components/SalesOrderWorkbench';
-import { MODULE_NAV_ITEMS, type ModuleKey } from './types/navigation';
+import { type ModuleKey } from './types/navigation';
 import {
   clearAuth,
   getStoredUser,
@@ -121,7 +121,6 @@ export function App() {
   }
 
   const guardedModule = guardModule(activeModule, permissions);
-  const activeItem = MODULE_NAV_ITEMS.find((item) => item.key === guardedModule);
   const tokenWarning = isTokenExpiringSoon(getToken() ?? '', nowMs);
 
   return (
@@ -147,12 +146,12 @@ export function App() {
           <InventoryWorkbench permissions={permissions} />
         ) : guardedModule === 'finance' ? (
           <FinanceWorkbench permissions={permissions} />
+        ) : guardedModule === 'production' ? (
+          <ProductionWorkbench permissions={permissions} />
         ) : guardedModule === 'memory' && canManageMemory ? (
           <MemoryGovernancePage />
-        ) : guardedModule === 'agent' || !activeItem || guardedModule === 'memory' ? (
-          <ChatPanel />
         ) : (
-          <ModulePlaceholder module={activeItem} />
+          <ChatPanel />
         )}
       </main>
     </div>

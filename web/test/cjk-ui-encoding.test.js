@@ -70,6 +70,34 @@ test('finance workbenches use real UTF-8 Chinese, not escaped or garbled literal
   assert.match(vouchers, /确认过账/);
 });
 
+test('production workbenches use real UTF-8 Chinese, not escaped or garbled literals', () => {
+  const files = [
+    '../src/components/ProductionWorkbench.tsx',
+    '../src/components/BomWorkbench.tsx',
+    '../src/components/RoutingWorkbench.tsx',
+  ];
+  for (const file of files) {
+    const source = readFileSync(new URL(file, import.meta.url), 'utf8');
+    assert.doesNotMatch(source, unicodeEscape);
+    assert.doesNotMatch(source, garbledMarker);
+  }
+  const production = readFileSync(
+    new URL('../src/components/ProductionWorkbench.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(production, /生产工作台/);
+  assert.match(production, /工艺路线/);
+  const boms = readFileSync(new URL('../src/components/BomWorkbench.tsx', import.meta.url), 'utf8');
+  assert.match(boms, /物料清单/);
+  assert.match(boms, /损耗率/);
+  const routings = readFileSync(
+    new URL('../src/components/RoutingWorkbench.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(routings, /工艺路线/);
+  assert.match(routings, /标准工时/);
+});
+
 test('inventory workbenches use real UTF-8 Chinese, not escaped or garbled literals', () => {
   const files = [
     '../src/components/StockCountWorkbench.tsx',
