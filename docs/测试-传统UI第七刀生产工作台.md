@@ -46,6 +46,6 @@
 
 ## 结果
 
-- `cd web && npm test`：见本批提交后输出。
-- `cd web && npm run build`：TypeScript 检查与 Vite production build。
+- `cd web && npm test`：166 项通过（含 BOM 列表/创建窄 body/启停 explode、损耗率边界、工艺路线工时字符串、权限 fail-closed、in-flight 守卫与 CJK 文案）。
+- `cd web && npm run build`：TypeScript 检查与 Vite production build 通过。
 - 未改 `web-dist/`、`server/`。

@@ -279,7 +279,7 @@ test('BOM workbench has in-flight guard confirmation explode and race isolation'
     assert.match(source, new RegExp(token));
   }
   assert.match(source, /explodeBom/);
-  assert.match(source, /\/api\/production\/boms/);
+  assert.match(source, /searchBoms|getBom|createBom|updateBom/);
   assert.match(source, /role="alert"/);
   assert.match(source, /role="status"/);
   assert.match(source, /production:bom/);
