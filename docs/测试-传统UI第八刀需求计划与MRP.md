@@ -48,6 +48,6 @@
 
 ## 结果
 
-- `cd web && npm test`：待本刀合入后记录。
-- `cd web && npm run build`：待本刀合入后记录。
+- `cd web && npm test`：199 项通过（含需求计划列表/创建窄 body/更新空备注与交期、数量 0 与空行拦截、商品+单位去重、MRP 历史/详情数量字符串、触发窄 body、未选仓与双来源关闭拦截、权限 fail-closed、in-flight 守卫、仓库选择器与生产/采购分流、CJK 文案）。
+- `cd web && npm run build`：TypeScript 检查与 Vite production build 通过。
 - 未改 `web-dist/`、`server/`。
