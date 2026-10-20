@@ -87,6 +87,8 @@ test('production workbenches use real UTF-8 Chinese, not escaped or garbled lite
     '../src/components/ProductionWorkbench.tsx',
     '../src/components/BomWorkbench.tsx',
     '../src/components/RoutingWorkbench.tsx',
+    '../src/components/DemandPlanWorkbench.tsx',
+    '../src/components/MrpWorkbench.tsx',
   ];
   for (const file of files) {
     const source = readFileSync(new URL(file, import.meta.url), 'utf8');
@@ -99,6 +101,8 @@ test('production workbenches use real UTF-8 Chinese, not escaped or garbled lite
   );
   assert.match(production, /生产工作台/);
   assert.match(production, /工艺路线/);
+  assert.match(production, /需求计划/);
+  assert.match(production, />MRP</);
   const boms = readFileSync(new URL('../src/components/BomWorkbench.tsx', import.meta.url), 'utf8');
   assert.match(boms, /物料清单/);
   assert.match(boms, /损耗率/);
@@ -108,6 +112,19 @@ test('production workbenches use real UTF-8 Chinese, not escaped or garbled lite
   );
   assert.match(routings, /工艺路线/);
   assert.match(routings, /标准工时/);
+  const plans = readFileSync(
+    new URL('../src/components/DemandPlanWorkbench.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(plans, /需求计划/);
+  assert.match(plans, /计划日期/);
+  const mrp = readFileSync(
+    new URL('../src/components/MrpWorkbench.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(mrp, /MRP 运行/);
+  assert.match(mrp, /生产建议/);
+  assert.match(mrp, /采购建议/);
 });
 
 test('inventory workbenches use real UTF-8 Chinese, not escaped or garbled literals', () => {
