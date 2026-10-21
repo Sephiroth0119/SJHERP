@@ -597,6 +597,8 @@ class AgentLoopTest {
         assertEquals("{\"text\":\"final\"}", result.finalText());
         assertEquals("{\"text\":\"final\"}", listener.deltas.toString());
         assertEquals(1, listener.calls);
-        assertEquals(1, echo.executions);
+        assertEquals(2, client.callCount());
+        assertEquals(0, echo.executions);
+        assertFalse(listener.deltas.toString().contains("自由文本"));
     }
 }
