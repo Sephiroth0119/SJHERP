@@ -267,7 +267,7 @@ test('BOM tab is mounted under production and write is fail-closed on production
   assert.equal(workbenchSource.includes('<BomWorkbench canWrite={canWriteBom} />'), true);
   assert.equal(workbenchSource.includes('>需求计划</button>'), true);
   assert.doesNotMatch(workbenchSource, /Role\.ADMIN|roles\.includes/);
-  assert.doesNotMatch(workbenchSource, /领料|报工|成本结转/);
+  assert.doesNotMatch(workbenchSource, /成本结转|ModulePlaceholder/);
 });
 
 test('BOM workbench has in-flight guard confirmation explode and race isolation', () => {

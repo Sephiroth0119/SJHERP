@@ -90,6 +90,10 @@ test('production workbenches use real UTF-8 Chinese, not escaped or garbled lite
     '../src/components/DemandPlanWorkbench.tsx',
     '../src/components/MrpWorkbench.tsx',
     '../src/components/WorkOrderWorkbench.tsx',
+    '../src/components/MaterialIssueWorkbench.tsx',
+    '../src/components/MaterialReturnWorkbench.tsx',
+    '../src/components/ProductionReportWorkbench.tsx',
+    '../src/components/productionReferencePickers.tsx',
   ];
   for (const file of files) {
     const source = readFileSync(new URL(file, import.meta.url), 'utf8');
@@ -134,6 +138,27 @@ test('production workbenches use real UTF-8 Chinese, not escaped or garbled lite
   assert.match(workOrders, /手工建单/);
   assert.match(workOrders, /从 MRP 建单/);
   assert.match(production, />工单</);
+  assert.match(production, />领料</);
+  assert.match(production, />退料</);
+  assert.match(production, />报工</);
+  const issues = readFileSync(
+    new URL('../src/components/MaterialIssueWorkbench.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(issues, /领料与齐套/);
+  assert.match(issues, /齐套检查/);
+  const returns = readFileSync(
+    new URL('../src/components/MaterialReturnWorkbench.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(returns, /退料/);
+  assert.match(returns, /原领料单/);
+  const reports = readFileSync(
+    new URL('../src/components/ProductionReportWorkbench.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(reports, /报工与完工入库/);
+  assert.match(reports, /完工数量/);
 });
 
 test('inventory workbenches use real UTF-8 Chinese, not escaped or garbled literals', () => {
