@@ -173,8 +173,9 @@ export function ChatPanel({ permissions }: ChatPanelProps) {
           }
         }
       }
-      if (items.length > 0) {
-        await openSession(items[0].sessionId);
+      const latest = items[0];
+      if (latest) {
+        await openSession(latest.sessionId);
         setPending(false);
         return;
       }

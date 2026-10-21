@@ -29,7 +29,7 @@ import { parseSseBlock } from './chatStream.ts';
 export { parseSseBlock, parseSseBlocks } from './chatStream.ts';
 
 /** 是否启用 mock 模式（默认 false，走真实后端） */
-export const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
+export const USE_MOCK = import.meta.env?.VITE_USE_MOCK === 'true';
 
 /** localStorage 键：当前聊天会话 id（退出登录时一并清除，避免串到他人会话） */
 export const CHAT_SESSION_STORAGE_KEY = SESSION_STORAGE_KEY;
