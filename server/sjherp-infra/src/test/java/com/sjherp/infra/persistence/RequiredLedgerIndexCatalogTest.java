@@ -50,8 +50,7 @@ class RequiredLedgerIndexCatalogTest {
                     .as("Flyway 必须声明热路径索引 %s（M8-T05）", index)
                     .contains(index);
         }
-        Path catalog = Path.of("").toAbsolutePath().getParent().getParent()
-                .resolve("deploy/perf/required-indexes.txt");
+        Path catalog = findRequiredIndexCatalog();
         assertThat(catalog).as("deploy/perf/required-indexes.txt").exists();
         String listed = Files.readString(catalog);
         for (String index : REQUIRED_INDEXES) {
@@ -59,6 +58,18 @@ class RequiredLedgerIndexCatalogTest {
                     .as("required-indexes.txt 必须列出 %s", index)
                     .contains(index);
         }
+    }
+
+    private static Path findRequiredIndexCatalog() {
+        Path dir = Path.of("").toAbsolutePath();
+        while (dir != null) {
+            Path candidate = dir.resolve("deploy/perf/required-indexes.txt");
+            if (Files.exists(candidate)) {
+                return candidate;
+            }
+            dir = dir.getParent();
+        }
+        return Path.of("deploy/perf/required-indexes.txt");
     }
 
     private static String readMigrations(String... classpathFiles) {

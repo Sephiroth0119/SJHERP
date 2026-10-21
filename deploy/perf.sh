@@ -159,7 +159,8 @@ run_full() {
     SJHERP_PERF_SCALE=full mvn -B -ntp test -pl sjherp-app -am \
       -Dtest=DocumentPostingPerfIntegrationTest \
       -Dgroups=integration-db \
-      -DexcludedGroups=none
+      -DexcludedGroups=none \
+      -Dsurefire.failIfNoSpecifiedTests=false
   )
   info "perf --full 通过"
 }

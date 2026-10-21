@@ -114,8 +114,9 @@ class DocumentPostingPerfIntegrationTest {
             config.setJdbcUrl(MYSQL.getJdbcUrl());
             config.setUsername(MYSQL.getUsername());
             config.setPassword(MYSQL.getPassword());
-            config.setMaximumPoolSize(80);
-            config.setMinimumIdle(4);
+            // 50 工作线程 × 2 连接（业务事务 + afterCommit 审计 REQUIRES_NEW）瞬时峰值 100
+            config.setMaximumPoolSize(128);
+            config.setMinimumIdle(8);
             config.setPoolName("it-m8-t05-perf");
             return new HikariDataSource(config);
         }

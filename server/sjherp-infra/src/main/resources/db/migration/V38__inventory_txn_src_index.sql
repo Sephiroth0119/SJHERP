@@ -5,4 +5,5 @@
 -- 不能覆盖按来源单号点查。百万行流水下缺本索引会退化成全表扫描（EXPLAIN type=ALL）。
 -- 本迁移只加二级索引，不改列、不改写路径；库存仍只允许 InventoryService 写入。
 ALTER TABLE inventory_transaction
-    ADD KEY idx_inventory_txn_src (tenant_id, src_doc_no, src_line_no);
+    ADD KEY idx_inventory_txn_src (tenant_id, src_doc_no, src_line_no),
+    ALGORITHM=INPLACE, LOCK=NONE;
