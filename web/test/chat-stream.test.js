@@ -6,7 +6,7 @@ import {
   AGENT_PROTOCOL_VERSION,
   reconstructReplyFromStreamEvents,
 } from '../src/types/agent.ts';
-import { parseSseBlock, parseSseBlocks } from '../src/api/chatApi.ts';
+import { parseSseBlock, parseSseBlocks } from '../src/api/chatStream.ts';
 
 const chatPanelSource = readFileSync(new URL('../src/components/chat/ChatPanel.tsx', import.meta.url), 'utf8');
 const messageListSource = readFileSync(new URL('../src/components/chat/MessageList.tsx', import.meta.url), 'utf8');
