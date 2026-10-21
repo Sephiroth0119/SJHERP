@@ -101,13 +101,29 @@ assert_live_index() {
   grep -Fxq "$want" <<<"$names" || die "运行中的 MySQL 缺少索引 $want"
 }
 
-explain_mentions_index() {
+table_row_count() {
   local database="$1"
-  local sql="$2"
-  local want="$3"
-  local out
+  local table="$2"
+  mysql_cli -N -s -e "SELECT COUNT(*) FROM \`${database}\`.${table}" | tr -d '\r[:space:]'
+}
+
+explain_hot_query() {
+  local database="$1"
+  local table="$2"
+  local sql="$3"
+  local want="$4"
+  local out rows
   out="$(mysql_cli -e "USE \`${database}\`; EXPLAIN ${sql}" 2>/dev/null || true)"
-  grep -Fq "$want" <<<"$out" || die "EXPLAIN 未提到索引 $want。SQL=${sql}"$'\n'"$out"
+  if grep -Fq "$want" <<<"$out"; then
+    return 0
+  fi
+  rows="$(table_row_count "$database" "$table")"
+  rows="${rows:-0}"
+  if [[ "$rows" =~ ^[0-9]+$ && "$rows" -eq 0 ]]; then
+    info "表 ${table} 为空，EXPLAIN 可不显示 key（SHOW INDEX 已确认 ${want}）"
+    return 0
+  fi
+  die "EXPLAIN 未提到索引 $want（表 ${table} 有 ${rows} 行）。SQL=${sql}"$'\n'"$out"
 }
 
 run_smoke() {
@@ -133,19 +149,19 @@ run_smoke() {
   assert_live_index "$line_idx" idx_voucher_line_account
   info "SHOW INDEX 通过"
 
-  explain_mentions_index "$database" \
+  explain_hot_query "$database" inventory_balance \
     "SELECT id FROM inventory_balance WHERE tenant_id=0 AND warehouse_id=1 AND product_id=1 AND batch_id=0 FOR UPDATE" \
     "uk_inventory_balance_dim"
-  explain_mentions_index "$database" \
+  explain_hot_query "$database" inventory_transaction \
     "SELECT id FROM inventory_transaction WHERE tenant_id=0 AND warehouse_id=1 AND product_id=1 AND unit_cost IS NOT NULL ORDER BY id DESC LIMIT 1" \
     "idx_inventory_txn_dim"
-  explain_mentions_index "$database" \
+  explain_hot_query "$database" inventory_transaction \
     "SELECT id FROM inventory_transaction WHERE tenant_id=0 AND idempotency_key='PERFSEED:missing'" \
     "uk_inventory_txn_idempotency"
-  explain_mentions_index "$database" \
+  explain_hot_query "$database" inventory_transaction \
     "SELECT id FROM inventory_transaction WHERE tenant_id=0 AND src_doc_no='SD-MISSING' AND src_line_no=1" \
     "idx_inventory_txn_src"
-  info "EXPLAIN 冒烟通过（只读）"
+  info "EXPLAIN 冒烟通过（只读；空表以 SHOW INDEX 为准）"
   mysql_cli "$database" < "$EXPLAIN_SMOKE_SQL" >/dev/null
   info "perf --smoke 通过"
 }

@@ -47,6 +47,8 @@
                手动运行：mvn test -pl sjherp-infra -Dgroups=integration-db -DexcludedGroups=none
              - perf：百万行/50 并发压测（M8-T05），默认排除；deploy/perf.sh full 模式显式跑 -->
         <excludedGroups>integration,integration-db,perf</excludedGroups>
+        <!-- 1.20.x 默认 Docker API 1.32，Docker Engine 29 最低 1.44；1.21.4 恢复兼容 -->
+        <testcontainers.version>1.21.4</testcontainers.version>
     </properties>
 
     <!-- 统一管理本工程内部模块版本，子模块互相引用时无需写版本号 -->
