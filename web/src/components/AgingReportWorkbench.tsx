@@ -6,6 +6,7 @@ import * as masterDataApi from '../api/masterDataApi.ts';
 import { collectAllPages, REPORT_EXPORT_PAGE_SIZE } from '../api/inventoryReportApi.ts';
 import { downloadSpreadsheet, spreadsheetFilename } from '../report/excelExport.ts';
 import { createRequestGate } from '../security/workbenchControl.ts';
+import { WorkbenchTable, formatAmountText } from '../ui/index.ts';
 import { BarChart } from './report/BarChart.tsx';
 
 const PAGE_SIZE = 20;
@@ -70,9 +71,7 @@ function counterpartyLabel(item: agingReportApi.AgingItem): string {
   return `对手方 #${item.counterpartyId}（名称不可用）`;
 }
 
-function amountText(value: string) {
-  return value === '' ? '—' : value;
-}
+const amountText = formatAmountText;
 
 export function ReceivableAgingWorkbench() {
   return <AgingReportWorkbench kind="receivable" />;
@@ -192,8 +191,6 @@ function AgingReportWorkbench({ kind }: { kind: agingReportApi.AgingKind }) {
       .finally(() => setExporting(false));
   };
 
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
-
   return <section className="customer-page">
     <header className="customer-header">
       <div>
@@ -241,32 +238,26 @@ function AgingReportWorkbench({ kind }: { kind: agingReportApi.AgingKind }) {
     />
     <div className="customer-layout purchase-order-layout">
       <section className="customer-list-panel">
-        <div className="memory-table-wrap"><table className="memory-table"><thead><tr>
-          <th>{copy.counterpartyLabel}</th>
-          <th>未到期</th><th>逾期 1-30</th><th>逾期 31-60</th>
-          <th>逾期 61-90</th><th>逾期 90+</th><th>合计</th>
-        </tr></thead><tbody>
-          {items.map((item) => <tr key={item.counterpartyId}
-            className={selected?.counterpartyId === item.counterpartyId ? 'memory-row-selected' : ''}>
-            <td><button type="button" className="table-row-button"
-              onClick={() => setSelected(item)}>{counterpartyLabel(item)}</button></td>
-            <td>{amountText(item.notDue)}</td>
-            <td>{amountText(item.overdue1To30)}</td>
-            <td>{amountText(item.overdue31To60)}</td>
-            <td>{amountText(item.overdue61To90)}</td>
-            <td>{amountText(item.overdue90Plus)}</td>
-            <td>{amountText(item.totalOutstanding)}</td>
-          </tr>)}
-        </tbody></table></div>
-        {loading && <p className="memory-empty" role="status">{copy.loading}</p>}
-        {!loading && items.length === 0 && <p className="memory-empty">{copy.empty}</p>}
-        <div className="memory-pagination">
-          <button type="button" disabled={page <= 1}
-            onClick={() => { clearSelection(); setPage(page - 1); }}>上一页</button>
-          <span>第 {page} / {pageCount} 页，共 {total} 笔</span>
-          <button type="button" disabled={page >= pageCount}
-            onClick={() => { clearSelection(); setPage(page + 1); }}>下一页</button>
-        </div>
+        <WorkbenchTable<agingReportApi.AgingItem>
+          columns={[
+            { title: copy.counterpartyLabel, key: 'counterparty', render: (_: unknown, item) => counterpartyLabel(item) },
+            { title: '未到期', dataIndex: 'notDue', key: 'notDue', render: amountText },
+            { title: '逾期 1-30', dataIndex: 'overdue1To30', key: 'overdue1To30', render: amountText },
+            { title: '逾期 31-60', dataIndex: 'overdue31To60', key: 'overdue31To60', render: amountText },
+            { title: '逾期 61-90', dataIndex: 'overdue61To90', key: 'overdue61To90', render: amountText },
+            { title: '逾期 90+', dataIndex: 'overdue90Plus', key: 'overdue90Plus', render: amountText },
+            { title: '合计', dataIndex: 'totalOutstanding', key: 'totalOutstanding', render: amountText },
+          ]}
+          dataSource={items}
+          loading={loading}
+          rowKey="counterpartyId"
+          selectedKey={selected?.counterpartyId}
+          onRowClick={setSelected}
+          page={page}
+          total={total}
+          onPageChange={(next) => { clearSelection(); setPage(next); }}
+          emptyText={copy.empty}
+        />
       </section>
       <aside className="customer-detail purchase-order-detail">
         {selected

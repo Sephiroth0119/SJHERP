@@ -14,9 +14,14 @@ test('master data workbench uses real UTF-8 Chinese, not escaped or garbled lite
   assert.doesNotMatch(source, garbledMarker);
   assert.match(source, /查找、维护日常业务使用的基础资料。/);
   assert.match(source, /选择左侧记录查看详情。/);
-  assert.match(source, /共 \{total\} 条 · 第 \{page\} 页/);
   assert.match(source, /供应商档案/);
   assert.match(source, /仓库档案/);
+  const table = readFileSync(
+    new URL('../src/ui/WorkbenchTable.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.doesNotMatch(table, unicodeEscape);
+  assert.match(table, /共 \$\{count\} 条 · 第 \$\{page\} 页/);
 });
 
 test('top-bar role labels are real UTF-8 Chinese', () => {

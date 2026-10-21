@@ -1,6 +1,13 @@
+import { Button, Input, Select } from "antd";
 import { useEffect, useRef, useState } from "react";
-import { ApiError } from "../api/http";
 import * as api from "../api/masterDataApi";
+import {
+  FilterBar,
+  FilterItem,
+  WorkbenchTable,
+  displayApiError,
+  useWorkbenchNotice,
+} from "../ui/index.ts";
 
 type BaseItem = {
   id: number;
@@ -40,6 +47,7 @@ function MasterDataWorkbench<I extends BaseItem, F>({
 }) {
   const canCreate = permissions.includes(config.createPermission);
   const canWrite = permissions.includes(config.writePermission);
+  const notice = useWorkbenchNotice();
   const [items, setItems] = useState<I[]>([]);
   const [selected, setSelected] = useState<I | null>(null);
   const [form, setForm] = useState<F>(config.empty);
@@ -53,7 +61,6 @@ function MasterDataWorkbench<I extends BaseItem, F>({
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
   const [reload, setReload] = useState(0);
   const detailRequest = useRef(0);
   const cancelDetailRequest = () => { detailRequest.current += 1; };
@@ -72,11 +79,7 @@ function MasterDataWorkbench<I extends BaseItem, F>({
       })
       .catch((cause: unknown) => {
         if (!live) return;
-        setError(
-          cause instanceof ApiError
-            ? cause.message
-            : "列表加载失败，请重试",
-        );
+        setError(displayApiError(cause, "列表加载失败，请重试"));
         setLoading(false);
       });
     return () => {
@@ -89,7 +92,6 @@ function MasterDataWorkbench<I extends BaseItem, F>({
     setSelected(item);
     setEditing(false);
     setError("");
-    setNotice("");
     void config
       .get(item.id)
       .then((result) => {
@@ -112,21 +114,16 @@ function MasterDataWorkbench<I extends BaseItem, F>({
     event.preventDefault(); cancelDetailRequest();
     setSaving(true);
     setError("");
-    setNotice("");
     try {
       const result = selected
         ? await config.update(selected.id, form)
         : await config.create(form);
       setSelected(result);
       setEditing(false);
-      setNotice("档案已保存");
+      notice.success("档案已保存");
       setReload((n) => n + 1);
     } catch (cause) {
-      setError(
-        cause instanceof ApiError
-          ? cause.message
-          : "保存失败，请检查输入",
-      );
+      setError(displayApiError(cause, "保存失败，请检查输入"));
     } finally {
       setSaving(false);
     }
@@ -135,25 +132,20 @@ function MasterDataWorkbench<I extends BaseItem, F>({
     if (!selected) return; cancelDetailRequest();
     setSaving(true);
     setError("");
-    setNotice("");
     try {
       const result = await config.status(
         selected.id,
         selected.status === "ENABLED" ? "DISABLED" : "ENABLED",
       );
       setSelected(result);
-      setNotice(
+      notice.success(
         result.status === "ENABLED"
           ? "已启用"
           : "已停用",
       );
       setReload((n) => n + 1);
     } catch (cause) {
-      setError(
-        cause instanceof ApiError
-          ? cause.message
-          : "状态更新失败",
-      );
+      setError(displayApiError(cause, "状态更新失败"));
     } finally {
       setSaving(false);
     }
@@ -172,19 +164,17 @@ function MasterDataWorkbench<I extends BaseItem, F>({
           </p>
         </div>
         {canCreate && (
-          <button
-            type="button"
-            className="memory-button memory-button-primary"
+          <Button
+            type="primary"
             onClick={() => {
               cancelDetailRequest(); setSelected(null);
               setForm(config.empty);
               setEditing(true);
               setError("");
-              setNotice("");
             }}
           >
             新建{config.title.replace("档案", "")}
-          </button>
+          </Button>
         )}
       </header>
       {error && (
@@ -195,112 +185,64 @@ function MasterDataWorkbench<I extends BaseItem, F>({
           </button>
         </div>
       )}
-      {notice && (
-        <div className="customer-success" role="status">
-          {notice}
-        </div>
-      )}
-      <div className="customer-toolbar">
-        <input
-          aria-label={`搜索${config.title}`}
-          placeholder={config.placeholder}
-          value={draftKeyword}
-          onChange={(e) => setDraftKeyword(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") apply();
-          }}
-        />
-        <select
-          aria-label="状态"
-          value={draftStatus}
-          onChange={(e) => setDraftStatus(e.target.value)}
-        >
-          <option value="">全部状态</option>
-          <option value="ENABLED">启用</option>
-          <option value="DISABLED">停用</option>
-        </select>
-        <button type="button" className="memory-button" onClick={apply}>
-          查询
-        </button>
-      </div>
+      <FilterBar onSearch={apply}>
+        <FilterItem>
+          <Input
+            allowClear
+            style={{ width: 280 }}
+            aria-label={`搜索${config.title}`}
+            placeholder={config.placeholder}
+            value={draftKeyword}
+            onChange={(e) => setDraftKeyword(e.target.value)}
+          />
+        </FilterItem>
+        <FilterItem>
+          <Select
+            allowClear
+            style={{ width: 140 }}
+            aria-label="状态"
+            placeholder="全部状态"
+            value={draftStatus || undefined}
+            onChange={(value) => setDraftStatus(value ?? "")}
+            options={[
+              { value: "ENABLED", label: "启用" },
+              { value: "DISABLED", label: "停用" },
+            ]}
+          />
+        </FilterItem>
+      </FilterBar>
       <div className="customer-layout">
         <div className="customer-list-panel">
-          {loading ? (
-            <p className="memory-empty">正在加载…</p>
-          ) : items.length === 0 ? (
-            <p className="memory-empty">
-              暂无{config.title}，
-              {canCreate
-                ? "可以新建一条。"
-                : "请调整筛选条件。"}
-            </p>
-          ) : (
-            <table className="memory-table">
-              <thead>
-                <tr>
-                  <th>编码</th>
-                  <th>名称</th>
-                  <th>{config.thirdLabel}</th>
-                  <th>状态</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => (
-                  <tr
-                    key={item.id}
-                    tabIndex={0}
-                    aria-selected={selected?.id === item.id}
-                    className={
-                      selected?.id === item.id ? "memory-row-selected" : ""
-                    }
-                    onClick={() => choose(item)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        choose(item);
-                      }
-                    }}
-                  >
-                    <td>{item.code}</td>
-                    <td>{item.name}</td>
-                    <td>{config.third(item)}</td>
-                    <td>
-                      <span
-                        className={`customer-status customer-status-${item.status.toLowerCase()}`}
-                      >
-                        {item.status === "ENABLED"
-                          ? "启用"
-                          : "停用"}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          {total > 0 && (
-            <div className="memory-pagination">
-              <span>
-                共 {total} 条 · 第 {page} 页
-              </span>
-              <span>
-                <button
-                  type="button"
-                  disabled={page <= 1 || loading}
-                  onClick={() => setPage((n) => n - 1)}
-                >
-                  上一页
-                </button>
-                <button
-                  type="button"
-                  disabled={page * 20 >= total || loading}
-                  onClick={() => setPage((n) => n + 1)}
-                >
-                  下一页
-                </button>
-              </span>
-            </div>
-          )}
+          <WorkbenchTable<I>
+            columns={[
+              { title: "编码", dataIndex: "code", key: "code" },
+              { title: "名称", dataIndex: "name", key: "name" },
+              { title: config.thirdLabel, key: "third", render: (_: unknown, item: I) => config.third(item) },
+              {
+                title: "状态",
+                dataIndex: "status",
+                key: "status",
+                render: (value: api.ArchiveStatus) => (
+                  <span className={`customer-status customer-status-${value.toLowerCase()}`}>
+                    {value === "ENABLED" ? "启用" : "停用"}
+                  </span>
+                ),
+              },
+            ]}
+            dataSource={items}
+            loading={loading}
+            rowKey="id"
+            selectedKey={selected?.id}
+            onRowClick={choose}
+            page={page}
+            total={total}
+            onPageChange={setPage}
+            emptyText={
+              canCreate
+                ? `暂无${config.title}，可以新建一条。`
+                : `暂无${config.title}，请调整筛选条件。`
+            }
+          />
         </div>
         <aside className="customer-detail">
           {editing ? (
@@ -343,7 +285,6 @@ function MasterDataWorkbench<I extends BaseItem, F>({
                     cancelDetailRequest(); setForm(config.toForm(selected));
                       setEditing(true);
                       setError("");
-                      setNotice("");
                     }}
                   >
                     编辑

@@ -7,6 +7,19 @@ export default defineConfig({
   build: {
     // 生产包直接输出 UTF-8 中文，避免 ascii 转义成字面 \uXXXX
     charset: 'utf8',
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/antd') || id.includes('node_modules/@ant-design') || id.includes('node_modules/rc-')) {
+            return 'antd';
+          }
+          return undefined;
+        },
+      },
+    },
+  },
+  optimizeDeps: {
+    include: ['antd'],
   },
   server: {
     port: 5173,

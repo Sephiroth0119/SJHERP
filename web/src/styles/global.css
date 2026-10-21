@@ -1,4 +1,4 @@
-/* 全局样式：从简的普通 CSS，先把信息架构搭出来，不引入组件库 */
+/* 全局样式：布局/聊天/登录仍用手写 CSS。表格/表单/弹层走 antd 封装（ADR-004），不引入 reset.css。 */
 
 :root {
   --color-bg: #f5f6f8;
@@ -895,6 +895,27 @@ body {
 .customer-form .checkbox-field input { width: auto; min-height: auto; }
 .customer-success { margin-bottom: 14px; padding: 9px 12px; border: 1px solid #86efac; border-radius: 7px; color: #166534; background: #f0fdf4; font-size: 13px; }
 .customer-list-panel tr:focus-visible { outline: 2px solid var(--color-primary); outline-offset: -2px; }
+
+.workbench-filter-bar {
+  margin-bottom: 14px;
+  row-gap: 8px;
+}
+
+.workbench-table-row-selected > td {
+  background: #eff6ff !important;
+}
+
+.customer-drawer-dl {
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  gap: 9px 12px;
+  margin: 18px 0 0;
+  font-size: 13px;
+  word-break: break-word;
+}
+
+.customer-drawer-dl dt { color: var(--color-text-muted); }
+.customer-drawer-dl dd { margin: 0; }
 @media (max-width: 850px) { .customer-layout { grid-template-columns: 1fr; } .customer-detail { position: static; } }
 @media (max-width: 560px) { .customer-page { padding: 16px; } .customer-header { flex-direction: column; } .customer-toolbar input { min-width: 100%; } }
 
