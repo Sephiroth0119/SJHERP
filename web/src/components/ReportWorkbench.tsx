@@ -7,7 +7,6 @@ import { downloadSpreadsheet, spreadsheetFilename } from '../report/excelExport.
 import {
   emptyReportFilters,
   loadReport,
-  PAGE_SIZE,
   type ReportFilters,
   type ReportView,
 } from '../report/loadReport.ts';
@@ -167,10 +166,6 @@ export function ReportWorkbench({
     </section>;
   }
 
-  const pageCount = view && view.paged
-    ? Math.max(1, Math.trunc((view.total + PAGE_SIZE - 1) / PAGE_SIZE))
-    : 1;
-
   return <section className="customer-page">
     <header className="customer-header">
       <div>
@@ -213,14 +208,10 @@ export function ReportWorkbench({
       rows={view?.rows ?? []}
       loading={loading}
       empty="暂无数据，请调整筛选条件。"
+      page={view?.paged ? page : undefined}
+      total={view?.paged ? view.total : undefined}
+      onPageChange={view?.paged ? setPage : undefined}
     />
-    {view?.paged && <div className="memory-pagination">
-      <button type="button" disabled={page <= 1 || loading}
-        onClick={() => setPage(page - 1)}>上一页</button>
-      <span>第 {page} / {pageCount} 页，共 {view.total} 笔</span>
-      <button type="button" disabled={page >= pageCount || loading}
-        onClick={() => setPage(page + 1)}>下一页</button>
-    </div>}
   </section>;
 }
 

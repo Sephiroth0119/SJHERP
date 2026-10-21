@@ -1,36 +1,40 @@
 import type { ReportColumn } from '../../report/loadReport.ts';
+import { WorkbenchTable, formatAmountText } from '../../ui/index.ts';
 
 export function QueryTable({
   columns,
   rows,
   loading,
   empty,
+  page,
+  total,
+  onPageChange,
 }: {
   columns: readonly ReportColumn[];
   rows: readonly Record<string, string>[];
   loading: boolean;
   empty: string;
+  page?: number;
+  total?: number;
+  onPageChange?: (page: number) => void;
 }) {
   return (
     <section className="customer-list-panel report-table-panel">
-      <div className="memory-table-wrap">
-        <table className="memory-table">
-          <thead>
-            <tr>
-              {columns.map((column) => <th key={column.key}>{column.title}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, index) => (
-              <tr key={`${index}-${columns.map((column) => row[column.key] ?? '').join('|')}`}>
-                {columns.map((column) => <td key={column.key}>{row[column.key] || '—'}</td>)}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {loading && <p className="memory-empty" role="status">正在加载报表…</p>}
-      {!loading && rows.length === 0 && <p className="memory-empty">{empty}</p>}
+      <WorkbenchTable<Record<string, string>>
+        columns={columns.map((column) => ({
+          title: column.title,
+          dataIndex: column.key,
+          key: column.key,
+          render: (value: string | undefined) => formatAmountText(value),
+        }))}
+        dataSource={rows}
+        loading={loading}
+        rowKey={(row) => columns.map((column) => `${column.key}=${row[column.key] ?? ''}`).join('|')}
+        page={page}
+        total={total}
+        onPageChange={onPageChange}
+        emptyText={empty}
+      />
     </section>
   );
 }

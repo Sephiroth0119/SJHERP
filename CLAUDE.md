@@ -27,7 +27,7 @@
 |---|---|---|
 | 后端 | Java 21 + Spring Boot 3.x，Maven | 业务核心 |
 | Agent 框架 | **完全自研**（本项目核心资产之一） | 不引入 LangGraph/Spring AI 编排，详见下文设计要点 |
-| 前端 | React + TypeScript（Vite） | 聊天界面为主入口 + 传统业务入口 |
+| 前端 | React + TypeScript（Vite）+ Ant Design 5 | 聊天界面为主入口 + 传统业务入口；表格/表单/弹层走 antd（ADR-004），聊天/侧栏/登录仍自定义 CSS |
 | 业务数据库 | MySQL 8.x | 所有进销存/财务数据，InnoDB，强事务 |
 | 向量库（大记忆） | Qdrant（派生索引）+ 本地 Ollama Embedding | MySQL 保存大记忆唯一真源；Qdrant 可从原文重建，不保存业务正文 |
 | LLM 接入 | 自建抽象层，可切换 | 业务代码只依赖统一接口；DeepSeek/通义/Claude/GPT 可配置切换；检查 Agent、开发者 Agent 等关键环节配强模型 |
@@ -79,7 +79,7 @@ SJHERP/
 - **禁止事项**：
   - 不写裸 SQL 绕过领域服务做业务写操作（报表只读查询除外）。
   - 不在 Agent prompt 里硬编码业务规则——业务规则在领域层代码中，Agent 通过工具调用获得。
-  - 不引入未在本文件登记的重量级框架/中间件，先讨论并记 ADR。
+  - 不引入未在本文件登记的重量级框架/中间件，先讨论并记 ADR。前端组件库已登记：`antd@5`（ADR-004，仅表格/表单/弹层封装；聊天/侧栏/登录仍自定义 CSS）。
 - **Subagent 派工模型分级**（详见路线图 §13.6）：模式复制类任务用 sonnet、复杂逻辑与交叉校验用 opus、编排与决策由主模型把控；质量闸门（测试+CI+校验）不随模型降档。
 - **API 调试**：dev/local profile 下开放 API 文档（生产强制关闭）。**需鉴权的接口调试用 `/swagger-ui/index.html`**——点 Authorize 填 token 后 Execute 自动带 `Authorization: Bearer <token>`，最省事；`/doc.html`（knife4j）界面更友好可浏览，但因 knife4j 处于纯静态 UI 模式（见下），其「调试」面板的全局 Authorize **不会注入鉴权头**，需在「调试 → 请求头部」手填 `Authorization`（带不带 `Bearer ` 均可——JwtAuthenticationFilter 已容忍可选前缀，仍全量验签）。
   登记依赖：`springdoc-openapi-starter-webmvc-ui:2.7.0`（/v3/api-docs 生成 + 标准 swagger-ui，兼容 Spring 6.2.x）+ `knife4j-openapi3-ui:4.5.0`（仅前端静态资源，不引入其 autoconfigure；knife4j-openapi3-jakarta-spring-boot-starter 的 Spring autoconfigure 与 springdoc 2.4+ 二进制不兼容，故弃用——代价是 knife4j 增强特性[含调试面板全局鉴权注入、knife4j.enable 等]失效，鉴权调试以 swagger-ui 为准）。
@@ -117,3 +117,5 @@ SJHERP/
 **M7-T03 流式回复已完成实现（2026-10-21）**：协议 v0.2 在完整 AgentReply（字段兼容 v0.1）之上新增 SSE 消息流式分片；同一发消息端点按 Accept 分流 JSON/SSE。终轮 LLM 边生成边推 `text` delta，options/form 仅 complete 下发；HIGH HITL 仍框架拦截。前端打字机消费 SSE，错误/断线可读提示。未改 `web-dist/`。详见 `docs/测试-M7-T03流式回复.md`。
 
 **M7-T04 多会话聊天与单据卡片已完成实现（2026-10-21）**：登录用户可新建/切换/列出本人会话，重命名与归档（CLOSED，无物理删除）；越权一律 404。AgentReply 加性 `documents[]` 渲染可点击卡片，hash 跳转传统工作台详情，无权限 fail-closed 不露数据。复用 T03 SSE/v0.2，文件/图片上传 P2 本刀不做；未改 `web-dist/`。详见 `docs/测试-M7-T04多会话聊天.md`。
+
+**M7-T05 组件库引入已完成实现（2026-10-21）**：因 `web/` 为 React 18 + Vite，ADR-004 选定 Ant Design React 5（否决 Ant Design Vue / Naive UI，避免整站迁 Vue）。`web/src/ui` 封装表格/筛选表单/Modal/Drawer/Message，主题 token 对齐现有深蓝侧栏与 `#2563eb` 主色，不引入 reset.css。本刀迁客户档案（含新建编辑弹窗与详情抽屉）、供应商/仓库列表，以及 T06 `QueryTable` 与账龄表；金额字符串展示、权限 fail-closed、错误展示 `{error}` 原文。未改 `web-dist/`、未做 T07 移动适配、未重做报表业务。详见 `docs/ADR-004-前端组件库选型.md`、`docs/测试-M7-T05组件库.md`。
