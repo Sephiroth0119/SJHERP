@@ -78,4 +78,15 @@ class ChatServiceStreamingTest {
                 .isInstanceOf(SessionNotFoundException.class);
         assertThat(repository.findById(session.getSessionId()).orElseThrow().getMessages()).isEmpty();
     }
+
+    @Test
+    void 已归档会话拒绝流式发送() {
+        AgentSession session = chatService.createSession(USER_A);
+        chatService.archiveSession(session.getSessionId(), USER_A);
+        assertThatThrownBy(() -> chatService.handleMessageStreaming(session.getSessionId(), USER_A,
+                new SendMessageRequest("归档后还想发", null, null, null), event -> {
+                }))
+                .isInstanceOf(SessionClosedException.class);
+        assertThat(repository.findById(session.getSessionId()).orElseThrow().getMessages()).isEmpty();
+    }
 }
