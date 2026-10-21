@@ -43,6 +43,9 @@ assert_files() {
   [[ -f "$DEPLOY_DIR/app/Dockerfile" ]] || die "缺少后端 Dockerfile"
   [[ -f "$DEPLOY_DIR/nginx/Dockerfile" ]] || die "缺少 nginx Dockerfile"
   [[ -f "$DEPLOY_DIR/nginx/nginx.conf" ]] || die "缺少 nginx.conf"
+  [[ -f "$DEPLOY_DIR/backup.sh" ]] || die "缺少 backup.sh"
+  [[ -f "$DEPLOY_DIR/restore.sh" ]] || die "缺少 restore.sh"
+  [[ -f "$DEPLOY_DIR/restore-smoke.sh" ]] || die "缺少 restore-smoke.sh"
   [[ -d "$REPO_ROOT/server" ]] || die "缺少 server/ ，请在仓库根执行"
   [[ -d "$REPO_ROOT/web" ]] || die "缺少 web/ ，请在仓库根执行"
 }
@@ -54,7 +57,13 @@ check_assets() {
   bash -n "$DEPLOY_DIR/install.sh"
   bash -n "$DEPLOY_DIR/upgrade.sh"
   bash -n "$DEPLOY_DIR/smoke.sh"
+  bash -n "$DEPLOY_DIR/backup.sh"
+  bash -n "$DEPLOY_DIR/restore.sh"
+  bash -n "$DEPLOY_DIR/restore-smoke.sh"
   require_env_keys "$ENV_EXAMPLE"
+  "$DEPLOY_DIR/backup.sh" --check
+  "$DEPLOY_DIR/restore.sh" --check
+  "$DEPLOY_DIR/restore-smoke.sh" --check
   if command -v docker >/dev/null 2>&1; then
     info "校验 docker compose 配置"
     compose config >/dev/null
@@ -109,7 +118,7 @@ install_docker() {
 }
 
 ensure_env() {
-  mkdir -p "$BACKUP_DIR"
+  backup_dirs_init
   if [[ ! -f "$ENV_FILE" ]]; then
     info "未找到 deploy/.env，从模板复制并生成随机密钥"
     cp "$ENV_EXAMPLE" "$ENV_FILE"
@@ -167,7 +176,8 @@ SJHERP 已启动
   （来自 deploy/.env；数据库里已有 admin 后，改 .env 不会改登录密码）
 
 未配置 SJHERP_LLM_API_KEY 时，聊天走占位回复，传统工作台仍可用。
-大记忆默认关闭。完整说明见 docs/部署-一键安装.md
+大记忆默认关闭。请立刻挂上定时备份：见 docs/部署-备份恢复.md 与 deploy/crontab.example。
+完整说明见 docs/部署-一键安装.md
 ----------------------------------------
 EOF
 }

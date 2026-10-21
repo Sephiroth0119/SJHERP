@@ -70,14 +70,17 @@ jobs:
       - uses: actions/checkout@v4
       - name: 脚本 dry-run 与 compose config
         run: |
-          chmod +x deploy/install.sh deploy/upgrade.sh deploy/smoke.sh
+          chmod +x deploy/install.sh deploy/upgrade.sh deploy/smoke.sh deploy/backup.sh deploy/restore.sh deploy/restore-smoke.sh
           ./deploy/install.sh --check
           ./deploy/upgrade.sh --check
       - name: 一键安装冒烟（构建镜像、启动、探活）
         run: ./deploy/install.sh --skip-docker-install
+      - name: 备份恢复冒烟（MySQL 备份→金丝雀→恢复→登录）
+        run: ./deploy/restore-smoke.sh
       - name: 失败时打印容器日志
         if: failure()
         run: docker compose --project-directory deploy -f deploy/docker-compose.yml --env-file deploy/.env logs --tail 200
       - name: 清理数据卷
         if: always()
+        # 仅 CI 临时环境回收磁盘，不是生产恢复路径；生产恢复见 docs/部署-备份恢复.md
         run: docker compose --project-directory deploy -f deploy/docker-compose.yml --env-file deploy/.env down -v

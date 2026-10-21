@@ -1,0 +1,12 @@
+# SJHERP 定时备份（M8-T02）
+#
+# 安装（把路径换成实际仓库根）：
+#   crontab -e
+#   粘贴下面一行
+#
+# 每天 02:15 UTC 备份 MySQL + Qdrant 快照，保留天数见 deploy/.env 的 SJHERP_BACKUP_KEEP_DAYS（默认 14）。
+# flock 由 backup.sh 自己加，重复触发会直接失败而不是并行 dump。
+#
+# 不要用 docker compose down -v 做备份或常规恢复。
+
+15 2 * * * /bin/bash /ABS/PATH/TO/SJHERP/deploy/backup.sh >> /ABS/PATH/TO/SJHERP/deploy/backups/backup.log 2>&1

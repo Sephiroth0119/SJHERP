@@ -1,4 +1,4 @@
-# SJHERP 部署脚本公共函数（由 install.sh / upgrade.sh / smoke.sh source）
+# SJHERP 部署脚本公共函数（由 install.sh / upgrade.sh / smoke.sh / backup.sh / restore.sh source）
 # shellcheck shell=bash
 
 if [[ -n "${SJHERP_LIB_LOADED:-}" ]]; then
@@ -12,6 +12,11 @@ COMPOSE_FILE="$DEPLOY_DIR/docker-compose.yml"
 ENV_EXAMPLE="$DEPLOY_DIR/.env.example"
 ENV_FILE="$DEPLOY_DIR/.env"
 BACKUP_DIR="$DEPLOY_DIR/backups"
+BACKUP_MYSQL_DIR="$BACKUP_DIR/mysql"
+BACKUP_QDRANT_DIR="$BACKUP_DIR/qdrant"
+BACKUP_QDRANT_LIVE_DIR="$BACKUP_QDRANT_DIR/live"
+BACKUP_LOCK_FILE="$BACKUP_DIR/.lock"
+DEFAULT_BACKUP_KEEP_DAYS=14
 
 REQUIRED_ENV_KEYS=(
   MYSQL_ROOT_PASSWORD
@@ -180,5 +185,95 @@ write_env_value() {
     mv "$tmp" "$file"
   else
     printf '%s=%s\n' "$key" "$value" >> "$file"
+  fi
+}
+
+backup_dirs_init() {
+  mkdir -p "$BACKUP_MYSQL_DIR" "$BACKUP_QDRANT_LIVE_DIR"
+}
+
+backup_keep_days() {
+  local raw
+  raw="$(env_lookup SJHERP_BACKUP_KEEP_DAYS "$ENV_FILE" 2>/dev/null || true)"
+  if [[ -z "$raw" && -f "$ENV_EXAMPLE" ]]; then
+    raw="$(env_lookup SJHERP_BACKUP_KEEP_DAYS "$ENV_EXAMPLE" 2>/dev/null || true)"
+  fi
+  raw="${raw:-$DEFAULT_BACKUP_KEEP_DAYS}"
+  [[ "$raw" =~ ^[0-9]+$ ]] || die "SJHERP_BACKUP_KEEP_DAYS 必须是正整数，当前：$raw"
+  [[ "$raw" -ge 1 && "$raw" -le 365 ]] || die "SJHERP_BACKUP_KEEP_DAYS 应在 1–365 之间，当前：$raw"
+  printf '%s' "$raw"
+}
+
+acquire_backup_lock() {
+  mkdir -p "$BACKUP_DIR"
+  exec 9>"$BACKUP_LOCK_FILE"
+  if ! flock -n 9; then
+    die "已有备份或恢复在运行（锁文件 $BACKUP_LOCK_FILE）"
+  fi
+}
+
+service_is_running() {
+  local name="$1"
+  local ps
+  ps="$(compose ps "$name" 2>/dev/null || true)"
+  grep -Eq 'running|Up' <<<"$ps"
+}
+
+mysql_root_password() {
+  local password
+  password="$(env_lookup MYSQL_ROOT_PASSWORD "$ENV_FILE")"
+  [[ -n "$password" ]] || die "deploy/.env 缺少 MYSQL_ROOT_PASSWORD"
+  printf '%s' "$password"
+}
+
+mysql_database_name() {
+  local database
+  database="$(env_lookup MYSQL_DATABASE "$ENV_FILE" 2>/dev/null || true)"
+  printf '%s' "${database:-sjherp}"
+}
+
+mysql_cli() {
+  local password
+  password="$(mysql_root_password)"
+  compose exec -T mysql mysql -uroot "-p${password}" "$@"
+}
+
+qdrant_curl() {
+  local method="$1"
+  local path="$2"
+  shift 2
+  local url="http://qdrant:6333${path}"
+  if service_is_running app; then
+    compose exec -T app curl -fsS --max-time 300 -X "$method" "$url" "$@"
+  else
+    compose run --rm -T --no-deps --entrypoint curl app -fsS --max-time 300 -X "$method" "$url" "$@"
+  fi
+}
+
+wait_qdrant_ready() {
+  local timeout_sec="${1:-90}"
+  local started now
+  started="$(date +%s)"
+  info "等待 Qdrant 就绪（最多 ${timeout_sec}s）"
+  while true; do
+    if qdrant_curl GET /readyz >/dev/null 2>&1; then
+      info "Qdrant 已就绪"
+      return 0
+    fi
+    now="$(date +%s)"
+    if (( now - started >= timeout_sec )); then
+      compose ps qdrant || true
+      compose logs --tail 80 qdrant || true
+      die "Qdrant 未在 ${timeout_sec}s 内就绪"
+    fi
+    sleep 3
+  done
+}
+
+json_result_name() {
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -c 'import json,sys; data=json.load(sys.stdin); print((data.get("result") or {}).get("name") or "")'
+  else
+    grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -n 1 | sed 's/.*"\([^"]*\)"$/\1/'
   fi
 }

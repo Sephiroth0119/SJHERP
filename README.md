@@ -24,7 +24,8 @@ SJHERP/
 ├── docs/                  # ADR、领域模型文档、协议定义、会计核算规则
 │   ├── adr/               # 架构决策记录
 │   ├── 选项返回协议.md     # Agent 前后端核心契约（版本化）
-│   └── 部署-一键安装.md    # M8-T01 生产安装 / 升级 / 回滚
+│   ├── 部署-一键安装.md    # M8-T01 生产安装 / 升级 / 回滚
+│   └── 部署-备份恢复.md    # M8-T02 MySQL 定时备份、Qdrant 快照、恢复演练
 ├── deploy/                # 生产 docker compose、安装/升级脚本、env 模板
 ├── server/                # Java 后端（Maven 多模块）
 │   ├── sjherp-agent/      # 自研 Agent 框架（领域无关）
@@ -44,7 +45,7 @@ SJHERP/
 ./deploy/install.sh
 ```
 
-脚本会安装 Docker（若缺）、生成 `deploy/.env` 密钥、启动 **nginx + app + MySQL + Qdrant**，并打印登录地址与初始 `admin` 密码。升级用 `./deploy/upgrade.sh`（Flyway 随应用启动自动迁移）。完整说明、端口、回滚边界与手测清单见 [docs/部署-一键安装.md](./docs/部署-一键安装.md)。
+脚本会安装 Docker（若缺）、生成 `deploy/.env` 密钥、启动 **nginx + app + MySQL + Qdrant**，并打印登录地址与初始 `admin` 密码。升级用 `./deploy/upgrade.sh`（Flyway 随应用启动自动迁移）。完整说明、端口、回滚边界与手测清单见 [docs/部署-一键安装.md](./docs/部署-一键安装.md)。定时备份、Qdrant 快照与恢复演练见 [docs/部署-备份恢复.md](./docs/部署-备份恢复.md)。
 
 开发者在本机跑源码，仍用下面的开发中间件，不要用生产 compose 当日常 IDE 启动方式。
 
