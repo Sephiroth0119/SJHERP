@@ -3,6 +3,7 @@ package com.sjherp.infra.persistence.invocation;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -39,6 +40,11 @@ class PersistingAgentInvocationListenerTest {
         @Override
         public TokenSummary sumTokens(String sessionId) {
             throw new UnsupportedOperationException("本测试不汇总");
+        }
+
+        @Override
+        public LlmUsageWindow summarizeLlm(Instant fromInclusive, Instant toExclusive) {
+            throw new UnsupportedOperationException("本测试不按日汇总");
         }
     }
 
@@ -181,6 +187,11 @@ class PersistingAgentInvocationListenerTest {
 
             @Override
             public TokenSummary sumTokens(String sessionId) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public LlmUsageWindow summarizeLlm(Instant fromInclusive, Instant toExclusive) {
                 throw new UnsupportedOperationException();
             }
         };

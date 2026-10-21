@@ -55,6 +55,16 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
+        <!-- 监控导出（M8-T04）：Actuator + Prometheus 文本。不引入 Prometheus/Grafana 服务。
+             生产把 management 端口绑到 127.0.0.1，nginx 不反代 /actuator。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
         <!-- 认证与授权（M2-T05）：JWT 过滤器链 + 角色限定（@PreAuthorize） -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

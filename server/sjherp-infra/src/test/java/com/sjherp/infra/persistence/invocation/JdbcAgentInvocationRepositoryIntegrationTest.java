@@ -45,4 +45,43 @@ class JdbcAgentInvocationRepositoryIntegrationTest extends MySqlContainerTestBas
         assertThat(summary.totalPromptTokens()).isEqualTo(100);
         assertThat(summary.totalCompletionTokens()).isEqualTo(50);
     }
+
+    @Test
+    void 时间窗汇总_只统计窗内LLM行并按模型拆分() {
+        String sessionId = "it-llm-daily-" + uniqueSuffix();
+        Instant t0 = Instant.parse("2026-10-20T00:00:00Z");
+        Instant t1 = Instant.parse("2026-10-21T00:00:00Z");
+        Instant t2 = Instant.parse("2026-10-22T00:00:00Z");
+        invocationRepository.insert(new AgentInvocation(null, sessionId,
+                AgentInvocationType.LLM, "deepseek-chat", null, 100L,
+                10, 4, true, null, t1.plusSeconds(60)));
+        invocationRepository.insert(new AgentInvocation(null, sessionId,
+                AgentInvocationType.LLM, "deepseek-chat", null, 200L,
+                20, 6, false, "{\"error\":\"timeout\"}", t1.plusSeconds(120)));
+        invocationRepository.insert(new AgentInvocation(null, sessionId,
+                AgentInvocationType.LLM, "qwen-plus", null, 50L,
+                5, 1, true, null, t1.plusSeconds(180)));
+        invocationRepository.insert(new AgentInvocation(null, sessionId,
+                AgentInvocationType.TOOL, null, "create_customer", 10L,
+                null, null, true, null, t1.plusSeconds(90)));
+        invocationRepository.insert(new AgentInvocation(null, sessionId,
+                AgentInvocationType.LLM, "deepseek-chat", null, 999L,
+                999, 999, true, null, t0.plusSeconds(1)));
+        invocationRepository.insert(new AgentInvocation(null, sessionId,
+                AgentInvocationType.LLM, "deepseek-chat", null, 1L,
+                1, 1, true, null, t2));
+
+        AgentInvocationRepository.LlmUsageWindow window = invocationRepository.summarizeLlm(t1, t2);
+        assertThat(window.llmCalls()).isEqualTo(3);
+        assertThat(window.llmFailures()).isEqualTo(1);
+        assertThat(window.promptTokens()).isEqualTo(35);
+        assertThat(window.completionTokens()).isEqualTo(11);
+        assertThat(window.durationMs()).isEqualTo(350);
+        assertThat(window.byModel()).hasSize(2);
+        assertThat(window.byModel().get(0).model()).isEqualTo("deepseek-chat");
+        assertThat(window.byModel().get(0).calls()).isEqualTo(2);
+        assertThat(window.byModel().get(0).failures()).isEqualTo(1);
+        assertThat(window.byModel().get(1).model()).isEqualTo("qwen-plus");
+        assertThat(window.byModel().get(1).calls()).isEqualTo(1);
+    }
 }

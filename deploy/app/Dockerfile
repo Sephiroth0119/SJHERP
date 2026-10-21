@@ -19,7 +19,7 @@ RUN apt-get update \
 WORKDIR /app
 COPY --from=build --chown=sjherp:sjherp /src/app.jar /app/app.jar
 USER 10001
-EXPOSE 8080
+EXPOSE 8080 8081
 HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=12 \
     CMD curl -fsS http://127.0.0.1:8080/api/health || exit 1
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

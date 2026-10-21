@@ -101,7 +101,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         // 与 SecurityConfig 白名单同口径限定 method（登录仅 POST），其余 method 仍走 token 解析
         String path = request.getServletPath();
         if (("/api/auth/login".equals(path) && "POST".equalsIgnoreCase(request.getMethod()))
-                || ("/api/health".equals(path) && "GET".equalsIgnoreCase(request.getMethod()))) {
+                || ("/api/health".equals(path) && "GET".equalsIgnoreCase(request.getMethod()))
+                || isPublicActuator(path, request.getMethod())) {
             return true;
         }
         // knife4j / springdoc 文档路径：仅 dev/local profile 跳过 token 解析（与 SecurityConfig 同口径）
@@ -124,5 +125,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 || path.startsWith("/webjars/")
                 || path.startsWith("/v3/api-docs")
                 || "/favicon.ico".equals(path);
+    }
+
+    /** 与 SecurityConfig 白名单同口径：仅 GET 探活/Prometheus 文本，不含 env/beans。 */
+    private static boolean isPublicActuator(String path, String method) {
+        if (!"GET".equalsIgnoreCase(method) || path == null) {
+            return false;
+        }
+        return "/actuator/health".equals(path)
+                || path.startsWith("/actuator/health/")
+                || "/actuator/info".equals(path)
+                || "/actuator/prometheus".equals(path);
     }
 }

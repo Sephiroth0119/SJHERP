@@ -27,7 +27,8 @@ import jakarta.servlet.http.HttpServletResponse;
  * 安全配置（M2-T05）：JWT 无状态认证。
  *
  * <ul>
- *   <li>白名单：POST /api/auth/login（登录入口）、GET /api/health（探活）；</li>
+ *   <li>白名单：POST /api/auth/login（登录入口）、GET /api/health（探活）、
+ *       GET /actuator/health|/info|/prometheus（M8-T04 本机抓取；env 等仍需登录）；</li>
  *   <li>其余 /api/** 一律要求 Bearer token，未认证统一 401 {"error": "未登录或登录已过期"}；</li>
  *   <li>角色/权限点不足（如非 ADMIN 调用用户管理 API、无写权限调用档案写接口
  *       ——M2-T06 权限矩阵见 docs/权限矩阵.md）统一 403 {"error": "无权限执行该操作"}；</li>
@@ -102,6 +103,13 @@ public class SecurityConfig {
                     // 登录白名单限定 POST（2026-06-12 交叉校验 P2：其余 method 不放行）
                     auth.requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
                             .requestMatchers(HttpMethod.GET, "/api/health").permitAll()
+                            // M8-T04：Prometheus 抓取与 actuator health。nginx 不反代 /actuator，
+                            // 生产 management 端口只绑 127.0.0.1。env/beans/heapdump 仍需登录。
+                            .requestMatchers(HttpMethod.GET,
+                                    "/actuator/health",
+                                    "/actuator/health/**",
+                                    "/actuator/info",
+                                    "/actuator/prometheus").permitAll()
                             .anyRequest().authenticated();
                 })
                 .exceptionHandling(handling -> handling
