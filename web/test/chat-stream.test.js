@@ -67,3 +67,9 @@ test('断线提示使用可读中文且错误优先后端原文', () => {
   assert.match(chatApiSource, /连接已中断，请重试/);
   assert.match(chatApiSource, /handlers\.onError\(streamError\)/);
 });
+
+test('第三方 LLM 出境告知渲染在聊天面板', () => {
+  assert.match(chatPanelSource, /llmEgress\?\.thirdParty/);
+  assert.match(chatPanelSource, /llm-egress-banner/);
+  assert.match(chatPanelSource, /fetchMe/);
+});

@@ -43,6 +43,9 @@ assert_files() {
   [[ -f "$DEPLOY_DIR/app/Dockerfile" ]] || die "缺少后端 Dockerfile"
   [[ -f "$DEPLOY_DIR/nginx/Dockerfile" ]] || die "缺少 nginx Dockerfile"
   [[ -f "$DEPLOY_DIR/nginx/nginx.conf" ]] || die "缺少 nginx.conf"
+  [[ -f "$DEPLOY_DIR/nginx/nginx-tls.conf" ]] || die "缺少 nginx-tls.conf"
+  [[ -f "$DEPLOY_DIR/nginx/api-proxy.conf.inc" ]] || die "缺少 api-proxy.conf.inc"
+  [[ -f "$DEPLOY_DIR/nginx/40-sjherp-tls.sh" ]] || die "缺少 nginx TLS 入口脚本"
   [[ -f "$DEPLOY_DIR/backup.sh" ]] || die "缺少 backup.sh"
   [[ -f "$DEPLOY_DIR/restore.sh" ]] || die "缺少 restore.sh"
   [[ -f "$DEPLOY_DIR/restore-smoke.sh" ]] || die "缺少 restore-smoke.sh"
@@ -60,6 +63,7 @@ check_assets() {
   bash -n "$DEPLOY_DIR/backup.sh"
   bash -n "$DEPLOY_DIR/restore.sh"
   bash -n "$DEPLOY_DIR/restore-smoke.sh"
+  sh -n "$DEPLOY_DIR/nginx/40-sjherp-tls.sh"
   require_env_keys "$ENV_EXAMPLE"
   "$DEPLOY_DIR/backup.sh" --check
   "$DEPLOY_DIR/restore.sh" --check
@@ -158,8 +162,12 @@ ensure_env() {
     die "SJHERP_JWT_SECRET 太短（需要 ≥ 32 字节）。请编辑 deploy/.env"
   fi
   if [[ ${#SJHERP_ADMIN_PASSWORD} -lt 8 ]]; then
-    die "SJHERP_ADMIN_PASSWORD 太短（≥ 8 位且含字母和数字）"
+    die "SJHERP_ADMIN_PASSWORD 太短（≥ 8 位，须含大写、小写和数字）"
   fi
+  if [[ ! "$SJHERP_ADMIN_PASSWORD" =~ [A-Z] || ! "$SJHERP_ADMIN_PASSWORD" =~ [a-z] || ! "$SJHERP_ADMIN_PASSWORD" =~ [0-9] ]]; then
+    die "SJHERP_ADMIN_PASSWORD 须同时包含大写字母、小写字母和数字"
+  fi
+  ensure_tls_certs
 }
 
 print_success() {
@@ -175,9 +183,11 @@ SJHERP 已启动
 初始密码：${admin_password}
   （来自 deploy/.env；数据库里已有 admin 后，改 .env 不会改登录密码）
 
+TLS 模式：$(tls_mode)（自签证书时浏览器会告警，换正式证书见 docs/部署-安全基线.md）
 未配置 SJHERP_LLM_API_KEY 时，聊天走占位回复，传统工作台仍可用。
+配置了第三方 LLM 后，聊天页会提示业务数据出境；可改本地模型或 SJHERP_LLM_REDACT。
 大记忆默认关闭。请立刻挂上定时备份：见 docs/部署-备份恢复.md 与 deploy/crontab.example。
-完整说明见 docs/部署-一键安装.md
+完整说明见 docs/部署-一键安装.md 与 docs/部署-安全基线.md
 ----------------------------------------
 EOF
 }

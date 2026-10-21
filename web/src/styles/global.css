@@ -408,6 +408,17 @@ body {
   flex-direction: column;
 }
 
+.llm-egress-banner {
+  margin: 0 16px 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #f59e0b;
+  border-radius: 8px;
+}
+
 /* 历史会话侧栏 */
 .session-rail {
   width: 220px;

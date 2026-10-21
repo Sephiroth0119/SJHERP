@@ -24,6 +24,12 @@ public class AuthExceptionHandler {
         return error(HttpStatus.UNAUTHORIZED, e.getMessage());
     }
 
+    /** 业务拒绝（改密旧密码错误、新密码强度不足）→ 400 */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, String>> handleBadRequest(IllegalArgumentException e) {
+        return error(HttpStatus.BAD_REQUEST, e.getMessage());
+    }
+
     /** Bean Validation 失败（用户名/密码为空）→ 400 */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Map<String, String>> handleValidation(MethodArgumentNotValidException e) {

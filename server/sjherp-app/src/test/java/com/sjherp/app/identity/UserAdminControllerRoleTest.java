@@ -110,4 +110,15 @@ class UserAdminControllerRoleTest {
                 // 响应体绝不携带密码哈希（UserResponse 契约）
                 .andExpect(jsonPath("$[0].passwordHash").doesNotExist());
     }
+
+    @Test
+    void 管理员创建用户_弱密码在API边界400() throws Exception {
+        mockMvc.perform(post("/api/identity/users").with(asUser(Role.ADMIN))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"newbie","displayName":"新人","password":"password1","roles":["SALES"]}"""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").exists());
+        Mockito.verifyNoInteractions(userService);
+    }
 }

@@ -89,13 +89,21 @@ class UserServiceTest {
     }
 
     @Test
-    void 密码强度_纯字母或纯数字被拒绝() {
+    void 密码强度_纯字母或纯数字或缺少大小写被拒绝() {
         assertThrows(IllegalArgumentException.class,
                 () -> service.create("zhangsan", "张三", "abcdefgh", Set.of(Role.SALES), OPERATOR));
         assertThrows(IllegalArgumentException.class,
                 () -> service.create("zhangsan", "张三", "12345678", Set.of(Role.SALES), OPERATOR));
         assertThrows(IllegalArgumentException.class,
+                () -> service.create("zhangsan", "张三", "password1", Set.of(Role.SALES), OPERATOR));
+        assertThrows(IllegalArgumentException.class,
                 () -> service.create("zhangsan", "张三", null, Set.of(Role.SALES), OPERATOR));
+    }
+
+    @Test
+    void 密码强度_常见弱口令被拒绝() {
+        assertThrows(IllegalArgumentException.class,
+                () -> service.create("zhangsan", "张三", "Admin123", Set.of(Role.SALES), OPERATOR));
     }
 
     @Test

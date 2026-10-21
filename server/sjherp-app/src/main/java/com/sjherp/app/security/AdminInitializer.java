@@ -51,7 +51,7 @@ public class AdminInitializer implements ApplicationRunner {
 
         if (!adminProperties.hasPassword()) {
             throw new IllegalStateException(
-                    "首次启动需要配置初始管理员密码：设置环境变量 SJHERP_ADMIN_PASSWORD（≥ 8 位、字母+数字）");
+                    "首次启动需要配置初始管理员密码：设置环境变量 SJHERP_ADMIN_PASSWORD（≥ 8 位，须含大写、小写和数字）");
         }
 
         try {
@@ -60,7 +60,7 @@ public class AdminInitializer implements ApplicationRunner {
             log.info("初始管理员账户 admin 创建成功（密码来自环境变量 SJHERP_ADMIN_PASSWORD）");
         } catch (IllegalArgumentException e) {
             throw new IllegalStateException(
-                    "初始管理员密码不符合强度要求（≥ 8 位、字母+数字）：" + e.getMessage(), e);
+                    "初始管理员密码不符合强度要求（≥ 8 位，须含大写、小写和数字）：" + e.getMessage(), e);
         }
     }
 }

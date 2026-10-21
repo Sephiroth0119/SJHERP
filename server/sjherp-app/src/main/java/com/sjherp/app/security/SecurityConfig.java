@@ -43,7 +43,7 @@ import jakarta.servlet.http.HttpServletResponse;
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
-@EnableConfigurationProperties({SecurityJwtProperties.class, AdminProperties.class})
+@EnableConfigurationProperties({SecurityJwtProperties.class, AdminProperties.class, RateLimitProperties.class})
 public class SecurityConfig {
 
     /** 未认证统一响应体（前端 401 全局拦截依赖该文案，不得擅改） */
@@ -77,8 +77,14 @@ public class SecurityConfig {
     }
 
     @Bean
+    public RateLimitFilter rateLimitFilter(RateLimitProperties rateLimitProperties) {
+        return new RateLimitFilter(rateLimitProperties);
+    }
+
+    @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                    JwtAuthenticationFilter jwtAuthenticationFilter,
+                                                   RateLimitFilter rateLimitFilter,
                                                    Environment environment)
             throws Exception {
         http
@@ -103,7 +109,8 @@ public class SecurityConfig {
                                 writeJson(response, HttpStatus.UNAUTHORIZED, UNAUTHORIZED_BODY))
                         .accessDeniedHandler((request, response, e) ->
                                 writeJson(response, HttpStatus.FORBIDDEN, FORBIDDEN_BODY)))
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(rateLimitFilter, JwtAuthenticationFilter.class);
         return http.build();
     }
 

@@ -216,8 +216,7 @@ public class ChatSessionController {
                 emitter.complete();
             } catch (RuntimeException e) {
                 log.error("聊天 SSE 处理失败（sessionId={}）", id, e);
-                String message = e.getMessage() == null ? "聊天处理失败，请稍后重试" : e.getMessage();
-                sendEventQuietly(emitter, AgentStreamEvent.error(message));
+                sendEventQuietly(emitter, AgentStreamEvent.error("聊天处理失败，请稍后重试"));
                 emitter.complete();
             } finally {
                 stopHeartbeat.run();

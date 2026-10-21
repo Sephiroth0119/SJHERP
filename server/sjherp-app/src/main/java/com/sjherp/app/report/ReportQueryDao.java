@@ -13,6 +13,7 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.sjherp.app.support.SqlLikes;
 import com.sjherp.domain.common.PageResult;
 
 /**
@@ -179,7 +180,7 @@ public class ReportQueryDao {
         }
         if (keyword != null && !keyword.isBlank()) {
             where.append(" AND (p.name LIKE ? OR p.code LIKE ?)");
-            String like = "%" + keyword.strip() + "%";
+            String like = SqlLikes.contains(keyword);
             args.add(like);
             args.add(like);
         }
@@ -264,7 +265,7 @@ public class ReportQueryDao {
         List<Object> keywordArgs = new ArrayList<>();
         if (keyword != null && !keyword.isBlank()) {
             outerWhere.append(" WHERE (p.name LIKE ? OR p.code LIKE ?)");
-            String like = "%" + keyword.strip() + "%";
+            String like = SqlLikes.contains(keyword);
             keywordArgs.add(like);
             keywordArgs.add(like);
         }

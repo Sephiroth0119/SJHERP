@@ -18,6 +18,8 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.sjherp.app.llm.LlmEgressNotice;
+import com.sjherp.app.llm.LlmEgressService;
 import com.sjherp.app.security.JwtService;
 import com.sjherp.app.security.SecurityConfig;
 import com.sjherp.domain.common.ArchiveStatus;
@@ -32,8 +34,9 @@ import com.sjherp.domain.identity.UserService;
  * <ul>
  *   <li>登录成功 → 200 {token, displayName, roles}，token 可被 JwtService 解析回用户 id；</li>
  *   <li>密码错误 / 停用账号 → 401，文案与领域层统一口径一致；</li>
- *   <li>GET /api/auth/me 未带 token → 401 统一文案；带合法 token → 200 当前用户；
- *       停用用户即便持有效 token 也 401（逐请求从库刷新启停状态）。</li>
+ *   <li>GET /api/auth/me 未带 token → 401 统一文案；带合法 token → 200 当前用户含 llmEgress；
+ *       停用用户即便持有效 token 也 401（逐请求从库刷新启停状态）；</li>
+ *   <li>POST /api/auth/password 弱密码 400，合法新密码 200。</li>
  * </ul>
  */
 @WebMvcTest(controllers = AuthController.class,
@@ -57,6 +60,9 @@ class AuthControllerTest {
     /** JWT 过滤器逐请求刷新用户所依赖的仓储 */
     @MockitoBean
     private UserRepository userRepository;
+
+    @MockitoBean
+    private LlmEgressService llmEgressService;
 
     private static final String LOGIN_JSON = """
             {"username":"alice","password":"Passw0rd1"}""";
@@ -119,6 +125,8 @@ class AuthControllerTest {
     void me带合法token_200_返回库中实时用户信息() throws Exception {
         User enabled = user(ArchiveStatus.ENABLED);
         Mockito.when(userRepository.findById(42L)).thenReturn(Optional.of(enabled));
+        Mockito.when(llmEgressService.current()).thenReturn(
+                new LlmEgressNotice(false, false, null, null, null, false, false));
         String token = jwtService.issueToken(enabled);
 
         mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + token))
@@ -129,7 +137,9 @@ class AuthControllerTest {
                 .andExpect(jsonPath("$.roles[0]").value("SALES"))
                 .andExpect(jsonPath("$.permissions").isArray())
                 .andExpect(jsonPath("$.permissions", org.hamcrest.Matchers.hasItem("sales:order")))
-                .andExpect(jsonPath("$.permissions", org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("memory:manage"))));
+                .andExpect(jsonPath("$.permissions", org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("memory:manage"))))
+                .andExpect(jsonPath("$.llmEgress.enabled").value(false))
+                .andExpect(jsonPath("$.llmEgress.thirdParty").value(false));
     }
 
     @Test
@@ -141,5 +151,41 @@ class AuthControllerTest {
         mockMvc.perform(get("/api/auth/me").header("Authorization", "Bearer " + token))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.error").value("未登录或登录已过期"));
+    }
+
+    // ---------------------------------------------------------------- 改密
+
+    @Test
+    void 本人改密_弱密码在API边界400() throws Exception {
+        User enabled = user(ArchiveStatus.ENABLED);
+        Mockito.when(userRepository.findById(42L)).thenReturn(Optional.of(enabled));
+        String token = jwtService.issueToken(enabled);
+
+        mockMvc.perform(post("/api/auth/password")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"oldPassword":"Passw0rd1","newPassword":"password1"}"""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").exists());
+        Mockito.verify(userService, Mockito.never()).changePassword(
+                Mockito.anyLong(), Mockito.any(), Mockito.any(), Mockito.any());
+    }
+
+    @Test
+    void 本人改密_成功() throws Exception {
+        User enabled = user(ArchiveStatus.ENABLED);
+        Mockito.when(userRepository.findById(42L)).thenReturn(Optional.of(enabled));
+        Mockito.when(userService.changePassword(Mockito.eq(42L), Mockito.eq("Passw0rd1"),
+                Mockito.eq("NewPass2026"), Mockito.anyString())).thenReturn(enabled);
+        String token = jwtService.issueToken(enabled);
+
+        mockMvc.perform(post("/api/auth/password")
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"oldPassword":"Passw0rd1","newPassword":"NewPass2026"}"""))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("changed"));
     }
 }

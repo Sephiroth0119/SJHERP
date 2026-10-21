@@ -119,8 +119,88 @@ http_port() {
   printf '%s' "${port:-80}"
 }
 
+https_port() {
+  local port
+  port="$(env_lookup SJHERP_HTTPS_PORT "$ENV_FILE" 2>/dev/null || true)"
+  if [[ -z "$port" ]]; then
+    port="$(env_lookup SJHERP_HTTPS_PORT "$ENV_EXAMPLE" 2>/dev/null || true)"
+  fi
+  printf '%s' "${port:-443}"
+}
+
+tls_mode() {
+  local mode
+  mode="$(env_lookup SJHERP_TLS_MODE "$ENV_FILE" 2>/dev/null || true)"
+  if [[ -z "$mode" ]]; then
+    mode="$(env_lookup SJHERP_TLS_MODE "$ENV_EXAMPLE" 2>/dev/null || true)"
+  fi
+  printf '%s' "${mode:-self-signed}"
+}
+
+tls_enabled() {
+  local mode
+  mode="$(tls_mode)"
+  [[ "$mode" != "off" && "$mode" != "OFF" && "$mode" != "http" && "$mode" != "HTTP" ]]
+}
+
+certs_dir() {
+  printf '%s' "$DEPLOY_DIR/certs"
+}
+
 base_url() {
-  printf 'http://127.0.0.1:%s' "$(http_port)"
+  if tls_enabled; then
+    printf 'https://127.0.0.1:%s' "$(https_port)"
+  else
+    printf 'http://127.0.0.1:%s' "$(http_port)"
+  fi
+}
+
+curl_tls_args() {
+  if [[ "${1:-}" == https://* ]] || tls_enabled; then
+    printf '%s' '-k'
+  fi
+}
+
+ensure_tls_certs() {
+  local mode cert_dir
+  mode="$(tls_mode)"
+  cert_dir="$(certs_dir)"
+  mkdir -p "$cert_dir"
+  chmod 700 "$cert_dir" 2>/dev/null || true
+  case "$mode" in
+    off|OFF|http|HTTP)
+      info "TLS 关闭（SJHERP_TLS_MODE=$mode），仅 HTTP"
+      return 0
+      ;;
+    self-signed|SELF-SIGNED)
+      if [[ -f "$cert_dir/fullchain.pem" && -f "$cert_dir/privkey.pem" ]]; then
+        info "使用已有自签证书：$cert_dir"
+        return 0
+      fi
+      info "生成自签 TLS 证书（仅适合内网；浏览器会提示不受信任）"
+      need_cmd openssl
+      if openssl req -x509 -nodes -newkey rsa:2048 -days 825 \
+            -keyout "$cert_dir/privkey.pem" \
+            -out "$cert_dir/fullchain.pem" \
+            -subj "/CN=SJHERP" \
+            -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" 2>/dev/null; then
+        :
+      else
+        openssl req -x509 -nodes -newkey rsa:2048 -days 825 \
+          -keyout "$cert_dir/privkey.pem" \
+          -out "$cert_dir/fullchain.pem" \
+          -subj "/CN=SJHERP"
+      fi
+      chmod 600 "$cert_dir/privkey.pem" "$cert_dir/fullchain.pem" 2>/dev/null || true
+      ;;
+    custom|CUSTOM|letsencrypt|LETSENCRYPT)
+      [[ -f "$cert_dir/fullchain.pem" && -f "$cert_dir/privkey.pem" ]] \
+        || die "SJHERP_TLS_MODE=$mode 需要 $cert_dir/fullchain.pem 与 privkey.pem（Let's Encrypt 路径见 docs/部署-安全基线.md）"
+      ;;
+    *)
+      die "未知 SJHERP_TLS_MODE=$mode（允许：off / self-signed / custom）"
+      ;;
+  esac
 }
 
 wait_http() {
@@ -131,12 +211,17 @@ wait_http() {
   info "等待服务就绪：$url （最多 ${timeout_sec}s）"
   while true; do
     if command -v curl >/dev/null 2>&1; then
-      if curl -fsS --max-time 5 "$url" >/dev/null 2>&1; then
+      # shellcheck disable=SC2046,SC2086
+      if curl -fsS --max-time 5 $(curl_tls_args "$url") "$url" >/dev/null 2>&1; then
         info "已就绪：$url"
         return 0
       fi
     elif command -v wget >/dev/null 2>&1; then
-      if wget -qO- --timeout=5 "$url" >/dev/null 2>&1; then
+      local wget_args=(--timeout=5)
+      if [[ "$url" == https://* ]]; then
+        wget_args+=(--no-check-certificate)
+      fi
+      if wget -qO- "${wget_args[@]}" "$url" >/dev/null 2>&1; then
         info "已就绪：$url"
         return 0
       fi
@@ -162,7 +247,7 @@ generate_alnum() {
 }
 
 generate_admin_password() {
-  # ≥8 位且必须同时有字母和数字
+  # 与 PasswordPolicy 对齐：大写+小写+数字，≥8；不强制特殊字符
   printf 'Adm%s' "$(openssl rand -hex 6)"
 }
 
