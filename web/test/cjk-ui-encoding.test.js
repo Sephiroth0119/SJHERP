@@ -49,6 +49,7 @@ test('finance workbenches use real UTF-8 Chinese, not escaped or garbled literal
     '../src/components/GlAccountWorkbench.tsx',
     '../src/components/PeriodCloseWorkbench.tsx',
     '../src/components/FinancialStatementWorkbench.tsx',
+    '../src/components/ReportWorkbench.tsx',
   ];
   for (const file of files) {
     const source = readFileSync(new URL(file, import.meta.url), 'utf8');
@@ -80,6 +81,10 @@ test('finance workbenches use real UTF-8 Chinese, not escaped or garbled literal
   const statements = readFileSync(new URL('../src/components/FinancialStatementWorkbench.tsx', import.meta.url), 'utf8');
   assert.match(statements, /资产负债表/);
   assert.match(statements, /利润表/);
+  const reports = readFileSync(new URL('../src/components/ReportWorkbench.tsx', import.meta.url), 'utf8');
+  assert.match(reports, /报表查询/);
+  assert.match(reports, /导出 Excel/);
+  assert.match(reports, /试算平衡/);
 });
 
 test('production workbenches use real UTF-8 Chinese, not escaped or garbled literals', () => {
