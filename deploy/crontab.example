@@ -12,3 +12,4 @@
 15 2 * * * /bin/bash /ABS/PATH/TO/SJHERP/deploy/backup.sh >> /ABS/PATH/TO/SJHERP/deploy/backups/backup.log 2>&1
 # 每天 03:10 UTC 巡检健康/磁盘/备份新鲜度；失败可 POST SJHERP_ALERT_WEBHOOK
 10 3 * * * /bin/bash /ABS/PATH/TO/SJHERP/deploy/monitor.sh >> /ABS/PATH/TO/SJHERP/deploy/backups/monitor.log 2>&1
+# 慢查询在 MySQL 数据卷（long_query_time=1）。性能基线见 docs/部署-性能基线.md，不要对生产库 cron 灌数。
