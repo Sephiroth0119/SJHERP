@@ -11,6 +11,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.sjherp.app.auth.AuthController;
+import com.sjherp.app.llm.LlmEgressService;
 import com.sjherp.domain.identity.UserRepository;
 import com.sjherp.domain.identity.UserService;
 
@@ -47,6 +48,9 @@ class Knife4jProductionSecurityTest {
     /** JWT 过滤器装配依赖 */
     @MockitoBean
     private UserRepository userRepository;
+
+    @MockitoBean
+    private LlmEgressService llmEgressService;
 
     @Test
     void 生产姿态_未登录访问API文档路径_必须返回401() throws Exception {

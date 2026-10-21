@@ -27,6 +27,7 @@ import {
   type SendMessagePayload,
   type ServerChatMessage,
 } from '../../api/chatApi';
+import { fetchMe, type LlmEgressNotice } from '../../api/authApi';
 import { COMPACT_CHAT_MEDIA, useMediaQuery } from '../../layout/useMediaQuery';
 import { MessageList, type ChatStreamError } from './MessageList';
 import { MessageInput } from './MessageInput';
@@ -114,6 +115,16 @@ export function ChatPanel({ permissions }: ChatPanelProps) {
   const [error, setError] = useState<ChatStreamError | null>(null);
   /** 防止 React StrictMode 下 effect 双跑导致重复建会话 */
   const initStartedRef = useRef(false);
+  const [llmEgress, setLlmEgress] = useState<LlmEgressNotice | null>(null);
+
+  useEffect(() => {
+    if (USE_MOCK) return;
+    fetchMe()
+      .then((me) => setLlmEgress(me.llmEgress ?? null))
+      .catch(() => {
+        /* 401 由全局拦截处理；网络错误不挡聊天 */
+      });
+  }, []);
 
   const applyDetail = useCallback((detail: {
     sessionId: string;
@@ -426,6 +437,11 @@ export function ChatPanel({ permissions }: ChatPanelProps) {
           <h1>Agent 助手</h1>
           <span className="chat-header-hint">{headerHint}</span>
         </header>
+        {llmEgress?.thirdParty && llmEgress.notice ? (
+          <div className="llm-egress-banner" role="status">
+            {llmEgress.notice}
+          </div>
+        ) : null}
         <MessageList
           messages={messages}
           pending={pending}

@@ -33,6 +33,7 @@ import jakarta.validation.Valid;
  */
 @RestController
 @RequestMapping("/api/gaps")
+@PreAuthorize("@perm.has('gap:triage')")
 public class GapController {
 
     private final GapRecordService gapRecordService;

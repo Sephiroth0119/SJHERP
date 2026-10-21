@@ -13,6 +13,7 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.sjherp.app.support.SqlLikes;
 import com.sjherp.domain.common.PageResult;
 
 /**
@@ -99,7 +100,7 @@ public class InventoryQueryDao {
         }
         if (keyword != null && !keyword.isBlank()) {
             where.append(" AND (p.name LIKE ? OR p.code LIKE ?)");
-            String like = "%" + keyword.strip() + "%";
+            String like = SqlLikes.contains(keyword);
             args.add(like);
             args.add(like);
         }

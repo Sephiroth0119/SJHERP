@@ -32,8 +32,16 @@ sjherp:
   security:
     jwt-secret: ${SJHERP_JWT_SECRET:}
     jwt-expire-hours: 12   # token 有效期（小时）
+    # API 限流（M8-T03）：登录/改密与聊天发消息。工作台列表刷新不限。
+    rate-limit:
+      enabled: ${SJHERP_RATE_LIMIT_ENABLED:true}
+      login-per-minute: ${SJHERP_RATE_LIMIT_LOGIN:20}
+      chat-per-minute: ${SJHERP_RATE_LIMIT_CHAT:60}
+      trust-forwarded-headers: true
+    # 生产 compose 设 true，禁止带着 local/dev 把 swagger 放到公网
+    forbid-dev-profile: ${SJHERP_FORBID_DEV_PROFILE:false}
   # 初始管理员密码（首次启动时创建 admin 账户用）。
-  # 必须通过环境变量 SJHERP_ADMIN_PASSWORD 配置（≥ 8 位、字母+数字）。
+  # 必须通过环境变量 SJHERP_ADMIN_PASSWORD 配置（≥ 8 位，须含大写、小写和数字）。
   # 未配置或不符合密码强度要求会 fail-fast。
   admin:
     password: ${SJHERP_ADMIN_PASSWORD:}
@@ -107,6 +115,11 @@ sjherp:
       chat: deepseek        # 对话主链路（LlmAgent + AgentLoop）
       summarizer: deepseek  # 会话历史摘要（M1-T05；失败时硬截断兜底，不影响对话）
       checker: deepseek     # 检查 Agent（M6 接入，建议配强模型）
+    # 数据出境（M8-T03 / Q-7）：第三方模型告知 + 可选脱敏 + 仅本地模型
+    egress:
+      notice-enabled: ${SJHERP_LLM_NOTICE:true}
+      redact-enabled: ${SJHERP_LLM_REDACT:false}
+      local-only: ${SJHERP_LLM_LOCAL_ONLY:false}
   # 聊天 Agent 模式：auto（默认，api-key 非空用 LlmAgent，否则回退 PlaceholderAgent 并打 WARN）
   # / llm（强制 LLM，缺 key 启动失败）/ placeholder（强制规则占位）
   agent:

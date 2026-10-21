@@ -24,6 +24,9 @@ import com.sjherp.agent.tool.ToolPermissionChecker;
 import com.sjherp.agent.tool.ToolRegistry;
 import com.sjherp.app.chat.Agent;
 import com.sjherp.app.chat.LlmAgent;
+import com.sjherp.app.llm.LlmDestinations;
+import com.sjherp.app.llm.LlmEgressProperties;
+import com.sjherp.app.llm.RedactingLlmClient;
 import com.sjherp.app.memory.MemoryContextProvider;
 import com.sjherp.app.chat.PlaceholderAgent;
 import com.sjherp.infra.agent.AgentReplyJsonCodec;
@@ -58,7 +61,7 @@ import com.sjherp.infra.llm.OpenAiCompatibleLlmClient;
  * <p>infra 的实现类不加 Spring 注解，在此显式装配（与 AgentInfraConfig 同约定）。
  */
 @Configuration
-@EnableConfigurationProperties(LlmProperties.class)
+@EnableConfigurationProperties({LlmProperties.class, LlmEgressProperties.class})
 public class ChatAgentConfig {
 
     private static final Logger log = LoggerFactory.getLogger(ChatAgentConfig.class);
@@ -79,7 +82,8 @@ public class ChatAgentConfig {
                            ToolRegistry toolRegistry,
                            AgentInvocationListener invocationListener,
                            ToolPermissionChecker permissionChecker,
-                           ObjectProvider<MemoryContextProvider> memoryContextProviders) {
+                           ObjectProvider<MemoryContextProvider> memoryContextProviders,
+                           LlmEgressProperties egress) {
         String normalized = mode == null ? "auto" : mode.strip().toLowerCase(Locale.ROOT);
         MemoryContextProvider memoryContextProvider = memoryContextProviders
                 .getIfAvailable(MemoryContextProvider::none);
@@ -97,14 +101,14 @@ public class ChatAgentConfig {
                 yield llmAgent(llm, codec, pendingCodec, toolRegistry, invocationListener,
                         permissionChecker, parseFinalJsonMode(finalJsonMode), maxIterations,
                         loopTimeoutSeconds, historyTokenBudget, keepRecentRounds,
-                        memoryContextProvider);
+                        memoryContextProvider, egress);
             }
             case "auto" -> {
                 if (llm.roleHasApiKey(LlmProperties.ROLE_CHAT)) {
                     yield llmAgent(llm, codec, pendingCodec, toolRegistry, invocationListener,
                             permissionChecker, parseFinalJsonMode(finalJsonMode), maxIterations,
                             loopTimeoutSeconds, historyTokenBudget, keepRecentRounds,
-                            memoryContextProvider);
+                            memoryContextProvider, egress);
                 }
                 log.warn("chat 角色的 provider 未配置 api-key，聊天回退到 PlaceholderAgent（规则占位演示模式）。"
                         + "设置环境变量 SJHERP_LLM_API_KEY 或启用 local profile 以启用 LLM");
@@ -121,11 +125,13 @@ public class ChatAgentConfig {
                            ToolPermissionChecker permissionChecker,
                            FinalJsonMode finalJsonMode, int maxIterations, long loopTimeoutSeconds,
                            int historyTokenBudget, int keepRecentRounds,
-                           MemoryContextProvider memoryContextProvider) {
+                           MemoryContextProvider memoryContextProvider,
+                           LlmEgressProperties egress) {
+        assertLocalOnly(llm, egress);
         // 按角色构建/复用 LlmClient（M1-T07）：同 provider 同实例（HttpClient 连接池共享）
         Map<String, LlmClient> clientsByProvider = new HashMap<>();
-        LlmClient chatClient = clientForRole(llm, LlmProperties.ROLE_CHAT, clientsByProvider);
-        LlmClient summarizerClient = clientForRole(llm, LlmProperties.ROLE_SUMMARIZER, clientsByProvider);
+        LlmClient chatClient = clientForRole(llm, LlmProperties.ROLE_CHAT, clientsByProvider, egress);
+        LlmClient summarizerClient = clientForRole(llm, LlmProperties.ROLE_SUMMARIZER, clientsByProvider, egress);
         // checker 角色（M6 检查 Agent）此处不实例化，仅占配置位——接入时按同样方式解析
 
         // 注意：工具按请求时从 ToolRegistry 实时读取，此处不打印数量（演示工具等可能在本 Bean 之后注册）
@@ -157,8 +163,23 @@ public class ChatAgentConfig {
      * 同 provider 复用同一实例。provider 缺 api-key 时此处启动失败（fail-fast，
      * 异常消息含 provider 名，见 {@link OpenAiCompatibleLlmClient} 构造校验）。
      */
+    private static void assertLocalOnly(LlmProperties llm, LlmEgressProperties egress) {
+        if (egress == null || !egress.localOnly()) {
+            return;
+        }
+        LlmProperties.ProviderConfig chat = llm.providerForRole(LlmProperties.ROLE_CHAT);
+        if (chat != null && LlmDestinations.isThirdParty(chat.baseUrl())) {
+            throw new IllegalStateException(
+                    "sjherp.llm.egress.local-only=true，但 chat provider 指向第三方 "
+                            + chat.baseUrl()
+                            + "。请改为本地 OpenAI 兼容端点（如 Ollama http://127.0.0.1:11434/v1），"
+                            + "或关闭 SJHERP_LLM_LOCAL_ONLY。");
+        }
+    }
+
     private static LlmClient clientForRole(LlmProperties llm, String role,
-                                           Map<String, LlmClient> clientsByProvider) {
+                                           Map<String, LlmClient> clientsByProvider,
+                                           LlmEgressProperties egress) {
         String providerName = llm.providerNameForRole(role);
         LlmProperties.ProviderConfig config = llm.providers().get(providerName);
         if (config == null) {
@@ -167,10 +188,15 @@ public class ChatAgentConfig {
                     + " 未在 sjherp.llm.providers 中定义");
         }
         return clientsByProvider.computeIfAbsent(providerName, name -> {
-            log.info("LLM provider 实例化（provider={}, model={}, baseUrl={}, temperature={}, timeout={}s）",
-                    name, config.model(), config.baseUrl(), config.temperature(), config.timeoutSeconds());
-            return new OpenAiCompatibleLlmClient(name, config.apiKey(), config.baseUrl(),
+            log.info("LLM provider 实例化（provider={}, model={}, baseUrl={}, temperature={}, timeout={}s, redact={}）",
+                    name, config.model(), config.baseUrl(), config.temperature(), config.timeoutSeconds(),
+                    egress != null && egress.redactEnabled());
+            LlmClient client = new OpenAiCompatibleLlmClient(name, config.apiKey(), config.baseUrl(),
                     config.model(), config.temperature(), Duration.ofSeconds(config.timeoutSeconds()));
+            if (egress != null && egress.redactEnabled()) {
+                return new RedactingLlmClient(client);
+            }
+            return client;
         });
     }
 

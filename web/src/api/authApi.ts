@@ -15,6 +15,17 @@ export interface LoginResult {
   permissions?: string[];
 }
 
+/** GET /api/auth/me 里的 LLM 出境说明（M8-T03，旧后端可缺省） */
+export interface LlmEgressNotice {
+  enabled: boolean;
+  thirdParty: boolean;
+  provider?: string | null;
+  destination?: string | null;
+  notice?: string | null;
+  redactEnabled: boolean;
+  localOnly: boolean;
+}
+
 /** GET /api/auth/me 的响应体 */
 export interface MeResult {
   userId: number;
@@ -23,6 +34,7 @@ export interface MeResult {
   roles: string[];
   /** Optional keeps old deployments readable; missing permissions deny protected menus. */
   permissions?: string[];
+  llmEgress?: LlmEgressNotice;
 }
 
 /** 角色枚举 → 中文名（与后端 Role 枚举一致） */

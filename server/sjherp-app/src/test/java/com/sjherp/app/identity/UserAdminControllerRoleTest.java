@@ -53,7 +53,7 @@ class UserAdminControllerRoleTest {
     private UserRepository userRepository;
 
     private static final String CREATE_USER_JSON = """
-            {"username":"newbie","displayName":"新人","password":"Passw0rd1","roles":["SALES"]}""";
+            {"username":"newbie","displayName":"新人","password":"Passw0rd2026","roles":["SALES"]}""";
 
     /** 构造与 JWT 过滤器同构的认证态（口径同 ArchiveWritePermissionApiTest） */
     private static RequestPostProcessor asUser(Role... roles) {
@@ -109,5 +109,16 @@ class UserAdminControllerRoleTest {
                 .andExpect(jsonPath("$[0].roles[0]").value("SALES"))
                 // 响应体绝不携带密码哈希（UserResponse 契约）
                 .andExpect(jsonPath("$[0].passwordHash").doesNotExist());
+    }
+
+    @Test
+    void 管理员创建用户_弱密码在API边界400() throws Exception {
+        mockMvc.perform(post("/api/identity/users").with(asUser(Role.ADMIN))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"username":"newbie","displayName":"新人","password":"password1","roles":["SALES"]}"""))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").exists());
+        Mockito.verifyNoInteractions(userService);
     }
 }

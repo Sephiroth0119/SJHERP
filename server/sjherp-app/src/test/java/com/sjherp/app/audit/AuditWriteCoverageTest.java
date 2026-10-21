@@ -208,14 +208,14 @@ class AuditWriteCoverageTest {
         when(passwordHasher.hash(any())).thenReturn("$bcrypt-hash");
 
         UserService service = proxied(new UserService(userRepository, passwordHasher));
-        service.create("zhangsan", "张三", "abc12345", Set.of(Role.SALES), OPERATOR);
+        service.create("zhangsan", "张三", "Passw0rd2026", Set.of(Role.SALES), OPERATOR);
 
         AuditLogEntry entry = capturedEntry();
         assertEquals("user.create", entry.action());
         assertEquals("user", entry.targetType());
         assertEquals(OPERATOR, entry.operator());
         assertEquals("zhangsan", entry.targetCode());
-        assertTrue(!entry.summary().contains("abc12345") && !entry.summary().contains("$bcrypt-hash"),
+        assertTrue(!entry.summary().contains("Passw0rd2026") && !entry.summary().contains("$bcrypt-hash"),
                 "审计摘要绝不允许包含密码或哈希: " + entry.summary());
     }
 

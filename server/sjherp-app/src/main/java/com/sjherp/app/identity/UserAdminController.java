@@ -54,7 +54,7 @@ public class UserAdminController {
     public record CreateUserRequest(
             @NotBlank(message = "登录名不能为空") String username,
             @NotBlank(message = "显示名不能为空") String displayName,
-            @NotBlank(message = "密码不能为空") String password,
+            @NotBlank(message = "密码不能为空") @StrongPassword String password,
             @NotEmpty(message = "至少要分配一个角色") List<String> roles) {
     }
 
@@ -65,7 +65,7 @@ public class UserAdminController {
 
     /** 管理员重置密码请求体（无需旧密码） */
     public record ResetPasswordRequest(
-            @NotBlank(message = "新密码不能为空") String password) {
+            @NotBlank(message = "新密码不能为空") @StrongPassword String password) {
     }
 
     /** 用户响应体（绝不返回 passwordHash） */
@@ -89,7 +89,7 @@ public class UserAdminController {
         return userService.list().stream().map(UserResponse::from).toList();
     }
 
-    /** 新建用户（登录名唯一；密码 ≥8 位且含字母数字，否则 400） */
+    /** 新建用户（登录名唯一；密码须符合 PasswordPolicy，否则 400） */
     @PostMapping
     public ResponseEntity<UserResponse> create(@Valid @RequestBody CreateUserRequest request) {
         User user = userService.create(request.username(), request.displayName(),

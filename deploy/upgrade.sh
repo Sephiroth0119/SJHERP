@@ -77,6 +77,8 @@ main() {
   [[ -f "$ENV_FILE" ]] || die "找不到 deploy/.env。请先 ./deploy/install.sh"
   require_env_keys "$ENV_FILE"
   command -v docker >/dev/null 2>&1 || die "未安装 Docker"
+  load_env_file "$ENV_FILE"
+  ensure_tls_certs
 
   pull_code
   backup_mysql

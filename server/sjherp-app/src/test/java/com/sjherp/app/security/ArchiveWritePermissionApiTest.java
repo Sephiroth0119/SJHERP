@@ -1,6 +1,7 @@
 package com.sjherp.app.security;
 
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -46,7 +47,7 @@ import com.sjherp.domain.warehouse.WarehouseService;
  *   <li>SALES POST /api/partner/suppliers → 403 {"error":"无权限执行该操作"}；</li>
  *   <li>WAREHOUSE POST /api/partner/customers → 403；建仓库（权限内）放行；</li>
  *   <li>SALES 建客户放行（与 Agent 工具同一矩阵）；维护操作须 *:write（SALES PUT 客户 → 403）；</li>
- *   <li>缺口状态流转须 gap:triage（ADMIN/BOSS）；查询接口登录即可，未登录 401。</li>
+ *   <li>缺口查询与状态流转均须 gap:triage（ADMIN/BOSS）；未登录 401。</li>
  * </ul>
  */
 @WebMvcTest(controllers = {CustomerController.class, SupplierController.class,
@@ -121,6 +122,15 @@ class ArchiveWritePermissionApiTest {
         mockMvc.perform(post("/api/warehouse/warehouses").with(asUser(Role.ACCOUNTANT))
                         .contentType(MediaType.APPLICATION_JSON).content(WAREHOUSE_JSON))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void 销售查询缺口列表_无gap_triage_403() throws Exception {
+        mockMvc.perform(get("/api/gaps").with(asUser(Role.SALES)))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/gaps/1").with(asUser(Role.SALES)))
+                .andExpect(status().isForbidden());
+        Mockito.verifyNoInteractions(gapRecordService);
     }
 
     @Test

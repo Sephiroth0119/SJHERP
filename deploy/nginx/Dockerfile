@@ -11,8 +11,13 @@ COPY web/ ./
 RUN npm run build
 
 FROM nginx:1.27-alpine
-COPY deploy/nginx/nginx.conf /etc/nginx/nginx.conf
+COPY deploy/nginx/nginx.conf /etc/nginx/nginx-http.conf
+COPY deploy/nginx/nginx-tls.conf /etc/nginx/nginx-tls.conf
+COPY deploy/nginx/api-proxy.conf.inc /etc/nginx/api-proxy.conf.inc
+COPY deploy/nginx/40-sjherp-tls.sh /docker-entrypoint.d/40-sjherp-tls.sh
+RUN chmod +x /docker-entrypoint.d/40-sjherp-tls.sh \
+    && cp /etc/nginx/nginx-http.conf /etc/nginx/nginx.conf
 COPY --from=web-build /web/dist /usr/share/nginx/html
-EXPOSE 80
+EXPOSE 80 443
 HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=6 \
     CMD wget -qO- http://127.0.0.1/api/health || exit 1

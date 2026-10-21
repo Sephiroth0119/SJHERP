@@ -28,16 +28,21 @@ done
 
 need_cmd curl
 URL="$(base_url)"
+# shellcheck disable=SC2206
+CURL_TLS=()
+if [[ "$URL" == https://* ]]; then
+  CURL_TLS=(-k)
+fi
 
 info "检查登录页 $URL/"
-PAGE="$(curl -fsS --max-time 10 "$URL/")"
+PAGE="$(curl -fsS --max-time 10 "${CURL_TLS[@]}" "$URL/")"
 if ! grep -q 'SJHERP' <<<"$PAGE"; then
   die "登录页未包含 SJHERP 标题，请看 nginx 是否在提供前端静态资源"
 fi
 info "登录页正常"
 
 info "检查健康接口 $URL/api/health"
-HEALTH="$(curl -fsS --max-time 10 "$URL/api/health")"
+HEALTH="$(curl -fsS --max-time 10 "${CURL_TLS[@]}" "$URL/api/health")"
 if ! grep -q '"status":"UP"' <<<"$HEALTH" && ! grep -q '"status": "UP"' <<<"$HEALTH"; then
   die "健康检查未返回 UP：$HEALTH"
 fi
@@ -52,7 +57,7 @@ if [[ "$DO_LOGIN" -eq 1 ]]; then
   fi
   info "尝试管理员登录（不打印令牌）"
   LOGIN_BODY="$(mktemp)"
-  HTTP_CODE="$(curl -sS --max-time 15 -o "$LOGIN_BODY" -w '%{http_code}' \
+  HTTP_CODE="$(curl -sS --max-time 15 "${CURL_TLS[@]}" -o "$LOGIN_BODY" -w '%{http_code}' \
     -H 'Content-Type: application/json' \
     -d "{\"username\":\"admin\",\"password\":\"${ADMIN_PASSWORD}\"}" \
     "$URL/api/auth/login" || true)"

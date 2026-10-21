@@ -12,17 +12,14 @@ import com.sjherp.domain.common.audit.Audited;
  * <p>业务规则：
  * <ul>
  *   <li>登录名唯一（仓储查重 + 数据库 (tenant_id, username) 联合唯一键兜底）；</li>
- *   <li>密码强度：至少 {@value #PASSWORD_MIN_LENGTH} 位且同时包含字母与数字
- *       （最长 {@value #PASSWORD_MAX_LENGTH} 位，BCrypt 72 字节上限内留余量）；</li>
+ *   <li>密码强度：见 {@link PasswordPolicy}（至少 {@value PasswordPolicy#MIN_LENGTH} 位，
+ *       须同时含大写、小写与数字；最长 {@value PasswordPolicy#MAX_LENGTH} 位）；</li>
  *   <li>明文密码只在本服务内瞬时存在，经 {@link PasswordHasher} 哈希后存储；</li>
  *   <li>认证失败统一报"用户名或密码错误"（不泄露登录名是否存在），停用账号拒绝登录；</li>
  *   <li>启停规则：重复启用/停用直接拒绝（约定同档案，见 {@link User}）。</li>
  * </ul>
  */
 public class UserService {
-
-    static final int PASSWORD_MIN_LENGTH = 8;
-    static final int PASSWORD_MAX_LENGTH = 64;
 
     private final UserRepository userRepository;
     private final PasswordHasher passwordHasher;
@@ -36,8 +33,8 @@ public class UserService {
     @Audited(action = "user.create", targetType = "user")
     public User create(String username, String displayName, String rawPassword,
                        Set<Role> roles, String operator) {
-        validatePasswordStrength(rawPassword);
         String trimmed = username == null ? null : username.strip();
+        PasswordPolicy.validate(rawPassword, trimmed);
         if (trimmed != null && userRepository.existsByUsername(trimmed)) {
             throw new IllegalArgumentException("登录名已存在: " + trimmed);
         }
@@ -70,7 +67,7 @@ public class UserService {
         if (oldRawPassword == null || !passwordHasher.matches(oldRawPassword, user.getPasswordHash())) {
             throw new IllegalArgumentException("原密码不正确");
         }
-        validatePasswordStrength(newRawPassword);
+        PasswordPolicy.validate(newRawPassword, user.getUsername());
         user.changePasswordHash(passwordHasher.hash(newRawPassword), operator);
         userRepository.save(user);
         return user;
@@ -80,7 +77,7 @@ public class UserService {
     @Audited(action = "user.reset_password", targetType = "user")
     public User resetPassword(long id, String newRawPassword, String operator) {
         User user = get(id);
-        validatePasswordStrength(newRawPassword);
+        PasswordPolicy.validate(newRawPassword, user.getUsername());
         user.changePasswordHash(passwordHasher.hash(newRawPassword), operator);
         userRepository.save(user);
         return user;
@@ -124,29 +121,4 @@ public class UserService {
         return userRepository.findAll();
     }
 
-    /**
-     * 密码强度规则：至少 8 位，且同时包含字母与数字（M2-T05 验收口径；
-     * 更复杂的策略——特殊字符、密码有效期——留 M8-T03 安全基线）。
-     */
-    static void validatePasswordStrength(String rawPassword) {
-        if (rawPassword == null || rawPassword.length() < PASSWORD_MIN_LENGTH) {
-            throw new IllegalArgumentException("密码至少 " + PASSWORD_MIN_LENGTH + " 位，且须同时包含字母和数字");
-        }
-        if (rawPassword.length() > PASSWORD_MAX_LENGTH) {
-            throw new IllegalArgumentException("密码不能超过 " + PASSWORD_MAX_LENGTH + " 位");
-        }
-        boolean hasLetter = false;
-        boolean hasDigit = false;
-        for (int i = 0; i < rawPassword.length(); i++) {
-            char c = rawPassword.charAt(i);
-            if (Character.isLetter(c)) {
-                hasLetter = true;
-            } else if (Character.isDigit(c)) {
-                hasDigit = true;
-            }
-        }
-        if (!hasLetter || !hasDigit) {
-            throw new IllegalArgumentException("密码须同时包含字母和数字");
-        }
-    }
 }
