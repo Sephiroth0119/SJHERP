@@ -129,4 +129,6 @@ SJHERP/
 
 **M8-T03 安全基线已完成实现（2026-10-21）**：生产 nginx 默认自签 TLS（`SJHERP_TLS_MODE=self-signed`，HTTP 除探活外跳转 HTTPS，正式证书见 `docs/部署-安全基线.md`）；密码须大写+小写+数字且拒常见弱口令（与 `install.sh` Adm+hex 兼容）；登录/改密与聊天发消息限流（应用过滤器 + nginx `limit_req`，环境变量可配）；全库审查修复缺口 GET 越权、LIKE 通配放大、SSE 异常原文回灌；DB 无 API Key 列（AES-GCM 工具类待命）；聊天页展示第三方 LLM 出境告知，可选脱敏/仅本地。未改 `web-dist/`、领域状态机与 Flyway 业务迁移。说明见 `docs/部署-安全基线.md`。
 
+**M8-T04 监控告警已完成实现（2026-10-21）**：Actuator + Prometheus 文本仅映射 `127.0.0.1:8081`（nginx 不反代 `/actuator`）；LLM 日报聚合既有 `agent_invocation`，单价未配则只出 token、不编造金额；`deploy/monitor.sh` 巡检健康/磁盘/备份新鲜度/ERROR 日志并可选 webhook。未改 `web-dist/`、领域状态机与 Flyway。说明见 `docs/部署-监控告警.md`。
+
 **M8-T02 备份与恢复已完成实现（2026-10-21）**：`deploy/backup.sh` 对运行中的 MySQL 做 `mysqldump` gzip、对 Qdrant 打全库快照并归档到宿主机 `deploy/backups/`（默认保留 14 天，cron 模板 `deploy/crontab.example`）；`restore.sh` 停 nginx/app 后灌回**现有** named volume，禁止把 `docker compose down -v` 当恢复；`restore-smoke.sh` 用金丝雀表证明 dump 被真正灌回，再走登录冒烟。Qdrant 为派生索引，救数以 MySQL 为准。未改 `web-dist/`、领域逻辑与 Flyway。本机与 PR #66 CI 四项全绿（run `39591815279`，部署资产含恢复演练）。说明见 `docs/部署-备份恢复.md`。

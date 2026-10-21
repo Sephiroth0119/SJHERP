@@ -24,6 +24,27 @@ spring:
 server:
   port: 8080
 
+# 监控（M8-T04）：Prometheus 文本 + health。生产 compose 把 management 端口设为 8081，
+# 仅映射 127.0.0.1，nginx 不反代 /actuator。测试不设 management.port，仍走主端口便于切片。
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: never
+    prometheus:
+      enabled: true
+  info:
+    env:
+      enabled: false
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+
 sjherp:
   # 认证（M2-T05）：JWT HS256。
   # jwt-secret 必须通过环境变量 SJHERP_JWT_SECRET 配置（≥ 32 字节随机串）。
@@ -55,6 +76,15 @@ sjherp:
     # 成本核算方法（Q-2 预留，全局统一不可按商品混用）：v1.0 仅支持 MOVING_AVERAGE（移动加权，
     # 单价 6 位 HALF_UP / 金额 2 位 HALF_UP / 出空清零）；FIFO 留实现位，配置其他值启动期报错。
     costing-method: MOVING_AVERAGE
+
+  # 运维监控（M8-T04）：LLM 日报读 agent_invocation 真源；单价未配则只出 token、不编造金额。
+  ops:
+    alert-webhook: ${SJHERP_ALERT_WEBHOOK:}
+    llm-daily-enabled: ${SJHERP_LLM_DAILY_ENABLED:true}
+    llm-daily-cron: "0 5 0 * * *"
+    alert-llm-daily: ${SJHERP_ALERT_LLM_DAILY:false}
+    llm-prompt-price-per-million: ${SJHERP_LLM_PRICE_PROMPT_PER_MILLION:}
+    llm-completion-price-per-million: ${SJHERP_LLM_PRICE_COMPLETION_PER_MILLION:}
 
   # 数据一致性校验（M3-T13 检查 Agent）。按需查走 REST/Agent 工具随时可跑；定时巡检参数如下。
   consistency:

@@ -13,6 +13,10 @@
 # - 文件落在 ./backups/{mysql,qdrant}/（宿主机磁盘，不在 named volume 里）
 # - Qdrant 快照目录 bind 到 ./backups/qdrant/live
 # - 恢复走 ./deploy/restore.sh；禁止把 docker compose down -v 当常规恢复
+#
+# 监控（M8-T04，见 docs/部署-监控告警.md）：
+# - app management 端口 8081 只映射 127.0.0.1，供 Prometheus 文本刮取
+# - 宿主机 cron 调 ./deploy/monitor.sh（磁盘/备份新鲜度/健康/ERROR 日志）
 
 name: sjherp
 
@@ -23,6 +27,7 @@ x-sjherp-backup:
   keep_days_env: SJHERP_BACKUP_KEEP_DAYS
   mysql_dir: ./backups/mysql
   qdrant_dir: ./backups/qdrant
+  monitor: ./deploy/monitor.sh
 
 services:
   mysql:
@@ -91,6 +96,12 @@ services:
       SJHERP_RATE_LIMIT_CHAT: ${SJHERP_RATE_LIMIT_CHAT:-60}
       SJHERP_FORBID_DEV_PROFILE: ${SJHERP_FORBID_DEV_PROFILE:-true}
       SJHERP_CONSISTENCY_ENABLED: ${SJHERP_CONSISTENCY_ENABLED:-true}
+      MANAGEMENT_SERVER_PORT: 8081
+      SJHERP_ALERT_WEBHOOK: ${SJHERP_ALERT_WEBHOOK:-}
+      SJHERP_ALERT_LLM_DAILY: ${SJHERP_ALERT_LLM_DAILY:-false}
+      SJHERP_LLM_DAILY_ENABLED: ${SJHERP_LLM_DAILY_ENABLED:-true}
+      SJHERP_LLM_PRICE_PROMPT_PER_MILLION: ${SJHERP_LLM_PRICE_PROMPT_PER_MILLION:-}
+      SJHERP_LLM_PRICE_COMPLETION_PER_MILLION: ${SJHERP_LLM_PRICE_COMPLETION_PER_MILLION:-}
       JAVA_TOOL_OPTIONS: ${SJHERP_JAVA_OPTS:--XX:MaxRAMPercentage=75.0 -Dfile.encoding=UTF-8 -Duser.timezone=UTC}
     depends_on:
       mysql:
@@ -103,6 +114,9 @@ services:
       timeout: 5s
       retries: 30
       start_period: 60s
+    ports:
+      # 仅本机刮取 Prometheus；不要改成 0.0.0.0
+      - "127.0.0.1:${SJHERP_METRICS_PORT:-8081}:8081"
     networks:
       - sjherp
 

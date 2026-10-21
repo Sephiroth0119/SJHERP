@@ -86,6 +86,50 @@ public class JdbcAgentInvocationRepository implements AgentInvocationRepository 
                 sessionId);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public LlmUsageWindow summarizeLlm(Instant fromInclusive, Instant toExclusive) {
+        if (fromInclusive == null || toExclusive == null) {
+            throw new IllegalArgumentException("LLM 汇总时间窗不能为空");
+        }
+        if (!fromInclusive.isBefore(toExclusive)) {
+            throw new IllegalArgumentException("LLM 汇总时间窗起点必须早于终点");
+        }
+        List<ModelBreakdown> byModel = jdbc.query(
+                "SELECT COALESCE(NULLIF(model, ''), '(unknown)') AS model, "
+                        + "COUNT(*) AS calls, "
+                        + "SUM(CASE WHEN success = 0 THEN 1 ELSE 0 END) AS failures, "
+                        + "COALESCE(SUM(prompt_tokens), 0) AS prompt_tokens, "
+                        + "COALESCE(SUM(completion_tokens), 0) AS completion_tokens, "
+                        + "COALESCE(SUM(duration_ms), 0) AS duration_ms "
+                        + "FROM agent_invocation "
+                        + "WHERE type = 'LLM' AND created_at >= ? AND created_at < ? "
+                        + "GROUP BY COALESCE(NULLIF(model, ''), '(unknown)') "
+                        + "ORDER BY calls DESC, model ASC",
+                (rs, rowNum) -> new ModelBreakdown(
+                        rs.getString("model"),
+                        rs.getLong("calls"),
+                        rs.getLong("failures"),
+                        rs.getLong("prompt_tokens"),
+                        rs.getLong("completion_tokens"),
+                        rs.getLong("duration_ms")),
+                toDb(fromInclusive), toDb(toExclusive));
+        long calls = 0;
+        long failures = 0;
+        long prompt = 0;
+        long completion = 0;
+        long duration = 0;
+        for (ModelBreakdown row : byModel) {
+            calls += row.calls();
+            failures += row.failures();
+            prompt += row.promptTokens();
+            completion += row.completionTokens();
+            duration += row.durationMs();
+        }
+        return new LlmUsageWindow(fromInclusive, toExclusive, calls, failures,
+                prompt, completion, duration, byModel);
+    }
+
     private static LocalDateTime toDb(Instant instant) {
         return LocalDateTime.ofInstant(instant, ZoneOffset.UTC);
     }
