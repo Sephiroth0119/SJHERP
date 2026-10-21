@@ -17,6 +17,10 @@
 # 监控（M8-T04，见 docs/部署-监控告警.md）：
 # - app management 端口 8081 只映射 127.0.0.1，供 Prometheus 文本刮取
 # - 宿主机 cron 调 ./deploy/monitor.sh（磁盘/备份新鲜度/健康/ERROR 日志）
+#
+# 性能（M8-T05，见 docs/部署-性能基线.md）：
+# - MySQL 打开慢查询日志（long_query_time=1），文件在数据卷 datadir
+# - 压测脚本 ./deploy/perf.sh；不要对生产库灌百万行合成数据
 
 name: sjherp
 
@@ -43,6 +47,9 @@ services:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_0900_ai_ci
       - --skip-name-resolve
+      - --slow-query-log=ON
+      - --long-query-time=1
+      - --log-output=FILE
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:

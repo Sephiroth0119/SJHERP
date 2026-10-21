@@ -1,0 +1,17 @@
+# M8-T05 热路径必有索引（Flyway 必须声明）。格式：表名 索引名
+# 由 ./deploy/perf.sh --check 与 RequiredLedgerIndexCatalogTest 共同守门。
+inventory_balance uk_inventory_balance_dim
+inventory_transaction uk_inventory_txn_idempotency
+inventory_transaction idx_inventory_txn_dim
+inventory_transaction idx_inventory_txn_src
+voucher uk_voucher_doc_no
+voucher uk_voucher_source
+voucher idx_voucher_period
+voucher idx_voucher_status
+voucher_line uk_voucher_line
+voucher_line idx_voucher_line_head
+voucher_line idx_voucher_line_account
+purchase_receipt uk_purchase_receipt_doc_no
+purchase_receipt idx_purchase_receipt_po
+sales_delivery uk_sales_delivery_doc_no
+sales_delivery idx_sales_delivery_order
