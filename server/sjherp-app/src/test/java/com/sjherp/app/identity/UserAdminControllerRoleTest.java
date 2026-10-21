@@ -53,7 +53,7 @@ class UserAdminControllerRoleTest {
     private UserRepository userRepository;
 
     private static final String CREATE_USER_JSON = """
-            {"username":"newbie","displayName":"新人","password":"Passw0rd1","roles":["SALES"]}""";
+            {"username":"newbie","displayName":"新人","password":"Passw0rd2026","roles":["SALES"]}""";
 
     /** 构造与 JWT 过滤器同构的认证态（口径同 ArchiveWritePermissionApiTest） */
     private static RequestPostProcessor asUser(Role... roles) {
