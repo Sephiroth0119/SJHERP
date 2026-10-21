@@ -107,6 +107,114 @@ body {
   color: var(--color-danger);
 }
 
+.app-topbar-help {
+  appearance: none;
+  padding: 5px 14px;
+  font-size: 13px;
+  color: var(--color-primary);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.app-topbar-help:hover {
+  border-color: var(--color-primary);
+}
+
+.onboarding-body {
+  margin-top: 16px;
+}
+
+.onboarding-list {
+  padding-left: 1.2em;
+  line-height: 1.6;
+}
+
+.onboarding-error {
+  color: var(--color-danger);
+  margin: 0 0 12px;
+}
+
+.onboarding-notice {
+  color: #166534;
+  margin: 0 0 12px;
+}
+
+.onboarding-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.onboarding-footer-end {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.help-page {
+  padding: 20px 24px 40px;
+  overflow: auto;
+}
+
+.help-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.help-header h1,
+.help-panel h2,
+.help-card h2 {
+  margin: 0 0 8px;
+}
+
+.help-panel,
+.help-card {
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.help-panel {
+  margin-bottom: 16px;
+}
+
+.help-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.help-card p,
+.help-panel p,
+.help-card ol {
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+@media (max-width: 767px) {
+  .help-page {
+    padding: 12px;
+  }
+
+  .onboarding-footer,
+  .onboarding-footer-end {
+    width: 100%;
+  }
+
+  .onboarding-footer-end {
+    justify-content: stretch;
+  }
+}
+
 /* ===== 站内通知（M6-T05）===== */
 .notification-bell {
   position: relative;

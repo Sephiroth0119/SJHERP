@@ -133,4 +133,6 @@ SJHERP/
 
 **M8-T05 性能基线已完成（2026-10-21）**：`deploy/perf.sh --check/--smoke/--full`；CI 只跑索引守门与只读 EXPLAIN，百万行/50 并发走独立 Testcontainers。本机 `--full` 1048576 行后 50 并发库存 p95=1071ms、采购过账 p95=617ms。V38 为库存流水来源单号二级索引（勾稽点查）；compose MySQL 打开 1s 慢查询日志。未改 `web-dist/`、TLS 默认、restore-smoke 与 monitor.sh。说明见 `docs/部署-性能基线.md`。PR #69 四项 CI 全绿。
 
+**M8-T06 用户文档与引导已完成实现（2026-10-21）**：中文上手指南与各模块操作手册（`docs/用户-*.md`）；首次登录向导覆盖建档案→期初→第一张采购订单草稿，只调现有 API、不写假数据；登录可见「帮助」模块与顶栏「新手引导」。未改 `web-dist/`、领域状态机与 Flyway。详见 `docs/测试-M8-T06用户文档与引导.md`。
+
 **M8-T02 备份与恢复已完成实现（2026-10-21）**：`deploy/backup.sh` 对运行中的 MySQL 做 `mysqldump` gzip、对 Qdrant 打全库快照并归档到宿主机 `deploy/backups/`（默认保留 14 天，cron 模板 `deploy/crontab.example`）；`restore.sh` 停 nginx/app 后灌回**现有** named volume，禁止把 `docker compose down -v` 当恢复；`restore-smoke.sh` 用金丝雀表证明 dump 被真正灌回，再走登录冒烟。Qdrant 为派生索引，救数以 MySQL 为准。未改 `web-dist/`、领域逻辑与 Flyway。本机与 PR #66 CI 四项全绿（run `39591815279`，部署资产含恢复演练）。说明见 `docs/部署-备份恢复.md`。
