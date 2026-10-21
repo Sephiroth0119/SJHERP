@@ -54,6 +54,6 @@ npm run build
 
 ## 结果
 
-- `cd web && npm test`：见本刀提交记录（含结转列表/创建窄 body/流转路径、账期与在产校验、权限 fail-closed、in-flight 守卫、CJK 文案）。
-- `cd web && npm run build`：TypeScript 检查与 Vite production build。
+- `cd web && npm test`：233 项通过，0 fail（含结转列表/创建窄 body/流转路径、账期与在产校验、权限 fail-closed、in-flight 守卫、CJK 文案）。
+- `cd web && npm run build`：TypeScript 检查与 Vite production build 通过。
 - 未改 `web-dist/`、`server/`。
