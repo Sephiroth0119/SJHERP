@@ -47,11 +47,11 @@ test('report tabs fail-closed on their REST permission while login-scoped report
   );
   assert.deepEqual(
     resolveWorkbenchRoute({ module: 'reports', tab: 'trial-balance' }, ['finance:voucher']),
-    { module: 'reports', tab: 'trial-balance' },
+    { module: 'reports', tab: 'trial-balance', docNo: undefined },
   );
   assert.deepEqual(
     resolveWorkbenchRoute({ module: 'reports', tab: 'inventory-balance' }, []),
-    { module: 'reports', tab: 'inventory-balance' },
+    { module: 'reports', tab: 'inventory-balance', docNo: undefined },
   );
   assert.deepEqual(
     resolveWorkbenchRoute({ module: 'reports', tab: 'receivable-aging' }, ['sales:order']),
