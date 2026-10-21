@@ -4,6 +4,7 @@ import * as masterDataApi from '../api/masterDataApi.ts';
 import * as productionReportApi from '../api/productionReportApi.ts';
 import * as workOrderApi from '../api/workOrderApi.ts';
 import { createInFlightGuard, createRequestGate } from '../security/workbenchControl.ts';
+import { useFocusDocument } from './useFocusDocument.ts';
 import {
   errorMessage,
   ExecutingWorkOrderPicker,
@@ -58,9 +59,11 @@ function runReportAction(action: productionReportApi.ProductionReportAction, doc
 export function ProductionReportWorkbench({
   canUse,
   canUseWo,
+  focusDocNo,
 }: {
   canUse: boolean;
   canUseWo: boolean;
+  focusDocNo?: string;
 }) {
   const [items, setItems] = useState<productionReportApi.ProductionReport[]>([]);
   const [selected, setSelected] = useState<productionReportApi.ProductionReport | null>(null);
@@ -193,6 +196,13 @@ export function ProductionReportWorkbench({
       }
     });
   };
+
+  useFocusDocument(focusDocNo, (docNo) => {
+    if (!canUse) return;
+    void productionReportApi.getProductionReport(docNo).then(choose).catch((cause: unknown) => {
+      setError(errorMessage(cause, '报工单详情加载失败'));
+    });
+  });
 
   const applySearch = () => {
     if (saving) return;

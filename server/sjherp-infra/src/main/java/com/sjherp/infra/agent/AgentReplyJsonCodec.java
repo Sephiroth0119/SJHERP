@@ -17,6 +17,7 @@ import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.sjherp.agent.reply.AgentReply;
 import com.sjherp.agent.reply.AgentStreamEvent;
+import com.sjherp.agent.reply.DocumentRef;
 import com.sjherp.agent.reply.Form;
 import com.sjherp.agent.reply.Option;
 
@@ -80,7 +81,17 @@ public final class AgentReplyJsonCodec {
                 .serializationInclusion(JsonInclude.Include.NON_NULL)
                 // 协议演进时旧服务读到新增字段不报错（向前兼容）
                 .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+                .addMixIn(AgentReply.class, AgentReplyMixin.class)
                 .build();
+    }
+
+    /**
+     * 仅空 documents 不输出，保持与旧 v0.1 回复字节兼容（无该字段的客户端忽略即可）。
+     * 注解只打在 documents，避免把空 options 或 false 的 requiresConfirmation 一并省略。
+     */
+    private abstract static class AgentReplyMixin {
+        @JsonInclude(JsonInclude.Include.NON_EMPTY)
+        abstract java.util.List<DocumentRef> documents();
     }
 
     /** 序列化为协议 JSON（用于持久化与 API 响应） */

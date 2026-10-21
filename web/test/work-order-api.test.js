@@ -265,7 +265,10 @@ test('work order tab is gated on production:wo and does not fetch without permis
   assert.match(workbenchSource, /permissions\.includes\('production:wo'\)/);
   assert.match(workbenchSource, /\{canUseWo && <button type="button" role="tab"/);
   assert.equal(workbenchSource.includes('>工单</button>'), true);
-  assert.equal(workbenchSource.includes('<WorkOrderWorkbench canUse={canUseWo} canUseMrp={canUseMrp} />'), true);
+  assert.match(
+    workbenchSource,
+    /<WorkOrderWorkbench canUse=\{canUseWo\} canUseMrp=\{canUseMrp\} focusDocNo=\{focusDocNo\} \/>/,
+  );
   assert.match(pageSource, /if \(!canUse\) \{/);
   assert.match(pageSource, /需要 production:wo 权限才能查看和操作工单/);
   assert.match(pageSource, /避免 403 刷屏/);

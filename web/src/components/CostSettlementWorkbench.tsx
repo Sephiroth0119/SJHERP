@@ -6,6 +6,7 @@ import {
   CostSettlementWorkOrderPicker,
   errorMessage,
 } from './productionReferencePickers.tsx';
+import { useFocusDocument } from './useFocusDocument.ts';
 
 const PAGE_SIZE = 20;
 
@@ -54,9 +55,11 @@ function runSettlementAction(action: costSettlementApi.CostSettlementAction, doc
 export function CostSettlementWorkbench({
   canUse,
   canUseWo,
+  focusDocNo,
 }: {
   canUse: boolean;
   canUseWo: boolean;
+  focusDocNo?: string;
 }) {
   const [items, setItems] = useState<costSettlementApi.CostSettlement[]>([]);
   const [selected, setSelected] = useState<costSettlementApi.CostSettlement | null>(null);
@@ -145,6 +148,13 @@ export function CostSettlementWorkbench({
       }
     });
   };
+
+  useFocusDocument(focusDocNo, (docNo) => {
+    if (!canUse) return;
+    void costSettlementApi.getCostSettlement(docNo).then(choose).catch((cause: unknown) => {
+      setError(errorMessage(cause, '成本结转单详情加载失败'));
+    });
+  });
 
   const applySearch = () => {
     if (saving) return;

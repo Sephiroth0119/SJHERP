@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import com.sjherp.agent.session.AgentMessage;
 import com.sjherp.agent.session.AgentSession;
 import com.sjherp.agent.session.AgentSessionRepository;
+import com.sjherp.agent.session.AgentSessionSummary;
 import com.sjherp.agent.session.MessageRole;
 import com.sjherp.agent.session.SessionStatus;
 
@@ -137,6 +138,22 @@ public class JdbcAgentSessionRepository implements AgentSessionRepository {
                         + "FROM agent_session WHERE user_id = ? ORDER BY updated_at DESC",
                 SESSION_ROW_MAPPER, userId);
         return rows.stream().map(this::toAggregate).toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<AgentSessionSummary> listSummariesByUserId(String userId) {
+        return jdbc.query(
+                "SELECT id, user_id, title, status, created_at, updated_at "
+                        + "FROM agent_session WHERE user_id = ? ORDER BY updated_at DESC",
+                (rs, rowNum) -> new AgentSessionSummary(
+                        rs.getString("id"),
+                        rs.getString("user_id"),
+                        rs.getString("title"),
+                        SessionStatus.valueOf(rs.getString("status")),
+                        fromDb(rs.getObject("created_at", LocalDateTime.class)),
+                        fromDb(rs.getObject("updated_at", LocalDateTime.class))),
+                userId);
     }
 
     /** 行 -> 聚合：加载消息历史（按 seq 升序）后重建会话 */

@@ -315,7 +315,7 @@ test('sales delivery tab is fail-closed on the exact permission code', () => {
     true,
   );
   assert.equal(appSource.includes('>销售出库</button>}'), true);
-  assert.equal(appSource.includes('<SalesDeliveryWorkbench />'), true);
+  assert.equal(appSource.includes('<SalesDeliveryWorkbench focusDocNo={docNo} />'), true);
 
   const workbenchSource = readFileSync(
     new URL('../src/components/SalesDeliveryWorkbench.tsx', import.meta.url),

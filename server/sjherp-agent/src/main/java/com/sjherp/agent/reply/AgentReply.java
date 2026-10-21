@@ -10,13 +10,17 @@ import java.util.Objects;
  * （见 {@link AgentStreamEvent}）。非流式客户端仍按完整 JSON 消费；version 为
  * {@code "0.1"} 的历史回复同样可解析。
  *
- * <p>Agent 回复永远是结构化消息：文本 + 可选项数组 + 可选表单。
- * 前端将 options 渲染为可点击卡片、将 form 渲染为表单，用户点击/提交后
- * 以结构化输入（optionId / formId+values）回传，避免让用户打字描述一切。
+ * <p>Agent 回复永远是结构化消息：文本 + 可选项数组 + 可选表单 + 可选单据引用。
+ * 前端将 options 渲染为可点击卡片、将 form 渲染为表单、将 documents 渲染为
+ * 跳转工作台的单据卡片。用户点击/提交后以结构化输入（optionId / formId+values）
+ * 回传，避免让用户打字描述一切。
  *
  * <p>Human-in-the-loop：涉及资金、过账、期间关账等高风险操作，回复必须置
  * requiresConfirmation=true（此时 options 必含"确认执行"与"取消"两项，
  * 确认项 risk=HIGH），由人点击确认后才执行，不允许直接执行。
+ *
+ * <p>{@code documents} 为加性可选字段（M7-T04）：旧客户端忽略未知字段；
+ * 缺省/空列表表示本条回复没有单据卡片。只出现在完整回复 / SSE complete，不随 delta 推送。
  *
  * <p>本协议变更需文档化在 docs/ 中并保持版本化。
  *
@@ -26,9 +30,11 @@ import java.util.Objects;
  * @param form                 可选表单：需要用户补充多个字段时使用；无表单时为 null
  * @param requiresConfirmation Human-in-the-loop 标记（回复级），默认 false；
  *                             true 时 Agent 只准备动作，由人点击确认后才执行
+ * @param documents            单据引用列表，可为空（前端按权限 fail-closed 渲染）
  */
 public record AgentReply(String version, String text, List<Option> options,
-                         Form form, boolean requiresConfirmation) {
+                         Form form, boolean requiresConfirmation,
+                         List<DocumentRef> documents) {
 
     /** 当前协议版本（与 docs/选项返回协议.md、web/src/types/agent.ts 保持一致） */
     public static final String PROTOCOL_VERSION = "0.2";
@@ -40,29 +46,35 @@ public record AgentReply(String version, String text, List<Option> options,
         version = version == null ? PROTOCOL_VERSION : version;
         Objects.requireNonNull(text, "text 不能为空");
         options = options == null ? List.of() : List.copyOf(options);
+        documents = documents == null || documents.isEmpty() ? List.of() : List.copyOf(documents);
         if (requiresConfirmation && options.isEmpty()) {
             throw new IllegalArgumentException(
                     "requiresConfirmation=true 时 options 必须非空（须含确认与取消两项）");
         }
     }
 
-    /** 纯文本回复（无选项、无表单） */
+    /** 纯文本回复（无选项、无表单、无单据引用） */
     public static AgentReply text(String text) {
-        return new AgentReply(PROTOCOL_VERSION, text, List.of(), null, false);
+        return new AgentReply(PROTOCOL_VERSION, text, List.of(), null, false, List.of());
     }
 
     /** 文本 + 选项卡片 */
     public static AgentReply withOptions(String text, List<Option> options) {
-        return new AgentReply(PROTOCOL_VERSION, text, options, null, false);
+        return new AgentReply(PROTOCOL_VERSION, text, options, null, false, List.of());
     }
 
     /** 文本 + 表单 */
     public static AgentReply withForm(String text, Form form) {
-        return new AgentReply(PROTOCOL_VERSION, text, List.of(), form, false);
+        return new AgentReply(PROTOCOL_VERSION, text, List.of(), form, false, List.of());
     }
 
     /** 高风险确认回复（Human-in-the-loop）：options 须含确认（risk=HIGH）与取消两项 */
     public static AgentReply confirmation(String text, List<Option> options) {
-        return new AgentReply(PROTOCOL_VERSION, text, options, null, true);
+        return new AgentReply(PROTOCOL_VERSION, text, options, null, true, List.of());
+    }
+
+    /** 替换单据引用（工具结果回填 / 测试用），其余字段保持不变 */
+    public AgentReply withDocuments(List<DocumentRef> documents) {
+        return new AgentReply(version, text, options, form, requiresConfirmation, documents);
     }
 }

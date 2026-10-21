@@ -227,7 +227,9 @@ test('production report tab is gated on production:report and does not fetch wit
   assert.match(workbenchSource, /\{canUseReport && <button type="button" role="tab"/);
   assert.equal(workbenchSource.includes('>报工</button>'), true);
   assert.equal(
-    workbenchSource.includes('<ProductionReportWorkbench canUse={canUseReport} canUseWo={canUseWo} />'),
+    /<ProductionReportWorkbench canUse=\{canUseReport\} canUseWo=\{canUseWo\} focusDocNo=\{focusDocNo\} \/>/.test(
+      workbenchSource,
+    ),
     true,
   );
   assert.match(pageSource, /if \(!canUse\) \{/);

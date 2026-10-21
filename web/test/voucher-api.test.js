@@ -227,7 +227,7 @@ test('voucher tab is fail-closed on finance:voucher and uses real workbench', ()
   assert.match(appSource, /permissions\.includes\('finance:voucher'\)/);
   assert.equal(appSource.includes('>凭证</button>'), true);
   assert.match(appSource, /canUseVouchers && <button type="button" role="tab"/);
-  assert.equal(appSource.includes('<VoucherWorkbench canWrite={canUseVouchers} />'), true);
+  assert.equal(appSource.includes('<VoucherWorkbench canWrite={canUseVouchers} focusDocNo={docNo} />'), true);
   assert.doesNotMatch(appSource, /Role\.ACCOUNTANT|roles\.includes/);
 });
 

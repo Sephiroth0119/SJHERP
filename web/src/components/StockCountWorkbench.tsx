@@ -4,6 +4,7 @@ import { ApiError } from '../api/http.ts';
 import * as masterDataApi from '../api/masterDataApi.ts';
 import * as stockCountApi from '../api/stockCountApi.ts';
 import { createInFlightGuard, createRequestGate } from '../security/workbenchControl.ts';
+import { useFocusDocument } from './useFocusDocument.ts';
 
 const PAGE_SIZE = 20;
 const statusLabels: Record<stockCountApi.StockCountStatus, string> = {
@@ -24,7 +25,7 @@ const emptyForm = (): stockCountApi.StockCountForm => ({
 const errorMessage = (cause: unknown, fallback: string) =>
   cause instanceof ApiError ? cause.message : fallback;
 
-export function StockCountWorkbench() {
+export function StockCountWorkbench({ focusDocNo }: { focusDocNo?: string } = {}) {
   const [items, setItems] = useState<stockCountApi.StockCount[]>([]);
   const [selected, setSelected] = useState<stockCountApi.StockCount | null>(null);
   const [warehouseDraft, setWarehouseDraft] = useState<number | null>(null);
@@ -152,6 +153,12 @@ export function StockCountWorkbench() {
       }
     });
   };
+
+  useFocusDocument(focusDocNo, (docNo) => {
+    void stockCountApi.getStockCount(docNo).then(choose).catch((cause: unknown) => {
+      setError(errorMessage(cause, '盘点单详情加载失败'));
+    });
+  });
 
   const applySearch = () => {
     if (saving) return;

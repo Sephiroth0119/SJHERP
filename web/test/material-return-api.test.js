@@ -210,7 +210,10 @@ test('material return tab is gated with material permission and has in-flight gu
     new URL('../src/components/MaterialReturnWorkbench.tsx', import.meta.url),
     'utf8',
   );
-  assert.equal(workbenchSource.includes('<MaterialReturnWorkbench canUse={canUseMaterial} />'), true);
+  assert.match(
+    workbenchSource,
+    /<MaterialReturnWorkbench canUse=\{canUseMaterial\} focusDocNo=\{focusDocNo\} \/>/,
+  );
   assert.match(pageSource, /需要 production:material 权限才能查看和操作退料/);
   assert.match(pageSource, /避免 403 刷屏/);
   assert.match(pageSource, /if \(!canUse \|\| !mutationInFlight\.current\.tryAcquire\(\)\) return/);

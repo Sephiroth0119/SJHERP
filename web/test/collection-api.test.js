@@ -301,7 +301,7 @@ test('collection tab is fail-closed on finance:settlement and uses real workbenc
   const appSource = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
   assert.match(appSource, /permissions\.includes\('finance:settlement'\)/);
   assert.equal(appSource.includes('>收款</button>}'), true);
-  assert.equal(appSource.includes('<CollectionWorkbench />'), true);
+  assert.equal(appSource.includes('<CollectionWorkbench focusDocNo={docNo} />'), true);
   assert.doesNotMatch(appSource, /Role\.ACCOUNTANT|roles\.includes/);
 });
 

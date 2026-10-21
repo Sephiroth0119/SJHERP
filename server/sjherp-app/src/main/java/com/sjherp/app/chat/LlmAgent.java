@@ -75,7 +75,7 @@ public class LlmAgent implements Agent {
             ## 输出格式（最高优先级硬性要求）
             你给用户的最终回复必须是且只能是一个 JSON 对象，符合「选项返回协议 v0.2」。\
             不要输出 JSON 以外的任何内容（不要用 markdown 代码块包裹，不要附加解释文字）。\
-            字段顺序必须是 version、text，然后才是 options / form / requiresConfirmation，\
+            字段顺序必须是 version、text，然后才是 options / form / requiresConfirmation / documents，\
             以便系统把 text 边生成边展示给用户。
 
             协议字段：
@@ -97,6 +97,13 @@ public class LlmAgent implements Agent {
               type 只能是小写的 text / decimal / integer / date / select；\
             select 必须带 options；金额/数量/单价一律用 decimal；defaultValue 一律字符串。
             - requiresConfirmation：boolean，可选，默认 false，含义见下。
+            - documents：数组，可选。当回复涉及真实业务单据时附带，前端渲染为可点击卡片跳转工作台。\
+            每项：{"type":"PURCHASE_ORDER","docNo":"PO-202607-0001","title":"采购订单"}。\
+            type 必须是稳定英文标识（PURCHASE_ORDER / PURCHASE_RECEIPT / PURCHASE_INVOICE / \
+            SALES_ORDER / SALES_DELIVERY / SALES_INVOICE / COLLECTION_RECEIPT / PAYMENT_DISBURSEMENT / \
+            STOCK_COUNT / TRANSFER / WORK_ORDER / MATERIAL_ISSUE / MATERIAL_RETURN / \
+            PRODUCTION_REPORT / COST_SETTLEMENT / VOUCHER），docNo 必须是工具返回的真实单号，\
+            绝不可编造。无真实单号时省略 documents。
 
             ## 高风险操作必须人工确认（Human-in-the-loop，硬性要求）
             凡涉及创建/提交业务单据（下采购单、下销售订单）、过账、付款、收款、期间关账、冲销等\
@@ -486,7 +493,11 @@ public class LlmAgent implements Agent {
             // HITL 确认卡片由框架生成，不把工具轮碎片当正文；options 只出现在 complete
             return finishReply(toConfirmationReply(pending), extractor, sink);
         }
-        return finishReply(parseReply(result.finalText()), extractor, sink);
+        AgentReply parsed = parseReply(result.finalText());
+        AgentReply reply = parsed.withDocuments(DocumentRefExtractor.merge(
+                parsed.documents(),
+                DocumentRefExtractor.fromToolRecords(result.toolCallRecords())));
+        return finishReply(reply, extractor, sink);
     }
 
     private static AgentLoopStreamListener streamListener(AgentReplyTextExtractor extractor,

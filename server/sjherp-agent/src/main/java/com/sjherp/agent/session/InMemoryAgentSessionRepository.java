@@ -32,4 +32,13 @@ public class InMemoryAgentSessionRepository implements AgentSessionRepository {
                 .sorted((a, b) -> b.getUpdatedAt().compareTo(a.getUpdatedAt()))
                 .toList();
     }
+
+    @Override
+    public List<AgentSessionSummary> listSummariesByUserId(String userId) {
+        return findByUserId(userId).stream()
+                .map(session -> new AgentSessionSummary(
+                        session.getSessionId(), session.getUserId(), session.getTitle(),
+                        session.getStatus(), session.getCreatedAt(), session.getUpdatedAt()))
+                .toList();
+    }
 }

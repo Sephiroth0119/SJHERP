@@ -3,6 +3,7 @@ import * as catalogApi from '../api/catalogApi.ts';
 import { ApiError } from '../api/http.ts';
 import * as masterDataApi from '../api/masterDataApi.ts';
 import * as deliveryApi from '../api/salesDeliveryApi.ts';
+import { useFocusDocument } from './useFocusDocument.ts';
 
 const PAGE_SIZE = 20;
 
@@ -28,7 +29,7 @@ function errorMessage(cause: unknown, fallback: string): string {
   return cause instanceof ApiError ? cause.message : fallback;
 }
 
-export function SalesDeliveryWorkbench() {
+export function SalesDeliveryWorkbench({ focusDocNo }: { focusDocNo?: string } = {}) {
   const [items, setItems] = useState<deliveryApi.SalesDelivery[]>([]);
   const [selected, setSelected] =
     useState<deliveryApi.SalesDelivery | null>(null);
@@ -187,6 +188,12 @@ export function SalesDeliveryWorkbench() {
         }
       });
   };
+
+  useFocusDocument(focusDocNo, (docNo) => {
+    void deliveryApi.getSalesDelivery(docNo).then(choose).catch((cause: unknown) => {
+      setError(errorMessage(cause, '销售出库单详情加载失败'));
+    });
+  });
 
   const applySearch = () => {
     clearSelection();

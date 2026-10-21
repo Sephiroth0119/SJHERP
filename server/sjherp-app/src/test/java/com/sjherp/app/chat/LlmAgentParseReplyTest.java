@@ -116,4 +116,17 @@ class LlmAgentParseReplyTest {
         assertThat(reply.text()).isEqualTo("（模型未返回内容，请重试）");
         assertThat(reply.version()).isEqualTo(AgentReply.PROTOCOL_VERSION);
     }
+
+    @Test
+    void 带documents字段的协议JSON_解析保留单据引用() {
+        String raw = "{\"version\":\"0.1\",\"text\":\"已创建采购订单草稿\","
+                + "\"documents\":[{\"type\":\"PURCHASE_ORDER\",\"docNo\":\"PO-202607-0001\",\"title\":\"采购订单\"}]}";
+
+        AgentReply reply = replyFor(raw);
+
+        assertThat(reply.text()).isEqualTo("已创建采购订单草稿");
+        assertThat(reply.documents()).hasSize(1);
+        assertThat(reply.documents().get(0).type()).isEqualTo("PURCHASE_ORDER");
+        assertThat(reply.documents().get(0).docNo()).isEqualTo("PO-202607-0001");
+    }
 }

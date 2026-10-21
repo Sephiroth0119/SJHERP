@@ -9,6 +9,8 @@ import type {
   AgentOption,
   ChatMessage,
 } from '../../types/agent';
+import { visibleDocumentRefs } from '../../security/documentRef';
+import { DocumentCard } from './DocumentCard';
 import { OptionCard } from './OptionCard';
 import { FormCard } from './FormCard';
 
@@ -24,6 +26,8 @@ interface MessageListProps {
   pending: boolean;
   /** 最近一次失败的错误提示，渲染在消息流末尾 */
   error?: ChatStreamError | null;
+  /** 当前登录用户权限码；单据卡片按权限 fail-closed */
+  permissions: readonly string[];
   onSelectOption: (option: AgentOption) => void;
   onSubmitForm: (form: AgentForm, values: AgentFormValues) => void;
 }
@@ -33,7 +37,14 @@ function formatTime(iso: string): string {
   return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
 }
 
-export function MessageList({ messages, pending, error, onSelectOption, onSubmitForm }: MessageListProps) {
+export function MessageList({
+  messages,
+  pending,
+  error,
+  permissions,
+  onSelectOption,
+  onSubmitForm,
+}: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // 新消息/等待指示/错误提示出现时滚动到底部
@@ -62,6 +73,7 @@ export function MessageList({ messages, pending, error, onSelectOption, onSubmit
         const interactive = !pending && !streaming && message.id === lastAgentId;
         const { reply } = message;
         const showCards = !streaming;
+        const documents = showCards ? visibleDocumentRefs(reply.documents, permissions) : [];
         return (
           <div key={message.id} className="message message-agent">
             <div
@@ -83,6 +95,13 @@ export function MessageList({ messages, pending, error, onSelectOption, onSubmit
             )}
             {showCards && reply.form && (
               <FormCard form={reply.form} interactive={interactive} onSubmit={onSubmitForm} />
+            )}
+            {documents.length > 0 && (
+              <div className="document-card-list">
+                {documents.map((document) => (
+                  <DocumentCard key={`${document.type}:${document.docNo}`} document={document} />
+                ))}
+              </div>
             )}
             <div className="message-time">{formatTime(message.createdAt)}</div>
           </div>

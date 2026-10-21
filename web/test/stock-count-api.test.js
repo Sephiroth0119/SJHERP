@@ -212,7 +212,7 @@ test('stock count tab is fail-closed on inventory:count and uses real workbench'
   const appSource = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
   assert.match(appSource, /permissions\.includes\('inventory:count'\)/);
   assert.equal(appSource.includes('>盘点</button>}'), true);
-  assert.equal(appSource.includes('<StockCountWorkbench />'), true);
+  assert.equal(appSource.includes('<StockCountWorkbench focusDocNo={docNo} />'), true);
   assert.doesNotMatch(appSource, /Role\.WAREHOUSE|roles\.includes/);
 });
 

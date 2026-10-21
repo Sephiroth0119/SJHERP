@@ -3,6 +3,7 @@ import * as catalogApi from '../api/catalogApi.ts';
 import { ApiError } from '../api/http.ts';
 import * as masterDataApi from '../api/masterDataApi.ts';
 import * as invoiceApi from '../api/purchaseInvoiceApi.ts';
+import { useFocusDocument } from './useFocusDocument.ts';
 
 const PAGE_SIZE = 20;
 
@@ -37,7 +38,7 @@ function errorMessage(cause: unknown, fallback: string): string {
   return cause instanceof ApiError ? cause.message : fallback;
 }
 
-export function PurchaseInvoiceWorkbench() {
+export function PurchaseInvoiceWorkbench({ focusDocNo }: { focusDocNo?: string } = {}) {
   const [items, setItems] = useState<invoiceApi.PurchaseInvoice[]>([]);
   const [selected, setSelected] = useState<invoiceApi.PurchaseInvoice | null>(
     null,
@@ -215,6 +216,12 @@ export function PurchaseInvoiceWorkbench() {
         }
       });
   };
+
+  useFocusDocument(focusDocNo, (docNo) => {
+    void invoiceApi.getPurchaseInvoice(docNo).then(choose).catch((cause: unknown) => {
+      setError(errorMessage(cause, '采购发票详情加载失败'));
+    });
+  });
 
   const applySearch = () => {
     clearSelection();

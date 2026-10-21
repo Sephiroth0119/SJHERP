@@ -13,7 +13,9 @@ import com.sjherp.agent.reply.Option;
 import com.sjherp.agent.session.AgentMessage;
 import com.sjherp.agent.session.AgentSession;
 import com.sjherp.agent.session.AgentSessionRepository;
+import com.sjherp.agent.session.AgentSessionSummary;
 import com.sjherp.agent.session.MessageRole;
+import com.sjherp.agent.session.SessionStatus;
 import com.sjherp.app.audit.AuditContext;
 import com.sjherp.infra.agent.AgentReplyJsonCodec;
 
@@ -28,6 +30,9 @@ public class ChatService {
 
     /** 会话标题取首条用户消息摘要的最大长度 */
     private static final int TITLE_MAX_LENGTH = 50;
+
+    /** 重命名标题上限，与 agent_session.title VARCHAR(200) 对齐 */
+    private static final int TITLE_COLUMN_MAX_LENGTH = 200;
 
     private final AgentSessionRepository repository;
     private final AgentReplyJsonCodec codec;
@@ -63,12 +68,51 @@ public class ChatService {
     }
 
     /**
+     * 当前用户的会话列表（按最近更新降序，不含消息正文）。
+     * 仓储按 user_id 过滤，调用方不得再拼他人 userId。
+     */
+    public List<AgentSessionSummary> listSessions(String currentUserId) {
+        return repository.listSummariesByUserId(currentUserId);
+    }
+
+    /**
+     * 重命名会话。仅归属人可改；空标题拒绝；超长截断到列宽。
+     */
+    public AgentSession renameSession(String sessionId, String currentUserId, String title) {
+        AgentSession session = getSession(sessionId, currentUserId);
+        if (title == null || title.isBlank()) {
+            throw new IllegalArgumentException("会话标题不能为空");
+        }
+        String trimmed = title.strip();
+        session.setTitle(trimmed.length() <= TITLE_COLUMN_MAX_LENGTH
+                ? trimmed : trimmed.substring(0, TITLE_COLUMN_MAX_LENGTH));
+        repository.save(session);
+        return session;
+    }
+
+    /**
+     * 归档会话（status=CLOSED，无物理删除）。已归档则幂等返回。
+     * 仅归属人可归档。
+     */
+    public AgentSession archiveSession(String sessionId, String currentUserId) {
+        AgentSession session = getSession(sessionId, currentUserId);
+        if (session.getStatus() != SessionStatus.CLOSED) {
+            session.close();
+            repository.save(session);
+        }
+        return session;
+    }
+
+    /**
      * 处理一条用户消息（text / optionId / formId 三选一），
      * 持久化用户消息与 Agent 回复后返回回复。
      * 仅会话归属人可发消息（归属校验同 {@link #getSession}）。
      */
     public AgentReply handleMessage(String sessionId, String currentUserId, SendMessageRequest request) {
         AgentSession session = getSession(sessionId, currentUserId);
+        if (session.getStatus() == SessionStatus.CLOSED) {
+            throw new SessionClosedException(sessionId);
+        }
 
         // 审计上下文（M2-T07）：工具调用在本线程内同步执行，
         // 切面据此把 Agent 写操作关联到来源会话（audit_log.session_id）
@@ -114,6 +158,9 @@ public class ChatService {
                                        SendMessageRequest request, AgentStreamListener listener) {
         Objects.requireNonNull(listener, "listener 不能为空");
         AgentSession session = getSession(sessionId, currentUserId);
+        if (session.getStatus() == SessionStatus.CLOSED) {
+            throw new SessionClosedException(sessionId);
+        }
 
         AuditContext.setSessionId(sessionId);
         try {

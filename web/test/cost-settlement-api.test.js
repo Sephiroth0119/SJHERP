@@ -243,7 +243,9 @@ test('cost settlement tab is gated on production:cost and does not fetch without
   assert.match(workbenchSource, /\{canUseCost && <button type="button" role="tab"/);
   assert.equal(workbenchSource.includes('>成本结转</button>'), true);
   assert.equal(
-    workbenchSource.includes('<CostSettlementWorkbench canUse={canUseCost} canUseWo={canUseWo} />'),
+    /<CostSettlementWorkbench canUse=\{canUseCost\} canUseWo=\{canUseWo\} focusDocNo=\{focusDocNo\} \/>/.test(
+      workbenchSource,
+    ),
     true,
   );
   assert.match(pageSource, /if \(!canUse\) \{/);

@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -32,7 +33,9 @@ import com.sjherp.agent.reply.AgentReply;
 import com.sjherp.agent.reply.AgentStreamEvent;
 import com.sjherp.agent.session.AgentMessage;
 import com.sjherp.agent.session.AgentSession;
+import com.sjherp.agent.session.AgentSessionSummary;
 import com.sjherp.agent.session.MessageRole;
+import com.sjherp.agent.session.SessionStatus;
 import com.sjherp.app.security.CurrentUser;
 import com.sjherp.infra.agent.AgentReplyJsonCodec;
 
@@ -42,9 +45,12 @@ import jakarta.servlet.http.HttpServletResponse;
  * 会话 API（前后端契约，前端并行对接中，路径与字段不得擅改）：
  * <ul>
  *   <li>POST /api/chat/sessions → 201 {"sessionId", "createdAt"}</li>
- *   <li>GET  /api/chat/sessions/{id} → 200 {"sessionId", "status", "messages": [...]}，不存在 404 {"error"}</li>
+ *   <li>GET  /api/chat/sessions → 200 {"items": [{sessionId, title, status, createdAt, updatedAt}]}，仅本人</li>
+ *   <li>GET  /api/chat/sessions/{id} → 200 详情（含 title/status/messages），不存在或非本人 404 {"error"}</li>
+ *   <li>PUT  /api/chat/sessions/{id}/title → 200 重命名；非本人 404</li>
+ *   <li>POST /api/chat/sessions/{id}/archive → 200 归档（CLOSED，无物理删除）；非本人 404</li>
  *   <li>POST /api/chat/sessions/{id}/messages
- *       Accept: application/json → 200，响应体直接是完整 AgentReply（v0.1 字段兼容）</li>
+ *       Accept: application/json → 200，完整 AgentReply；已归档 409；非本人 404</li>
  *   <li>POST /api/chat/sessions/{id}/messages
  *       Accept: text/event-stream → SSE 流式分片（协议 v0.2）；最终 complete 可还原完整 AgentReply</li>
  * </ul>
@@ -80,9 +86,22 @@ public class ChatSessionController {
     @PostMapping
     public ResponseEntity<Map<String, String>> createSession() {
         AgentSession session = chatService.createSession(CurrentUser.userId());
-        return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
-                "sessionId", session.getSessionId(),
-                "createdAt", session.getCreatedAt().toString()));
+        Map<String, String> body = new LinkedHashMap<>();
+        body.put("sessionId", session.getSessionId());
+        body.put("createdAt", session.getCreatedAt().toString());
+        return ResponseEntity.status(HttpStatus.CREATED).body(body);
+    }
+
+    /** 本人会话列表（不含消息正文；按 updatedAt 降序） */
+    @GetMapping
+    public Map<String, Object> listSessions() {
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (AgentSessionSummary summary : chatService.listSessions(CurrentUser.userId())) {
+            items.add(toSummaryDto(summary));
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("items", items);
+        return body;
     }
 
     /** 查询会话（消息按 seq 升序回放；仅会话归属人可见，非本人 404） */
@@ -113,14 +132,33 @@ public class ChatSessionController {
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("sessionId", session.getSessionId());
+        body.put("title", session.getTitle());
         body.put("status", session.getStatus().name().toLowerCase(Locale.ROOT));
+        body.put("createdAt", session.getCreatedAt().toString());
+        body.put("updatedAt", session.getUpdatedAt().toString());
         body.put("messages", messages);
         return body;
     }
 
+    /** 重命名会话；仅归属人，非本人 404 */
+    @PutMapping("/{id}/title")
+    public Map<String, Object> renameSession(@PathVariable String id,
+                                             @RequestBody RenameSessionRequest request) {
+        AgentSession session = chatService.renameSession(
+                id, CurrentUser.userId(), request == null ? null : request.title());
+        return toSessionHeader(session);
+    }
+
+    /** 归档会话（CLOSED，无物理删除）；仅归属人，非本人 404；已归档幂等 */
+    @PostMapping("/{id}/archive")
+    public Map<String, Object> archiveSession(@PathVariable String id) {
+        AgentSession session = chatService.archiveSession(id, CurrentUser.userId());
+        return toSessionHeader(session);
+    }
+
     /**
      * 发送消息（text / optionId / formId 三选一），响应体直接是完整 AgentReply。
-     * 非流式客户端继续走本入口，不必理解 v0.2 分片。
+     * 非流式客户端继续走本入口，不必理解 v0.2 分片。已归档 409；非本人 404。
      */
     @PostMapping(value = "/{id}/messages", produces = MediaType.APPLICATION_JSON_VALUE)
     public String sendMessage(@PathVariable String id, @RequestBody SendMessageRequest request) {
@@ -131,13 +169,16 @@ public class ChatSessionController {
     /**
      * 流式发送消息：LLM 边生成边推 delta，结束后 complete 携带完整 AgentReply。
      * 高风险 HITL 仍由框架拦截，确认卡片只出现在 complete 的 options 中。
+     * 打开流之前做归属/归档校验：越权 404、已归档 409，均走 JSON 而非 SSE。
      */
     @PostMapping(value = "/{id}/messages", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter sendMessageStream(@PathVariable String id, @RequestBody SendMessageRequest request,
                                         HttpServletResponse response) {
         String userId = CurrentUser.userId();
-        // 归属校验在打开流之前完成：越权/不存在仍走 JSON 404，不泄露会话存在性
-        chatService.getSession(id, userId);
+        AgentSession session = chatService.getSession(id, userId);
+        if (session.getStatus() == SessionStatus.CLOSED) {
+            throw new SessionClosedException(id);
+        }
 
         response.setHeader("Cache-Control", "no-cache");
         response.setHeader("X-Accel-Buffering", "no");
@@ -170,7 +211,7 @@ public class ChatSessionController {
             try {
                 chatService.handleMessageStreaming(id, userId, request, event -> sendEvent(emitter, event));
                 emitter.complete();
-            } catch (SessionNotFoundException | IllegalArgumentException e) {
+            } catch (SessionNotFoundException | SessionClosedException | IllegalArgumentException e) {
                 sendEventQuietly(emitter, AgentStreamEvent.error(e.getMessage()));
                 emitter.complete();
             } catch (RuntimeException e) {
@@ -205,13 +246,39 @@ public class ChatSessionController {
         }
     }
 
+    private static Map<String, Object> toSessionHeader(AgentSession session) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("sessionId", session.getSessionId());
+        body.put("title", session.getTitle());
+        body.put("status", session.getStatus().name().toLowerCase(Locale.ROOT));
+        body.put("createdAt", session.getCreatedAt().toString());
+        body.put("updatedAt", session.getUpdatedAt().toString());
+        return body;
+    }
+
+    private static Map<String, Object> toSummaryDto(AgentSessionSummary summary) {
+        Map<String, Object> dto = new LinkedHashMap<>();
+        dto.put("sessionId", summary.sessionId());
+        dto.put("title", summary.title());
+        dto.put("status", summary.status().name().toLowerCase(Locale.ROOT));
+        dto.put("createdAt", summary.createdAt().toString());
+        dto.put("updatedAt", summary.updatedAt().toString());
+        return dto;
+    }
+
     /** 会话不存在 → 404 {"error": "..."} */
     @ExceptionHandler(SessionNotFoundException.class)
     public ResponseEntity<Map<String, String>> handleNotFound(SessionNotFoundException e) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", e.getMessage()));
     }
 
-    /** 非法请求（缺少 text/optionId/formId、选项不存在等）→ 400 {"error": "..."} */
+    /** 已归档会话拒绝继续发送 → 409 {"error": "..."} */
+    @ExceptionHandler(SessionClosedException.class)
+    public ResponseEntity<Map<String, String>> handleClosed(SessionClosedException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", e.getMessage()));
+    }
+
+    /** 非法请求（缺少 text/optionId/formId、选项不存在、空标题等）→ 400 {"error": "..."} */
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> handleBadRequest(IllegalArgumentException e) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", e.getMessage()));

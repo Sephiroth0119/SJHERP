@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 
 import com.sjherp.agent.reply.Action;
 import com.sjherp.agent.reply.AgentReply;
+import com.sjherp.agent.reply.DocumentRef;
 import com.sjherp.agent.reply.Form;
 import com.sjherp.agent.reply.Option;
 import com.sjherp.agent.session.AgentSession;
@@ -52,10 +53,12 @@ public class PlaceholderAgent implements Agent {
             // —— 采购确认场景（Human-in-the-loop：点击确认后才"执行"） ——
             case "opt-sup-a" -> AgentReply.text(
                     "已按 **供应商A（华东金属）** 创建采购订单**草稿** PO-DEMO-001（M-0042 不锈钢板 2mm × 500kg，"
-                            + "单价 ¥18.50/kg）。\n\n演示数据：草稿仍需走单据状态机审核后才会过账。");
+                            + "单价 ¥18.50/kg）。\n\n演示数据：草稿仍需走单据状态机审核后才会过账。")
+                    .withDocuments(List.of(DocumentRef.of("PURCHASE_ORDER", "PO-DEMO-001", "采购订单")));
             case "opt-sup-b" -> AgentReply.text(
                     "已按 **供应商B（南方钢业）** 创建采购订单**草稿** PO-DEMO-002（M-0042 不锈钢板 2mm × 500kg，"
-                            + "单价 ¥17.90/kg）。\n\n演示数据：草稿仍需走单据状态机审核后才会过账。");
+                            + "单价 ¥17.90/kg）。\n\n演示数据：草稿仍需走单据状态机审核后才会过账。")
+                    .withDocuments(List.of(DocumentRef.of("PURCHASE_ORDER", "PO-DEMO-002", "采购订单")));
             case "opt-po-cancel" -> AgentReply.text("好的，已取消本次采购，不会创建任何单据。");
 
             // —— 销售场景 ——
@@ -63,7 +66,10 @@ public class PlaceholderAgent implements Agent {
             case "opt-sale-query" -> AgentReply.text(
                     "近期销售订单（演示数据）：\n\n"
                             + "- SO-DEMO-001 客户「星辰机械」 ¥45,000 已审核\n"
-                            + "- SO-DEMO-002 客户「恒达精工」 ¥12,800 草稿");
+                            + "- SO-DEMO-002 客户「恒达精工」 ¥12,800 草稿")
+                    .withDocuments(List.of(
+                            DocumentRef.of("SALES_ORDER", "SO-DEMO-001", "销售订单"),
+                            DocumentRef.of("SALES_ORDER", "SO-DEMO-002", "销售订单")));
 
             // —— 库存场景 ——
             case "opt-inv-query" -> AgentReply.text(
@@ -88,7 +94,8 @@ public class PlaceholderAgent implements Agent {
                     + "- 数量：" + values.getOrDefault("qty", "（未填写)") + "\n"
                     + "- 交货日期：" + values.getOrDefault("deliveryDate", "（未填写）") + "\n"
                     + "- 发货仓库：" + values.getOrDefault("warehouseId", "（未填写）")
-                    + "\n\n草稿仍需走单据状态机审核。");
+                    + "\n\n草稿仍需走单据状态机审核。")
+                    .withDocuments(List.of(DocumentRef.of("SALES_ORDER", "SO-DEMO-003", "销售订单")));
         }
         return AgentReply.text("（占位 Agent）已收到表单 " + formId + " 的提交：" + values);
     }
