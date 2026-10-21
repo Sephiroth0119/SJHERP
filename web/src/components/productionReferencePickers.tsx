@@ -349,3 +349,111 @@ export function CompletedMaterialIssuePicker({ disabled, value, onSelect }: Comp
     </div>}
   </div>;
 }
+
+type CostSettlementWorkOrderStatus = 'EXECUTING' | 'COMPLETED';
+
+interface CostSettlementWorkOrderPickerProps {
+  canUseWo: boolean;
+  disabled: boolean;
+  selectedDocNos: string[];
+  onPick: (docNo: string) => void;
+}
+
+export function CostSettlementWorkOrderPicker({
+  canUseWo, disabled, selectedDocNos, onPick,
+}: CostSettlementWorkOrderPickerProps) {
+  const [status, setStatus] = useState<CostSettlementWorkOrderStatus>('EXECUTING');
+  const [page, setPage] = useState(1);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [items, setItems] = useState<workOrderApi.WorkOrderSummary[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(canUseWo);
+  const [error, setError] = useState('');
+  const listGate = useRef(createRequestGate());
+  const detailGate = useRef(createRequestGate());
+
+  useEffect(() => {
+    if (!canUseWo) {
+      listGate.current.next();
+      setLoading(false);
+      setItems([]);
+      setTotal(0);
+      return;
+    }
+    const version = listGate.current.next();
+    setLoading(true);
+    setError('');
+    void workOrderApi.searchWorkOrders(null, status, page, PAGE_SIZE).then((result) => {
+      if (!listGate.current.isCurrent(version)) return;
+      setItems(result.items);
+      setTotal(result.total);
+    }).catch((cause: unknown) => {
+      if (listGate.current.isCurrent(version)) {
+        setError(errorMessage(cause, '工单列表加载失败'));
+      }
+    }).finally(() => {
+      if (listGate.current.isCurrent(version)) setLoading(false);
+    });
+  }, [canUseWo, status, page, refreshKey]);
+
+  const choose = (order: workOrderApi.WorkOrderSummary) => {
+    if (disabled) return;
+    const version = detailGate.current.next();
+    void workOrderApi.getWorkOrder(order.docNo).then((detail) => {
+      if (!detailGate.current.isCurrent(version)) return;
+      if (detail.status !== 'EXECUTING' && detail.status !== 'COMPLETED') {
+        setError(`工单 ${detail.docNo} 当前不是开工或已完工状态，不可成本结转`);
+        return;
+      }
+      onPick(detail.docNo);
+    }).catch((cause: unknown) => {
+      if (detailGate.current.isCurrent(version)) {
+        setError(errorMessage(cause, '工单详情加载失败'));
+      }
+    });
+  };
+
+  const heading = '选择开工或已完工工单（GET /api/production/work-orders?status=EXECUTING|COMPLETED）';
+  return <div className="reference-picker">
+    <strong>{heading}</strong>
+    <p>仅开工（EXECUTING）或已完工（COMPLETED）工单可结转。全部完工行请把在产数量和完工程度填 0。无 production:wo 时只手填工单号。</p>
+    {canUseWo && <>
+      <label>工单状态
+        <select aria-label="成本结转工单状态" disabled={disabled || loading} value={status}
+          onChange={(event) => {
+            const next = event.target.value === 'COMPLETED' ? 'COMPLETED' : 'EXECUTING';
+            setStatus(next);
+            setPage(1);
+          }}>
+          <option value="EXECUTING">开工中</option>
+          <option value="COMPLETED">已完工</option>
+        </select></label>
+      <div className="reference-picker-search">
+        <button type="button" className="memory-button" disabled={disabled || loading}
+          onClick={() => { setPage(1); setRefreshKey((current) => current + 1); }}>刷新工单</button>
+      </div>
+      {error && <small className="reference-picker-error" role="alert">{error}</small>}
+      <div className="reference-picker-results" role="listbox" aria-label="可结转工单">
+        {loading ? <span>正在加载工单…</span>
+          : items.length === 0 ? <span>暂无该状态工单。请先到工单页开工或报工完工。</span>
+            : items.map((order) => {
+              const selected = selectedDocNos.includes(order.docNo);
+              return <button type="button" role="option" key={order.docNo}
+                aria-selected={selected}
+                className={selected ? 'reference-picker-selected' : ''}
+                disabled={disabled} onClick={() => choose(order)}>
+                {order.docNo}<span>{workOrderApi.formatQuantityDisplay(order.plannedQty)}</span>
+              </button>;
+            })}
+      </div>
+      {total > PAGE_SIZE && <div className="reference-picker-pagination">
+        <button type="button" disabled={disabled || loading || page <= 1}
+          onClick={() => setPage((current) => current - 1)}>上一页</button>
+        <span>第 {page} 页</span>
+        <button type="button" disabled={disabled || loading || page * PAGE_SIZE >= total}
+          onClick={() => setPage((current) => current + 1)}>下一页</button>
+      </div>}
+    </>}
+    {!canUseWo && <p className="memory-empty">无 production:wo 时请在行内手工填写工单号，不查询工单列表。</p>}
+  </div>;
+}

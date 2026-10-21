@@ -225,7 +225,7 @@ test('material issue tab is gated on production:material and does not fetch with
   assert.match(pageSource, /避免 403 刷屏/);
   assert.match(pageSource, /if \(!canUse \|\| !mutationInFlight\.current\.tryAcquire\(\)\) return/);
   assert.doesNotMatch(workbenchSource, /Role\.ADMIN|roles\.includes/);
-  assert.doesNotMatch(workbenchSource, /成本结转|ModulePlaceholder/);
+  assert.doesNotMatch(workbenchSource, /ModulePlaceholder/);
 });
 
 test('material issue workbench has in-flight guard confirmation and kitting panel', () => {
