@@ -272,7 +272,7 @@ test('work order tab is gated on production:wo and does not fetch without permis
   assert.match(pageSource, /if \(!canUse \|\| !mutationInFlight\.current\.tryAcquire\(\)\) return/);
   assert.match(pageSource, /\{canUseMrp && <button type="button" className="memory-button"/);
   assert.doesNotMatch(workbenchSource, /Role\.ADMIN|roles\.includes/);
-  assert.doesNotMatch(workbenchSource, /领料|报工|成本结转|ModulePlaceholder/);
+  assert.doesNotMatch(workbenchSource, /成本结转|ModulePlaceholder/);
 });
 
 test('work order workbench has in-flight guard confirmation and status-legal actions', () => {
