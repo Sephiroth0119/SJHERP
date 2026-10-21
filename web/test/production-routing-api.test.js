@@ -265,8 +265,7 @@ test('routing tab uses real workbench and write is fail-closed on production:rou
   assert.match(workbenchSource, /permissions\.includes\('production:routing'\)/);
   assert.equal(workbenchSource.includes('>工艺路线</button>'), true);
   assert.equal(workbenchSource.includes('<RoutingWorkbench canWrite={canWriteRouting} />'), true);
-  assert.doesNotMatch(workbenchSource, /production:cost|ModulePlaceholder/);
-  assert.doesNotMatch(workbenchSource, /成本结转/);
+  assert.doesNotMatch(workbenchSource, /ModulePlaceholder/);
 });
 
 test('routing workbench has in-flight guard confirmation and race isolation', () => {

@@ -93,6 +93,7 @@ test('production workbenches use real UTF-8 Chinese, not escaped or garbled lite
     '../src/components/MaterialIssueWorkbench.tsx',
     '../src/components/MaterialReturnWorkbench.tsx',
     '../src/components/ProductionReportWorkbench.tsx',
+    '../src/components/CostSettlementWorkbench.tsx',
     '../src/components/productionReferencePickers.tsx',
   ];
   for (const file of files) {
@@ -141,6 +142,7 @@ test('production workbenches use real UTF-8 Chinese, not escaped or garbled lite
   assert.match(production, />领料</);
   assert.match(production, />退料</);
   assert.match(production, />报工</);
+  assert.match(production, />成本结转</);
   const issues = readFileSync(
     new URL('../src/components/MaterialIssueWorkbench.tsx', import.meta.url),
     'utf8',
@@ -159,6 +161,12 @@ test('production workbenches use real UTF-8 Chinese, not escaped or garbled lite
   );
   assert.match(reports, /报工与完工入库/);
   assert.match(reports, /完工数量/);
+  const costs = readFileSync(
+    new URL('../src/components/CostSettlementWorkbench.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(costs, /月末成本结转/);
+  assert.match(costs, /完工程度/);
 });
 
 test('inventory workbenches use real UTF-8 Chinese, not escaped or garbled literals', () => {

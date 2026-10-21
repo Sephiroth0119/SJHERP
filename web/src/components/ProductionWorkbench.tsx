@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { BomWorkbench } from './BomWorkbench.tsx';
+import { CostSettlementWorkbench } from './CostSettlementWorkbench.tsx';
 import { DemandPlanWorkbench } from './DemandPlanWorkbench.tsx';
 import { MaterialIssueWorkbench } from './MaterialIssueWorkbench.tsx';
 import { MaterialReturnWorkbench } from './MaterialReturnWorkbench.tsx';
@@ -8,7 +9,7 @@ import { ProductionReportWorkbench } from './ProductionReportWorkbench.tsx';
 import { RoutingWorkbench } from './RoutingWorkbench.tsx';
 import { WorkOrderWorkbench } from './WorkOrderWorkbench.tsx';
 
-type ProductionTab = 'bom' | 'routing' | 'plan' | 'mrp' | 'wo' | 'issue' | 'return' | 'report';
+type ProductionTab = 'bom' | 'routing' | 'plan' | 'mrp' | 'wo' | 'issue' | 'return' | 'report' | 'cost';
 
 export function ProductionWorkbench({ permissions }: { permissions: string[] }) {
   const [tab, setTab] = useState<ProductionTab>('bom');
@@ -19,6 +20,7 @@ export function ProductionWorkbench({ permissions }: { permissions: string[] }) 
   const canUseWo = permissions.includes('production:wo');
   const canUseMaterial = permissions.includes('production:material');
   const canUseReport = permissions.includes('production:report');
+  const canUseCost = permissions.includes('production:cost');
   const activeTab: ProductionTab = tab === 'routing'
     ? 'routing'
     : tab === 'plan'
@@ -33,7 +35,9 @@ export function ProductionWorkbench({ permissions }: { permissions: string[] }) 
               ? 'return'
               : tab === 'report' && canUseReport
                 ? 'report'
-                : 'bom';
+                : tab === 'cost' && canUseCost
+                  ? 'cost'
+                  : 'bom';
 
   return <>
     <div className="memory-tabs purchase-workbench-tabs" role="tablist" aria-label="生产工作台">
@@ -61,6 +65,9 @@ export function ProductionWorkbench({ permissions }: { permissions: string[] }) 
       {canUseReport && <button type="button" role="tab" aria-selected={activeTab === 'report'}
         className={activeTab === 'report' ? 'memory-tab-active' : ''}
         onClick={() => setTab('report')}>报工</button>}
+      {canUseCost && <button type="button" role="tab" aria-selected={activeTab === 'cost'}
+        className={activeTab === 'cost' ? 'memory-tab-active' : ''}
+        onClick={() => setTab('cost')}>成本结转</button>}
     </div>
     {renderTab(
       activeTab,
@@ -71,6 +78,7 @@ export function ProductionWorkbench({ permissions }: { permissions: string[] }) 
       canUseWo,
       canUseMaterial,
       canUseReport,
+      canUseCost,
     )}
   </>;
 }
@@ -84,6 +92,7 @@ function renderTab(
   canUseWo: boolean,
   canUseMaterial: boolean,
   canUseReport: boolean,
+  canUseCost: boolean,
 ) {
   switch (tab) {
     case 'bom':
@@ -102,6 +111,8 @@ function renderTab(
       return <MaterialReturnWorkbench canUse={canUseMaterial} />;
     case 'report':
       return <ProductionReportWorkbench canUse={canUseReport} canUseWo={canUseWo} />;
+    case 'cost':
+      return <CostSettlementWorkbench canUse={canUseCost} canUseWo={canUseWo} />;
     default: {
       const exhaustive: never = tab;
       throw new Error(`未知生产页签: ${exhaustive}`);
