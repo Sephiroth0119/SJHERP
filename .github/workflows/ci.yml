@@ -61,3 +61,23 @@ jobs:
       - run: npm test
       - run: npx tsc --noEmit
       - run: npm run build
+
+  deploy:
+    name: 部署资产 (compose + 镜像)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: 脚本 dry-run 与 compose config
+        run: |
+          chmod +x deploy/install.sh deploy/upgrade.sh deploy/smoke.sh
+          ./deploy/install.sh --check
+          ./deploy/upgrade.sh --check
+      - name: 一键安装冒烟（构建镜像、启动、探活）
+        run: ./deploy/install.sh --skip-docker-install
+      - name: 失败时打印容器日志
+        if: failure()
+        run: docker compose --project-directory deploy -f deploy/docker-compose.yml --env-file deploy/.env logs --tail 200
+      - name: 清理数据卷
+        if: always()
+        run: docker compose --project-directory deploy -f deploy/docker-compose.yml --env-file deploy/.env down -v

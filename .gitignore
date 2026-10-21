@@ -20,7 +20,10 @@ dist/
 # 环境与密钥（LLM API Key 等绝不入库）
 .env
 .env.*
+!.env.example
 application-local.yml
+deploy/backups/*.sql
+deploy/backups/*.sql.gz
 
 # Claude Code 会话状态
 .claude/scheduled_tasks.lock

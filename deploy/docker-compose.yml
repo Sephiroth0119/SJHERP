@@ -1,0 +1,110 @@
+# SJHERP 生产编排（M8-T01）
+#
+# 覆盖：nginx（静态前端 + /api 反代）/ app（Spring Boot + Flyway）/ MySQL 8.4 / Qdrant
+# 密钥一律来自 deploy/.env（模板见 .env.example，禁止提交真实密钥）
+#
+# 由安装/升级脚本调用；手动启动：
+#   docker compose --project-directory <仓库根> -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+#
+# 国内拉镜像慢时，给 Docker 配镜像加速（见 docs/部署-一键安装.md「常见失败」）。
+
+name: sjherp
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请在 deploy/.env 设置 MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-sjherp}
+      MYSQL_USER: ${MYSQL_USER:-sjherp_app}
+      MYSQL_PASSWORD: ${SJHERP_DB_PASSWORD:?请在 deploy/.env 设置 SJHERP_DB_PASSWORD}
+      TZ: UTC
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --skip-name-resolve
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      # mysql:8.4 官方镜像没有 healthcheck.sh，用 mysqladmin
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    networks:
+      - sjherp
+    # 生产不把 3306 暴露到宿主机
+
+  qdrant:
+    image: qdrant/qdrant:v1.13.4
+    restart: unless-stopped
+    volumes:
+      - qdrant-data:/qdrant/storage
+    networks:
+      - sjherp
+    # 生产不把 6333/6334 暴露到宿主机。
+    # 大记忆默认关闭，app 启动不依赖 Qdrant 探活；镜像内不一定有 curl/bash /dev/tcp。
+
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/app/Dockerfile
+    image: sjherp-app:local
+    restart: unless-stopped
+    environment:
+      SPRING_DATASOURCE_URL: ${SJHERP_DB_URL:?请在 deploy/.env 设置 SJHERP_DB_URL}
+      SPRING_DATASOURCE_USERNAME: ${SJHERP_DB_USERNAME:-sjherp_app}
+      SPRING_DATASOURCE_PASSWORD: ${SJHERP_DB_PASSWORD:?请在 deploy/.env 设置 SJHERP_DB_PASSWORD}
+      SJHERP_DB_URL: ${SJHERP_DB_URL:?请在 deploy/.env 设置 SJHERP_DB_URL}
+      SJHERP_DB_USERNAME: ${SJHERP_DB_USERNAME:-sjherp_app}
+      SJHERP_DB_PASSWORD: ${SJHERP_DB_PASSWORD:?请在 deploy/.env 设置 SJHERP_DB_PASSWORD}
+      SJHERP_JWT_SECRET: ${SJHERP_JWT_SECRET:?请在 deploy/.env 设置 SJHERP_JWT_SECRET}
+      SJHERP_ADMIN_PASSWORD: ${SJHERP_ADMIN_PASSWORD:?请在 deploy/.env 设置 SJHERP_ADMIN_PASSWORD}
+      SJHERP_QDRANT_URL: ${SJHERP_QDRANT_URL:-http://qdrant:6333}
+      SJHERP_MEMORY_ENABLED: ${SJHERP_MEMORY_ENABLED:-false}
+      SJHERP_LLM_API_KEY: ${SJHERP_LLM_API_KEY:-}
+      SJHERP_CONSISTENCY_ENABLED: ${SJHERP_CONSISTENCY_ENABLED:-true}
+      JAVA_TOOL_OPTIONS: ${SJHERP_JAVA_OPTS:--XX:MaxRAMPercentage=75.0 -Dfile.encoding=UTF-8 -Duser.timezone=UTC}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8080/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    networks:
+      - sjherp
+
+  nginx:
+    build:
+      context: ..
+      dockerfile: deploy/nginx/Dockerfile
+    image: sjherp-web:local
+    restart: unless-stopped
+    ports:
+      - "${SJHERP_HTTP_PORT:-80}:80"
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    networks:
+      - sjherp
+
+volumes:
+  mysql-data:
+  qdrant-data:
+
+networks:
+  sjherp:
+    driver: bridge
