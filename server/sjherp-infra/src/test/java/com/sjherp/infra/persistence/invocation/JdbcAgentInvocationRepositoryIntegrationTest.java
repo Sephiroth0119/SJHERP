@@ -49,9 +49,10 @@ class JdbcAgentInvocationRepositoryIntegrationTest extends MySqlContainerTestBas
     @Test
     void 时间窗汇总_只统计窗内LLM行并按模型拆分() {
         String sessionId = "it-llm-daily-" + uniqueSuffix();
-        Instant t0 = Instant.parse("2026-10-20T00:00:00Z");
-        Instant t1 = Instant.parse("2026-10-21T00:00:00Z");
-        Instant t2 = Instant.parse("2026-10-22T00:00:00Z");
+        // 用远离 Instant.now() 的窗口，避免同容器里其它用例插入的 LLM 行串进汇总
+        Instant t0 = Instant.parse("2035-06-01T00:00:00Z");
+        Instant t1 = Instant.parse("2035-06-02T00:00:00Z");
+        Instant t2 = Instant.parse("2035-06-03T00:00:00Z");
         invocationRepository.insert(new AgentInvocation(null, sessionId,
                 AgentInvocationType.LLM, "deepseek-chat", null, 100L,
                 10, 4, true, null, t1.plusSeconds(60)));
