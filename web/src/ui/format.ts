@@ -2,7 +2,7 @@ import { ApiError } from '../api/http.ts';
 
 /**
  * 金额/数量/普通单元格的字符串展示：空值显示破折号，其余原样输出。
- * 禁止 Number / parseFloat / 算术，避免 float 吃掉尾零或改精度。
+ * 禁止把金额转成浮点数或做算术，避免吃掉尾零或改精度。
  */
 export function formatAmountText(value: string | null | undefined): string {
   if (value == null) return '—';

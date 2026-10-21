@@ -17,7 +17,7 @@ test('formatAmountText keeps decimal strings and never uses float math', () => {
   assert.equal(formatAmountText('   '), '—');
   assert.equal(formatAmountText(undefined), '—');
   assert.equal(formatAmountText(null), '—');
-  const source = readSrc('src/ui/format.ts');
+  const source = readSrc('src/ui/format.ts').replace(/\/\*[\s\S]*?\*\//g, '');
   assert.doesNotMatch(source, /parseFloat|Number\(/);
 });
 
