@@ -56,4 +56,5 @@ npm run build
 
 - `cd web && npm test`：233 项通过，0 fail（含结转列表/创建窄 body/流转路径、账期与在产校验、权限 fail-closed、in-flight 守卫、CJK 文案）。
 - `cd web && npm run build`：TypeScript 检查与 Vite production build 通过。
+- GitHub PR #59 三项 CI 全绿：前端 tsc+build 28s、后端 mvn verify 1m13s、MySQL 8.4 Testcontainers 6m8s。
 - 未改 `web-dist/`、`server/`。
