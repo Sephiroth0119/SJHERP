@@ -326,7 +326,7 @@ test('purchase receipt tab is fail-closed on the exact permission code', () => {
     true,
   );
   assert.equal(appSource.includes('>采购入库</button>}'), true);
-  assert.equal(appSource.includes('<PurchaseReceiptWorkbench />'), true);
+  assert.equal(appSource.includes('<PurchaseReceiptWorkbench focusDocNo={docNo} />'), true);
 
   const workbenchSource = readFileSync(
     new URL('../src/components/PurchaseReceiptWorkbench.tsx', import.meta.url),

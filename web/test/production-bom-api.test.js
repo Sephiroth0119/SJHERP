@@ -259,7 +259,7 @@ test('BOM tab is mounted under production and write is fail-closed on production
     'utf8',
   );
   assert.match(appSource, /guardedModule === 'production'/);
-  assert.equal(appSource.includes('<ProductionWorkbench permissions={permissions} />'), true);
+  assert.match(appSource, /<ProductionWorkbench[\s\S]*permissions=\{permissions\}/);
   assert.doesNotMatch(appSource, /ModulePlaceholder/);
   assert.match(workbenchSource, /permissions\.includes\('production:bom'\)/);
   assert.match(workbenchSource, /permissions\.includes\('production:routing'\)/);

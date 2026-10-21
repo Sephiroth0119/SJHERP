@@ -45,13 +45,13 @@ import {
 import { fetchMe, formatRoles } from './api/authApi';
 import { canAccessModule } from './security/access';
 import { isTokenExpiringSoon } from './security/token';
-import { guardModule, moduleFromHash, routeForModule } from './security/routeGuard';
+import { hashForRoute, parseWorkbenchRoute, resolveWorkbenchRoute, type WorkbenchRoute } from './security/workbenchRoute';
 
 export function App() {
   // 有 token 即先按已登录渲染（展示信息取本地缓存），后台 me 校验兜底
   const [user, setUser] = useState<AuthUser | null>(() => (getToken() ? getStoredUser() : null));
-  const [activeModule, setActiveModule] = useState<ModuleKey>(() =>
-    moduleFromHash(typeof window === 'undefined' ? '' : window.location.hash));
+  const [route, setRoute] = useState<WorkbenchRoute>(() =>
+    parseWorkbenchRoute(typeof window === 'undefined' ? '' : window.location.hash));
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   // 401 全局拦截：任何接口返回未登录/过期 → 清登录态（http.ts 已清）并切回登录页
@@ -88,10 +88,15 @@ export function App() {
   const permissions = user?.permissions ?? [];
   const canManageMemory = canAccessModule('memory', permissions);
   const selectModule = useCallback((module: ModuleKey) => {
-    const guarded = guardModule(module, permissions);
-    setActiveModule(guarded);
-    window.history.replaceState(null, '', routeForModule(guarded));
+    const next = resolveWorkbenchRoute({ module }, permissions);
+    setRoute(next);
+    window.history.replaceState(null, '', hashForRoute(next));
   }, [permissions]);
+  const selectTab = useCallback((tab: string) => {
+    const next = resolveWorkbenchRoute({ module: route.module, tab }, permissions);
+    setRoute(next);
+    window.history.replaceState(null, '', hashForRoute(next));
+  }, [permissions, route.module]);
 
   useEffect(() => {
     if (!user) return;
@@ -104,26 +109,31 @@ export function App() {
   }, [nowMs, user]);
 
   useEffect(() => {
-    const onHashChange = () => setActiveModule(moduleFromHash(window.location.hash));
+    const onHashChange = () => setRoute(parseWorkbenchRoute(window.location.hash));
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
   useEffect(() => {
     if (!user) return;
-    const requested = moduleFromHash(window.location.hash);
-    const guarded = guardModule(requested, permissions);
-    if (guarded !== activeModule) setActiveModule(guarded);
-    if (requested !== guarded || window.location.hash === '') {
-      window.history.replaceState(null, '', routeForModule(guarded));
+    const requested = parseWorkbenchRoute(window.location.hash);
+    const guarded = resolveWorkbenchRoute(requested, permissions);
+    const same = guarded.module === route.module
+      && guarded.tab === route.tab
+      && guarded.docNo === route.docNo;
+    if (!same) setRoute(guarded);
+    const expected = hashForRoute(guarded);
+    if (window.location.hash === '' || window.location.hash !== expected) {
+      window.history.replaceState(null, '', expected);
     }
-  }, [activeModule, permissions, user]);
+  }, [permissions, route.docNo, route.module, route.tab, user]);
 
   if (!user) {
     return <LoginPage onLogin={setUser} />;
   }
 
-  const guardedModule = guardModule(activeModule, permissions);
+  const guardedRoute = resolveWorkbenchRoute(route, permissions);
+  const guardedModule = guardedRoute.module;
   const tokenWarning = isTokenExpiringSoon(getToken() ?? '', nowMs);
 
   return (
@@ -142,27 +152,58 @@ export function App() {
           </button>
         </header>
         {guardedModule === 'sales' ? (
-          <SalesWorkbench permissions={permissions} />
+          <SalesWorkbench
+            permissions={permissions}
+            tab={guardedRoute.tab}
+            docNo={guardedRoute.docNo}
+            onTabChange={selectTab}
+          />
         ) : guardedModule === 'purchase' ? (
-          <PurchaseWorkbench permissions={permissions} />
+          <PurchaseWorkbench
+            permissions={permissions}
+            tab={guardedRoute.tab}
+            docNo={guardedRoute.docNo}
+            onTabChange={selectTab}
+          />
         ) : guardedModule === 'inventory' ? (
-          <InventoryWorkbench permissions={permissions} />
+          <InventoryWorkbench
+            permissions={permissions}
+            tab={guardedRoute.tab}
+            docNo={guardedRoute.docNo}
+            onTabChange={selectTab}
+          />
         ) : guardedModule === 'finance' ? (
-          <FinanceWorkbench permissions={permissions} />
+          <FinanceWorkbench
+            permissions={permissions}
+            tab={guardedRoute.tab}
+            docNo={guardedRoute.docNo}
+            onTabChange={selectTab}
+          />
         ) : guardedModule === 'production' ? (
-          <ProductionWorkbench permissions={permissions} />
+          <ProductionWorkbench
+            permissions={permissions}
+            tab={guardedRoute.tab}
+            docNo={guardedRoute.docNo}
+            onTabChange={selectTab}
+          />
         ) : guardedModule === 'memory' && canManageMemory ? (
           <MemoryGovernancePage />
         ) : (
-          <ChatPanel />
+          <ChatPanel permissions={permissions} />
         )}
       </main>
     </div>
   );
 }
 
-function SalesWorkbench({ permissions }: { permissions: string[] }) {
-  const [tab, setTab] = useState<'customer' | 'order' | 'delivery' | 'invoice' | 'collection'>('customer');
+interface ModuleWorkbenchProps {
+  permissions: string[];
+  tab?: string;
+  docNo?: string;
+  onTabChange: (tab: string) => void;
+}
+
+function SalesWorkbench({ permissions, tab, docNo, onTabChange }: ModuleWorkbenchProps) {
   const canUseSalesOrders = permissions.includes('sales:order');
   const canUseSalesDeliveries = permissions.includes('sales:delivery');
   const canUseSalesInvoices = permissions.includes('sales:invoice');
@@ -179,28 +220,25 @@ function SalesWorkbench({ permissions }: { permissions: string[] }) {
 
   return <>
     <div className="memory-tabs purchase-workbench-tabs" role="tablist" aria-label="销售工作台">
-      <button type="button" role="tab" aria-selected={activeTab === 'customer'} className={activeTab === 'customer' ? 'memory-tab-active' : ''} onClick={() => setTab('customer')}>客户档案</button>
-      {canUseSalesOrders && <button type="button" role="tab" aria-selected={activeTab === 'order'} className={activeTab === 'order' ? 'memory-tab-active' : ''} onClick={() => setTab('order')}>销售订单</button>}
-      {canUseSalesDeliveries && <button type="button" role="tab" aria-selected={activeTab === 'delivery'} className={activeTab === 'delivery' ? 'memory-tab-active' : ''} onClick={() => setTab('delivery')}>销售出库</button>}
-      {canUseSalesInvoices && <button type="button" role="tab" aria-selected={activeTab === 'invoice'} className={activeTab === 'invoice' ? 'memory-tab-active' : ''} onClick={() => setTab('invoice')}>销售发票</button>}
-      {canUseCollections && <button type="button" role="tab" aria-selected={activeTab === 'collection'} className={activeTab === 'collection' ? 'memory-tab-active' : ''} onClick={() => setTab('collection')}>收款</button>}
+      <button type="button" role="tab" aria-selected={activeTab === 'customer'} className={activeTab === 'customer' ? 'memory-tab-active' : ''} onClick={() => onTabChange('customer')}>客户档案</button>
+      {canUseSalesOrders && <button type="button" role="tab" aria-selected={activeTab === 'order'} className={activeTab === 'order' ? 'memory-tab-active' : ''} onClick={() => onTabChange('order')}>销售订单</button>}
+      {canUseSalesDeliveries && <button type="button" role="tab" aria-selected={activeTab === 'delivery'} className={activeTab === 'delivery' ? 'memory-tab-active' : ''} onClick={() => onTabChange('delivery')}>销售出库</button>}
+      {canUseSalesInvoices && <button type="button" role="tab" aria-selected={activeTab === 'invoice'} className={activeTab === 'invoice' ? 'memory-tab-active' : ''} onClick={() => onTabChange('invoice')}>销售发票</button>}
+      {canUseCollections && <button type="button" role="tab" aria-selected={activeTab === 'collection'} className={activeTab === 'collection' ? 'memory-tab-active' : ''} onClick={() => onTabChange('collection')}>收款</button>}
     </div>
     {activeTab === 'order'
-      ? <SalesOrderWorkbench />
+      ? <SalesOrderWorkbench focusDocNo={docNo} />
       : activeTab === 'delivery'
-        ? <SalesDeliveryWorkbench />
+        ? <SalesDeliveryWorkbench focusDocNo={docNo} />
         : activeTab === 'invoice'
-          ? <SalesInvoiceWorkbench />
+          ? <SalesInvoiceWorkbench focusDocNo={docNo} />
         : activeTab === 'collection'
-          ? <CollectionWorkbench />
+          ? <CollectionWorkbench focusDocNo={docNo} />
       : <CustomerWorkbench permissions={permissions} />}
   </>;
 }
 
-function PurchaseWorkbench({ permissions }: { permissions: string[] }) {
-  const [tab, setTab] = useState<
-    'supplier' | 'order' | 'receipt' | 'invoice' | 'payment'
-  >('supplier');
+function PurchaseWorkbench({ permissions, tab, docNo, onTabChange }: ModuleWorkbenchProps) {
   const canUseOrders = permissions.includes('purchase:order');
   const canUseReceipts = permissions.includes('purchase:receipt');
   const canUseInvoices = permissions.includes('purchase:invoice');
@@ -217,26 +255,25 @@ function PurchaseWorkbench({ permissions }: { permissions: string[] }) {
 
   return <>
     <div className="memory-tabs purchase-workbench-tabs" role="tablist" aria-label="采购工作台">
-      <button type="button" role="tab" aria-selected={activeTab === 'supplier'} className={activeTab === 'supplier' ? 'memory-tab-active' : ''} onClick={() => setTab('supplier')}>供应商档案</button>
-      {canUseOrders && <button type="button" role="tab" aria-selected={activeTab === 'order'} className={activeTab === 'order' ? 'memory-tab-active' : ''} onClick={() => setTab('order')}>采购订单</button>}
-      {canUseReceipts && <button type="button" role="tab" aria-selected={activeTab === 'receipt'} className={activeTab === 'receipt' ? 'memory-tab-active' : ''} onClick={() => setTab('receipt')}>采购入库</button>}
-      {canUseInvoices && <button type="button" role="tab" aria-selected={activeTab === 'invoice'} className={activeTab === 'invoice' ? 'memory-tab-active' : ''} onClick={() => setTab('invoice')}>采购发票</button>}
-      {canUsePayments && <button type="button" role="tab" aria-selected={activeTab === 'payment'} className={activeTab === 'payment' ? 'memory-tab-active' : ''} onClick={() => setTab('payment')}>付款</button>}
+      <button type="button" role="tab" aria-selected={activeTab === 'supplier'} className={activeTab === 'supplier' ? 'memory-tab-active' : ''} onClick={() => onTabChange('supplier')}>供应商档案</button>
+      {canUseOrders && <button type="button" role="tab" aria-selected={activeTab === 'order'} className={activeTab === 'order' ? 'memory-tab-active' : ''} onClick={() => onTabChange('order')}>采购订单</button>}
+      {canUseReceipts && <button type="button" role="tab" aria-selected={activeTab === 'receipt'} className={activeTab === 'receipt' ? 'memory-tab-active' : ''} onClick={() => onTabChange('receipt')}>采购入库</button>}
+      {canUseInvoices && <button type="button" role="tab" aria-selected={activeTab === 'invoice'} className={activeTab === 'invoice' ? 'memory-tab-active' : ''} onClick={() => onTabChange('invoice')}>采购发票</button>}
+      {canUsePayments && <button type="button" role="tab" aria-selected={activeTab === 'payment'} className={activeTab === 'payment' ? 'memory-tab-active' : ''} onClick={() => onTabChange('payment')}>付款</button>}
     </div>
     {activeTab === 'order'
-      ? <PurchaseOrderWorkbench />
+      ? <PurchaseOrderWorkbench focusDocNo={docNo} />
       : activeTab === 'receipt'
-        ? <PurchaseReceiptWorkbench />
+        ? <PurchaseReceiptWorkbench focusDocNo={docNo} />
         : activeTab === 'invoice'
-          ? <PurchaseInvoiceWorkbench />
+          ? <PurchaseInvoiceWorkbench focusDocNo={docNo} />
         : activeTab === 'payment'
-          ? <PaymentWorkbench />
+          ? <PaymentWorkbench focusDocNo={docNo} />
       : <SupplierWorkbench permissions={permissions} />}
   </>;
 }
 
-function InventoryWorkbench({ permissions }: { permissions: string[] }) {
-  const [tab, setTab] = useState<'warehouse' | 'product' | 'count' | 'transfer' | 'ledger'>('warehouse');
+function InventoryWorkbench({ permissions, tab, docNo, onTabChange }: ModuleWorkbenchProps) {
   const canUseCount = permissions.includes('inventory:count');
   const canUseTransfer = permissions.includes('inventory:transfer');
   const canAdjust = permissions.includes('inventory:adjust');
@@ -252,16 +289,16 @@ function InventoryWorkbench({ permissions }: { permissions: string[] }) {
 
   return <>
     <div className="memory-tabs inventory-workbench-tabs" role="tablist" aria-label="库存工作台">
-      <button type="button" role="tab" aria-selected={activeTab === 'warehouse'} className={activeTab === 'warehouse' ? 'memory-tab-active' : ''} onClick={() => setTab('warehouse')}>仓库档案</button>
-      <button type="button" role="tab" aria-selected={activeTab === 'product'} className={activeTab === 'product' ? 'memory-tab-active' : ''} onClick={() => setTab('product')}>商品档案</button>
-      {canUseCount && <button type="button" role="tab" aria-selected={activeTab === 'count'} className={activeTab === 'count' ? 'memory-tab-active' : ''} onClick={() => setTab('count')}>盘点</button>}
-      {canUseTransfer && <button type="button" role="tab" aria-selected={activeTab === 'transfer'} className={activeTab === 'transfer' ? 'memory-tab-active' : ''} onClick={() => setTab('transfer')}>调拨</button>}
-      <button type="button" role="tab" aria-selected={activeTab === 'ledger'} className={activeTab === 'ledger' ? 'memory-tab-active' : ''} onClick={() => setTab('ledger')}>台账</button>
+      <button type="button" role="tab" aria-selected={activeTab === 'warehouse'} className={activeTab === 'warehouse' ? 'memory-tab-active' : ''} onClick={() => onTabChange('warehouse')}>仓库档案</button>
+      <button type="button" role="tab" aria-selected={activeTab === 'product'} className={activeTab === 'product' ? 'memory-tab-active' : ''} onClick={() => onTabChange('product')}>商品档案</button>
+      {canUseCount && <button type="button" role="tab" aria-selected={activeTab === 'count'} className={activeTab === 'count' ? 'memory-tab-active' : ''} onClick={() => onTabChange('count')}>盘点</button>}
+      {canUseTransfer && <button type="button" role="tab" aria-selected={activeTab === 'transfer'} className={activeTab === 'transfer' ? 'memory-tab-active' : ''} onClick={() => onTabChange('transfer')}>调拨</button>}
+      <button type="button" role="tab" aria-selected={activeTab === 'ledger'} className={activeTab === 'ledger' ? 'memory-tab-active' : ''} onClick={() => onTabChange('ledger')}>台账</button>
     </div>
     {activeTab === 'count'
-      ? <StockCountWorkbench />
+      ? <StockCountWorkbench focusDocNo={docNo} />
       : activeTab === 'transfer'
-        ? <TransferWorkbench />
+        ? <TransferWorkbench focusDocNo={docNo} />
         : activeTab === 'ledger'
           ? <InventoryLedgerWorkbench canAdjust={canAdjust} />
           : activeTab === 'product'
@@ -270,12 +307,7 @@ function InventoryWorkbench({ permissions }: { permissions: string[] }) {
   </>;
 }
 
-function FinanceWorkbench({ permissions }: { permissions: string[] }) {
-  const [tab, setTab] = useState<
-    | 'fund' | 'account' | 'voucher' | 'period'
-    | 'payable' | 'receivable' | 'receivableAging' | 'payableAging'
-    | 'balanceSheet' | 'incomeStatement'
-  >('fund');
+function FinanceWorkbench({ permissions, tab, docNo, onTabChange }: ModuleWorkbenchProps) {
   const canWriteFunds = permissions.includes('finance:payment_account');
   const canViewSettlements = permissions.includes('finance:settlement');
   const canViewAging = permissions.includes('finance:settlement');
@@ -309,34 +341,34 @@ function FinanceWorkbench({ permissions }: { permissions: string[] }) {
     <div className="memory-tabs purchase-workbench-tabs" role="tablist" aria-label="财务工作台">
       <button type="button" role="tab" aria-selected={activeTab === 'fund'}
         className={activeTab === 'fund' ? 'memory-tab-active' : ''}
-        onClick={() => setTab('fund')}>资金账户</button>
+        onClick={() => onTabChange('fund')}>资金账户</button>
       {canManageAccounts && <button type="button" role="tab" aria-selected={activeTab === 'account'}
         className={activeTab === 'account' ? 'memory-tab-active' : ''}
-        onClick={() => setTab('account')}>科目</button>}
+        onClick={() => onTabChange('account')}>科目</button>}
       {canUseVouchers && <button type="button" role="tab" aria-selected={activeTab === 'voucher'}
         className={activeTab === 'voucher' ? 'memory-tab-active' : ''}
-        onClick={() => setTab('voucher')}>凭证</button>}
+        onClick={() => onTabChange('voucher')}>凭证</button>}
       {canManagePeriods && <button type="button" role="tab" aria-selected={activeTab === 'period'}
         className={activeTab === 'period' ? 'memory-tab-active' : ''}
-        onClick={() => setTab('period')}>账期关账</button>}
+        onClick={() => onTabChange('period')}>账期关账</button>}
       <button type="button" role="tab" aria-selected={activeTab === 'payable'}
         className={activeTab === 'payable' ? 'memory-tab-active' : ''}
-        onClick={() => setTab('payable')}>应付台账</button>
+        onClick={() => onTabChange('payable')}>应付台账</button>
       {canViewAging && <button type="button" role="tab" aria-selected={activeTab === 'payableAging'}
         className={activeTab === 'payableAging' ? 'memory-tab-active' : ''}
-        onClick={() => setTab('payableAging')}>应付账龄</button>}
+        onClick={() => onTabChange('payableAging')}>应付账龄</button>}
       {canUseReceivables && <button type="button" role="tab" aria-selected={activeTab === 'receivable'}
         className={activeTab === 'receivable' ? 'memory-tab-active' : ''}
-        onClick={() => setTab('receivable')}>应收台账</button>}
+        onClick={() => onTabChange('receivable')}>应收台账</button>}
       {canViewAging && <button type="button" role="tab" aria-selected={activeTab === 'receivableAging'}
         className={activeTab === 'receivableAging' ? 'memory-tab-active' : ''}
-        onClick={() => setTab('receivableAging')}>应收账龄</button>}
+        onClick={() => onTabChange('receivableAging')}>应收账龄</button>}
       {canViewReports && <button type="button" role="tab" aria-selected={activeTab === 'balanceSheet'}
         className={activeTab === 'balanceSheet' ? 'memory-tab-active' : ''}
-        onClick={() => setTab('balanceSheet')}>资产负债表</button>}
+        onClick={() => onTabChange('balanceSheet')}>资产负债表</button>}
       {canViewReports && <button type="button" role="tab" aria-selected={activeTab === 'incomeStatement'}
         className={activeTab === 'incomeStatement' ? 'memory-tab-active' : ''}
-        onClick={() => setTab('incomeStatement')}>利润表</button>}
+        onClick={() => onTabChange('incomeStatement')}>利润表</button>}
     </div>
     {activeTab === 'payable'
       ? <PayableLedgerWorkbench canViewSettlements={canViewSettlements} />
@@ -347,7 +379,7 @@ function FinanceWorkbench({ permissions }: { permissions: string[] }) {
           : activeTab === 'receivableAging'
             ? <ReceivableAgingWorkbench />
             : activeTab === 'voucher'
-              ? <VoucherWorkbench canWrite={canUseVouchers} />
+              ? <VoucherWorkbench canWrite={canUseVouchers} focusDocNo={docNo} />
               : activeTab === 'account'
                 ? <GlAccountWorkbench canWrite={canManageAccounts} />
                 : activeTab === 'period'

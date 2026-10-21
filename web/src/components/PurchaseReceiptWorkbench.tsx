@@ -3,6 +3,7 @@ import * as catalogApi from '../api/catalogApi.ts';
 import { ApiError } from '../api/http.ts';
 import * as masterDataApi from '../api/masterDataApi.ts';
 import * as receiptApi from '../api/purchaseReceiptApi.ts';
+import { useFocusDocument } from './useFocusDocument.ts';
 
 const PAGE_SIZE = 20;
 
@@ -41,7 +42,7 @@ function hasOutstanding(quantity: string): boolean {
   return !/^0(?:\.0+)?$/.test(quantity);
 }
 
-export function PurchaseReceiptWorkbench() {
+export function PurchaseReceiptWorkbench({ focusDocNo }: { focusDocNo?: string } = {}) {
   const [items, setItems] = useState<receiptApi.PurchaseReceipt[]>([]);
   const [selected, setSelected] = useState<receiptApi.PurchaseReceipt | null>(
     null,
@@ -193,6 +194,12 @@ export function PurchaseReceiptWorkbench() {
         }
       });
   };
+
+  useFocusDocument(focusDocNo, (docNo) => {
+    void receiptApi.getPurchaseReceipt(docNo).then(choose).catch((cause: unknown) => {
+      setError(errorMessage(cause, '采购入库单详情加载失败'));
+    });
+  });
 
   const applySearch = () => {
     clearSelection();

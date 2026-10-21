@@ -4,6 +4,7 @@ import { ApiError } from '../api/http.ts';
 import * as masterDataApi from '../api/masterDataApi.ts';
 import * as transferApi from '../api/transferApi.ts';
 import { createInFlightGuard, createRequestGate } from '../security/workbenchControl.ts';
+import { useFocusDocument } from './useFocusDocument.ts';
 
 const PAGE_SIZE = 20;
 const statusLabels: Record<transferApi.TransferStatus, string> = {
@@ -25,7 +26,7 @@ const emptyForm = (): transferApi.TransferForm => ({
 const errorMessage = (cause: unknown, fallback: string) =>
   cause instanceof ApiError ? cause.message : fallback;
 
-export function TransferWorkbench() {
+export function TransferWorkbench({ focusDocNo }: { focusDocNo?: string } = {}) {
   const [items, setItems] = useState<transferApi.Transfer[]>([]);
   const [selected, setSelected] = useState<transferApi.Transfer | null>(null);
   const [warehouseDraft, setWarehouseDraft] = useState<number | null>(null);
@@ -142,6 +143,12 @@ export function TransferWorkbench() {
       }
     });
   };
+
+  useFocusDocument(focusDocNo, (docNo) => {
+    void transferApi.getTransfer(docNo).then(choose).catch((cause: unknown) => {
+      setError(errorMessage(cause, '调拨单详情加载失败'));
+    });
+  });
 
   const applySearch = () => {
     if (saving) return;

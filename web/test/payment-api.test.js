@@ -301,7 +301,7 @@ test('payment tab is fail-closed on finance:settlement and uses real workbench',
   const appSource = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
   assert.match(appSource, /permissions\.includes\('finance:settlement'\)/);
   assert.equal(appSource.includes('>付款</button>}'), true);
-  assert.equal(appSource.includes('<PaymentWorkbench />'), true);
+  assert.equal(appSource.includes('<PaymentWorkbench focusDocNo={docNo} />'), true);
   assert.doesNotMatch(appSource, /Role\.ACCOUNTANT|roles\.includes/);
 });
 

@@ -4,6 +4,7 @@ import * as masterDataApi from '../api/masterDataApi.ts';
 import * as materialIssueApi from '../api/materialIssueApi.ts';
 import type { WorkOrder } from '../api/workOrderApi.ts';
 import { createInFlightGuard, createRequestGate } from '../security/workbenchControl.ts';
+import { useFocusDocument } from './useFocusDocument.ts';
 import {
   errorMessage,
   ExecutingWorkOrderPicker,
@@ -58,9 +59,11 @@ function runIssueAction(action: materialIssueApi.MaterialIssueAction, docNo: str
 export function MaterialIssueWorkbench({
   canUse,
   canUseWo,
+  focusDocNo,
 }: {
   canUse: boolean;
   canUseWo: boolean;
+  focusDocNo?: string;
 }) {
   const [items, setItems] = useState<materialIssueApi.MaterialIssue[]>([]);
   const [selected, setSelected] = useState<materialIssueApi.MaterialIssue | null>(null);
@@ -197,6 +200,13 @@ export function MaterialIssueWorkbench({
       }
     });
   };
+
+  useFocusDocument(focusDocNo, (docNo) => {
+    if (!canUse) return;
+    void materialIssueApi.getMaterialIssue(docNo).then(choose).catch((cause: unknown) => {
+      setError(errorMessage(cause, '领料单详情加载失败'));
+    });
+  });
 
   const applySearch = () => {
     if (saving) return;

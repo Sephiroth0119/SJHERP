@@ -17,6 +17,12 @@ public interface AgentSessionRepository {
     /** 按 ID 查找会话 */
     Optional<AgentSession> findById(String sessionId);
 
-    /** 查询某用户的全部会话（会话列表页） */
+    /** 查询某用户的全部会话（会话列表页；含消息，供需要聚合的调用方） */
     List<AgentSession> findByUserId(String userId);
+
+    /**
+     * 查询某用户的会话摘要（按 updated_at 降序，不含消息正文）。
+     * 历史会话列表必须走本方法，避免为侧栏加载全部 agent_message。
+     */
+    List<AgentSessionSummary> listSummariesByUserId(String userId);
 }

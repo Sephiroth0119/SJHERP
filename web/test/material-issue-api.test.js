@@ -217,7 +217,9 @@ test('material issue tab is gated on production:material and does not fetch with
   assert.equal(workbenchSource.includes('>领料</button>'), true);
   assert.equal(workbenchSource.includes('>退料</button>'), true);
   assert.equal(
-    workbenchSource.includes('<MaterialIssueWorkbench canUse={canUseMaterial} canUseWo={canUseWo} />'),
+    /<MaterialIssueWorkbench canUse=\{canUseMaterial\} canUseWo=\{canUseWo\} focusDocNo=\{focusDocNo\} \/>/.test(
+      workbenchSource,
+    ),
     true,
   );
   assert.match(pageSource, /if \(!canUse\) \{/);

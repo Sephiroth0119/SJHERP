@@ -142,7 +142,7 @@ test('sales invoice tab is permission-code fail-closed and does not depend on de
   const app = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
   const workbench = readFileSync(new URL('../src/components/SalesInvoiceWorkbench.tsx', import.meta.url), 'utf8');
   assert.match(app, /permissions\.includes\('sales:invoice'\)/);
-  assert.match(app, /<SalesInvoiceWorkbench \/>/);
+  assert.match(app, /<SalesInvoiceWorkbench focusDocNo=\{docNo\} \/>/);
   assert.doesNotMatch(app, /Role\.ACCOUNTANT|roles\.includes/);
   assert.doesNotMatch(workbench, /salesDeliveryApi/);
 });

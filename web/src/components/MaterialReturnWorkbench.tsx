@@ -4,6 +4,7 @@ import * as masterDataApi from '../api/masterDataApi.ts';
 import * as materialIssueApi from '../api/materialIssueApi.ts';
 import * as materialReturnApi from '../api/materialReturnApi.ts';
 import { createInFlightGuard, createRequestGate } from '../security/workbenchControl.ts';
+import { useFocusDocument } from './useFocusDocument.ts';
 import {
   CompletedMaterialIssuePicker,
   errorMessage,
@@ -49,7 +50,7 @@ function runReturnAction(action: materialReturnApi.MaterialReturnAction, docNo: 
   }
 }
 
-export function MaterialReturnWorkbench({ canUse }: { canUse: boolean }) {
+export function MaterialReturnWorkbench({ canUse, focusDocNo }: { canUse: boolean; focusDocNo?: string }) {
   const [items, setItems] = useState<materialReturnApi.MaterialReturn[]>([]);
   const [selected, setSelected] = useState<materialReturnApi.MaterialReturn | null>(null);
   const [issueDraft, setIssueDraft] = useState('');
@@ -180,6 +181,13 @@ export function MaterialReturnWorkbench({ canUse }: { canUse: boolean }) {
       }
     });
   };
+
+  useFocusDocument(focusDocNo, (docNo) => {
+    if (!canUse) return;
+    void materialReturnApi.getMaterialReturn(docNo).then(choose).catch((cause: unknown) => {
+      setError(errorMessage(cause, '退料单详情加载失败'));
+    });
+  });
 
   const applySearch = () => {
     if (saving) return;

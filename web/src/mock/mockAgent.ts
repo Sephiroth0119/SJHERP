@@ -74,6 +74,9 @@ const PURCHASE_ORDER_CONFIRM_REPLY: AgentReply = {
       description: '保留草稿，稍后再处理',
     },
   ],
+  documents: [
+    { type: 'PURCHASE_ORDER', docNo: 'PO-20260611-003', title: '采购订单' },
+  ],
 };
 
 /** 库存查询：演示纯文本（mock 数据表格用文本排版代替） */

@@ -3,6 +3,7 @@ import { ApiError } from '../api/http.ts';
 import * as masterDataApi from '../api/masterDataApi.ts';
 import * as paymentApi from '../api/paymentApi.ts';
 import { createInFlightGuard, createRequestGate } from '../security/workbenchControl.ts';
+import { useFocusDocument } from './useFocusDocument.ts';
 
 const PAGE_SIZE = 20;
 const statusLabels: Record<paymentApi.PaymentStatus, string> = {
@@ -37,7 +38,7 @@ const canAllocate = (payable: paymentApi.Payable) =>
   (payable.status === 'OPEN' || payable.status === 'PARTIAL')
   && paymentApi.positiveAllocatedAmountPattern.test(payable.outstandingAmount);
 
-export function PaymentWorkbench() {
+export function PaymentWorkbench({ focusDocNo }: { focusDocNo?: string } = {}) {
   const [items, setItems] = useState<paymentApi.Payment[]>([]);
   const [selected, setSelected] = useState<paymentApi.Payment | null>(null);
   const [supplierDraft, setSupplierDraft] = useState<number | null>(null);
@@ -177,6 +178,12 @@ export function PaymentWorkbench() {
       }
     });
   };
+
+  useFocusDocument(focusDocNo, (docNo) => {
+    void paymentApi.getPayment(docNo).then(choose).catch((cause: unknown) => {
+      setError(errorMessage(cause, '付款单详情加载失败'));
+    });
+  });
 
   const applySearch = () => {
     if (saving) return;

@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { BomWorkbench } from './BomWorkbench.tsx';
 import { CostSettlementWorkbench } from './CostSettlementWorkbench.tsx';
 import { DemandPlanWorkbench } from './DemandPlanWorkbench.tsx';
@@ -11,8 +10,17 @@ import { WorkOrderWorkbench } from './WorkOrderWorkbench.tsx';
 
 type ProductionTab = 'bom' | 'routing' | 'plan' | 'mrp' | 'wo' | 'issue' | 'return' | 'report' | 'cost';
 
-export function ProductionWorkbench({ permissions }: { permissions: string[] }) {
-  const [tab, setTab] = useState<ProductionTab>('bom');
+export function ProductionWorkbench({
+  permissions,
+  tab,
+  docNo,
+  onTabChange,
+}: {
+  permissions: string[];
+  tab?: string;
+  docNo?: string;
+  onTabChange: (tab: string) => void;
+}) {
   const canWriteBom = permissions.includes('production:bom');
   const canWriteRouting = permissions.includes('production:routing');
   const canWritePlan = permissions.includes('production:plan');
@@ -43,31 +51,31 @@ export function ProductionWorkbench({ permissions }: { permissions: string[] }) 
     <div className="memory-tabs purchase-workbench-tabs" role="tablist" aria-label="生产工作台">
       <button type="button" role="tab" aria-selected={activeTab === 'bom'}
         className={activeTab === 'bom' ? 'memory-tab-active' : ''}
-        onClick={() => setTab('bom')}>BOM</button>
+        onClick={() => onTabChange('bom')}>BOM</button>
       <button type="button" role="tab" aria-selected={activeTab === 'routing'}
         className={activeTab === 'routing' ? 'memory-tab-active' : ''}
-        onClick={() => setTab('routing')}>工艺路线</button>
+        onClick={() => onTabChange('routing')}>工艺路线</button>
       <button type="button" role="tab" aria-selected={activeTab === 'plan'}
         className={activeTab === 'plan' ? 'memory-tab-active' : ''}
-        onClick={() => setTab('plan')}>需求计划</button>
+        onClick={() => onTabChange('plan')}>需求计划</button>
       {canUseMrp && <button type="button" role="tab" aria-selected={activeTab === 'mrp'}
         className={activeTab === 'mrp' ? 'memory-tab-active' : ''}
-        onClick={() => setTab('mrp')}>MRP</button>}
+        onClick={() => onTabChange('mrp')}>MRP</button>}
       {canUseWo && <button type="button" role="tab" aria-selected={activeTab === 'wo'}
         className={activeTab === 'wo' ? 'memory-tab-active' : ''}
-        onClick={() => setTab('wo')}>工单</button>}
+        onClick={() => onTabChange('wo')}>工单</button>}
       {canUseMaterial && <button type="button" role="tab" aria-selected={activeTab === 'issue'}
         className={activeTab === 'issue' ? 'memory-tab-active' : ''}
-        onClick={() => setTab('issue')}>领料</button>}
+        onClick={() => onTabChange('issue')}>领料</button>}
       {canUseMaterial && <button type="button" role="tab" aria-selected={activeTab === 'return'}
         className={activeTab === 'return' ? 'memory-tab-active' : ''}
-        onClick={() => setTab('return')}>退料</button>}
+        onClick={() => onTabChange('return')}>退料</button>}
       {canUseReport && <button type="button" role="tab" aria-selected={activeTab === 'report'}
         className={activeTab === 'report' ? 'memory-tab-active' : ''}
-        onClick={() => setTab('report')}>报工</button>}
+        onClick={() => onTabChange('report')}>报工</button>}
       {canUseCost && <button type="button" role="tab" aria-selected={activeTab === 'cost'}
         className={activeTab === 'cost' ? 'memory-tab-active' : ''}
-        onClick={() => setTab('cost')}>成本结转</button>}
+        onClick={() => onTabChange('cost')}>成本结转</button>}
     </div>
     {renderTab(
       activeTab,
@@ -79,6 +87,7 @@ export function ProductionWorkbench({ permissions }: { permissions: string[] }) 
       canUseMaterial,
       canUseReport,
       canUseCost,
+      docNo,
     )}
   </>;
 }
@@ -93,6 +102,7 @@ function renderTab(
   canUseMaterial: boolean,
   canUseReport: boolean,
   canUseCost: boolean,
+  focusDocNo?: string,
 ) {
   switch (tab) {
     case 'bom':
@@ -104,15 +114,15 @@ function renderTab(
     case 'mrp':
       return <MrpWorkbench canUse={canUseMrp} />;
     case 'wo':
-      return <WorkOrderWorkbench canUse={canUseWo} canUseMrp={canUseMrp} />;
+      return <WorkOrderWorkbench canUse={canUseWo} canUseMrp={canUseMrp} focusDocNo={focusDocNo} />;
     case 'issue':
-      return <MaterialIssueWorkbench canUse={canUseMaterial} canUseWo={canUseWo} />;
+      return <MaterialIssueWorkbench canUse={canUseMaterial} canUseWo={canUseWo} focusDocNo={focusDocNo} />;
     case 'return':
-      return <MaterialReturnWorkbench canUse={canUseMaterial} />;
+      return <MaterialReturnWorkbench canUse={canUseMaterial} focusDocNo={focusDocNo} />;
     case 'report':
-      return <ProductionReportWorkbench canUse={canUseReport} canUseWo={canUseWo} />;
+      return <ProductionReportWorkbench canUse={canUseReport} canUseWo={canUseWo} focusDocNo={focusDocNo} />;
     case 'cost':
-      return <CostSettlementWorkbench canUse={canUseCost} canUseWo={canUseWo} />;
+      return <CostSettlementWorkbench canUse={canUseCost} canUseWo={canUseWo} focusDocNo={focusDocNo} />;
     default: {
       const exhaustive: never = tab;
       throw new Error(`未知生产页签: ${exhaustive}`);

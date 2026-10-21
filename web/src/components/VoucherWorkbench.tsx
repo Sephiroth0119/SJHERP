@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '../api/http.ts';
 import * as voucherApi from '../api/voucherApi.ts';
 import { createInFlightGuard, createRequestGate } from '../security/workbenchControl.ts';
+import { useFocusDocument } from './useFocusDocument.ts';
 
 const PAGE_SIZE = 20;
 const statusLabels: Record<voucherApi.VoucherStatus, string> = {
@@ -32,7 +33,7 @@ const monthValue = (period: string) => {
   return match ? `${match[1]}-${match[2]}` : '';
 };
 
-export function VoucherWorkbench({ canWrite }: { canWrite: boolean }) {
+export function VoucherWorkbench({ canWrite, focusDocNo }: { canWrite: boolean; focusDocNo?: string }) {
   const [items, setItems] = useState<voucherApi.Voucher[]>([]);
   const [selected, setSelected] = useState<voucherApi.Voucher | null>(null);
   const [periodDraft, setPeriodDraft] = useState('');
@@ -112,6 +113,12 @@ export function VoucherWorkbench({ canWrite }: { canWrite: boolean }) {
       }
     });
   };
+
+  useFocusDocument(focusDocNo, (docNo) => {
+    void voucherApi.getVoucher(docNo).then(choose).catch((cause: unknown) => {
+      setError(errorMessage(cause, '凭证详情加载失败'));
+    });
+  });
 
   const applySearch = () => {
     if (saving) return;

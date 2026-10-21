@@ -2,9 +2,12 @@
  * 聊天后端 API 封装（前后端契约，配合选项返回协议 v0.2）：
  *
  * - POST /api/chat/sessions                 → 201 { sessionId, createdAt }
- * - GET  /api/chat/sessions/{id}            → 200 { sessionId, status, messages[] }（旧→新）；404 { error }
+ * - GET  /api/chat/sessions                 → 200 { items: ChatSessionSummary[] }（仅本人，按更新时间降序）
+ * - GET  /api/chat/sessions/{id}            → 200 { sessionId, title, status, messages[] }（旧→新）；非本人/不存在 404 { error }
+ * - PUT  /api/chat/sessions/{id}/title      → 200 { sessionId, title, status, createdAt, updatedAt }
+ * - POST /api/chat/sessions/{id}/archive    → 200 归档（CLOSED，无物理删除）
  * - POST /api/chat/sessions/{id}/messages
- *     Accept: application/json → 200 完整 AgentReply（非流式客户端，字段兼容 v0.1）
+ *     Accept: application/json → 200 完整 AgentReply（非流式客户端）；已归档 409
  *     Accept: text/event-stream → SSE 分片（status/delta/complete/error）
  *   请求体三选一：{ text } / { optionId } / { formId, values }
  *
@@ -38,6 +41,15 @@ export interface ChatSessionCreated {
   createdAt: string;
 }
 
+/** GET /api/chat/sessions 列表项（不含消息正文） */
+export interface ChatSessionSummary {
+  sessionId: string;
+  title: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** GET 会话历史中的单条消息（后端视角，旧→新排序） */
 export interface ServerChatMessage {
   /** 后端为会话内 seq（整数），mock 为字符串；前端渲染前统一转字符串 */
@@ -53,7 +65,10 @@ export interface ServerChatMessage {
 /** GET /api/chat/sessions/{id} 的响应体 */
 export interface ChatSessionDetail {
   sessionId: string;
+  title?: string | null;
   status: string;
+  createdAt?: string;
+  updatedAt?: string;
   messages: ServerChatMessage[];
 }
 
@@ -78,7 +93,15 @@ export { ApiError as ChatApiError };
 /** mock 回复延迟（毫秒），模拟 Agent 思考 */
 const MOCK_DELAY_MS = 400;
 
-const mockSessions = new Map<string, ServerChatMessage[]>();
+interface MockSessionState {
+  title: string | null;
+  status: 'active' | 'closed';
+  createdAt: string;
+  updatedAt: string;
+  messages: ServerChatMessage[];
+}
+
+const mockSessions = new Map<string, MockSessionState>();
 let mockSeq = 0;
 
 function nextMockId(prefix: string): string {
@@ -93,34 +116,103 @@ function delay(ms: number): Promise<void> {
 async function mockCreateSession(): Promise<ChatSessionCreated> {
   await delay(MOCK_DELAY_MS / 2);
   const sessionId = nextMockId('mock-session');
+  const now = new Date().toISOString();
   // 开场白由 mock 会话自带，回放历史时即可渲染
-  mockSessions.set(sessionId, [
-    {
-      id: nextMockId('mock-msg'),
-      role: 'agent',
-      text: null,
-      reply: GREETING_REPLY,
-      createdAt: new Date().toISOString(),
-    },
-  ]);
-  return { sessionId, createdAt: new Date().toISOString() };
+  mockSessions.set(sessionId, {
+    title: null,
+    status: 'active',
+    createdAt: now,
+    updatedAt: now,
+    messages: [
+      {
+        id: nextMockId('mock-msg'),
+        role: 'agent',
+        text: null,
+        reply: GREETING_REPLY,
+        createdAt: now,
+      },
+    ],
+  });
+  return { sessionId, createdAt: now };
+}
+
+async function mockListSessions(): Promise<ChatSessionSummary[]> {
+  await delay(MOCK_DELAY_MS / 2);
+  return [...mockSessions.entries()]
+    .map(([sessionId, session]) => ({
+      sessionId,
+      title: session.title,
+      status: session.status,
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt,
+    }))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
 async function mockGetSession(sessionId: string): Promise<ChatSessionDetail> {
   await delay(MOCK_DELAY_MS / 2);
-  const messages = mockSessions.get(sessionId);
-  if (!messages) {
+  const session = mockSessions.get(sessionId);
+  if (!session) {
     throw new ApiError('会话不存在', 404);
   }
-  return { sessionId, status: 'active', messages };
+  return {
+    sessionId,
+    title: session.title,
+    status: session.status,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    messages: session.messages,
+  };
+}
+
+async function mockRenameSession(sessionId: string, title: string): Promise<ChatSessionSummary> {
+  await delay(MOCK_DELAY_MS / 2);
+  const session = mockSessions.get(sessionId);
+  if (!session) {
+    throw new ApiError('会话不存在', 404);
+  }
+  const trimmed = title.trim();
+  if (!trimmed) {
+    throw new ApiError('会话标题不能为空', 400);
+  }
+  session.title = trimmed;
+  session.updatedAt = new Date().toISOString();
+  return {
+    sessionId,
+    title: session.title,
+    status: session.status,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+  };
+}
+
+async function mockArchiveSession(sessionId: string): Promise<ChatSessionSummary> {
+  await delay(MOCK_DELAY_MS / 2);
+  const session = mockSessions.get(sessionId);
+  if (!session) {
+    throw new ApiError('会话不存在', 404);
+  }
+  session.status = 'closed';
+  session.updatedAt = new Date().toISOString();
+  return {
+    sessionId,
+    title: session.title,
+    status: session.status,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+  };
 }
 
 async function mockSendMessage(sessionId: string, payload: SendMessagePayload): Promise<AgentReply> {
   await delay(MOCK_DELAY_MS);
-  const messages = mockSessions.get(sessionId);
-  if (!messages) {
+  const session = mockSessions.get(sessionId);
+  if (!session) {
     throw new ApiError('会话不存在', 404);
   }
+  if (session.status === 'closed') {
+    throw new ApiError(`会话已归档，无法继续发送消息: ${sessionId}`, 409);
+  }
+  const messages = session.messages;
   // mockAgent 是关键词路由：把结构化载荷还原成语义化文本驱动它
   let routeText: string;
   if ('text' in payload) {
@@ -148,6 +240,10 @@ async function mockSendMessage(sessionId: string, payload: SendMessagePayload): 
     reply,
     createdAt: new Date().toISOString(),
   });
+  session.updatedAt = new Date().toISOString();
+  if (!session.title && 'text' in payload) {
+    session.title = payload.text.trim().slice(0, 50) || null;
+  }
   return reply;
 }
 
@@ -161,13 +257,38 @@ export function createChatSession(): Promise<ChatSessionCreated> {
   return request<ChatSessionCreated>('/api/chat/sessions', { method: 'POST' });
 }
 
-/** 拉取会话详情与历史消息（旧→新）；会话不存在时抛 ChatApiError(status=404) */
+/** 拉取本人会话列表（不含消息正文） */
+export async function listChatSessions(): Promise<ChatSessionSummary[]> {
+  if (USE_MOCK) return mockListSessions();
+  const body = await request<{ items: ChatSessionSummary[] }>('/api/chat/sessions');
+  return Array.isArray(body.items) ? body.items : [];
+}
+
+/** 拉取会话详情与历史消息（旧→新）；会话不存在或非本人时抛 ChatApiError(status=404) */
 export function getChatSession(sessionId: string): Promise<ChatSessionDetail> {
   if (USE_MOCK) return mockGetSession(sessionId);
   return request<ChatSessionDetail>(`/api/chat/sessions/${encodeURIComponent(sessionId)}`);
 }
 
-/** 发送一条消息（文本 / 选项 / 表单），响应即完整 AgentReply（非流式，兼容 v0.1 客户端） */
+/** 重命名会话；空标题由后端拒绝并返回原文错误 */
+export function renameChatSession(sessionId: string, title: string): Promise<ChatSessionSummary> {
+  if (USE_MOCK) return mockRenameSession(sessionId, title);
+  return request<ChatSessionSummary>(
+    `/api/chat/sessions/${encodeURIComponent(sessionId)}/title`,
+    { method: 'PUT', body: { title } },
+  );
+}
+
+/** 归档会话（CLOSED，无物理删除） */
+export function archiveChatSession(sessionId: string): Promise<ChatSessionSummary> {
+  if (USE_MOCK) return mockArchiveSession(sessionId);
+  return request<ChatSessionSummary>(
+    `/api/chat/sessions/${encodeURIComponent(sessionId)}/archive`,
+    { method: 'POST' },
+  );
+}
+
+/** 发送一条消息（文本 / 选项 / 表单），响应即完整 AgentReply（非流式） */
 export function sendChatMessage(sessionId: string, payload: SendMessagePayload): Promise<AgentReply> {
   if (USE_MOCK) return mockSendMessage(sessionId, payload);
   return request<AgentReply>(`/api/chat/sessions/${encodeURIComponent(sessionId)}/messages`, {

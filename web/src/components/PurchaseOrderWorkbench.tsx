@@ -3,6 +3,7 @@ import * as catalogApi from '../api/catalogApi.ts';
 import { ApiError } from '../api/http.ts';
 import * as masterDataApi from '../api/masterDataApi.ts';
 import * as orderApi from '../api/purchaseOrderApi.ts';
+import { useFocusDocument } from './useFocusDocument.ts';
 
 const PAGE_SIZE = 20;
 
@@ -36,7 +37,7 @@ function errorMessage(cause: unknown, fallback: string): string {
   return cause instanceof ApiError ? cause.message : fallback;
 }
 
-export function PurchaseOrderWorkbench() {
+export function PurchaseOrderWorkbench({ focusDocNo }: { focusDocNo?: string } = {}) {
   const [items, setItems] = useState<orderApi.PurchaseOrder[]>([]);
   const [selected, setSelected] = useState<orderApi.PurchaseOrder | null>(null);
   const [supplierFilterDraft, setSupplierFilterDraft] = useState<number | null>(
@@ -172,6 +173,12 @@ export function PurchaseOrderWorkbench() {
         }
       });
   };
+
+  useFocusDocument(focusDocNo, (docNo) => {
+    void orderApi.getPurchaseOrder(docNo).then(choose).catch((cause: unknown) => {
+      setError(errorMessage(cause, '采购订单详情加载失败'));
+    });
+  });
 
   const applySearch = () => {
     clearSelection();

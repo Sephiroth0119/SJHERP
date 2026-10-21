@@ -5,6 +5,7 @@ import * as masterDataApi from '../api/masterDataApi.ts';
 import * as mrpApi from '../api/mrpApi.ts';
 import * as workOrderApi from '../api/workOrderApi.ts';
 import { createInFlightGuard, createRequestGate } from '../security/workbenchControl.ts';
+import { useFocusDocument } from './useFocusDocument.ts';
 
 const PAGE_SIZE = 20;
 
@@ -73,9 +74,11 @@ type EditorMode = 'manual' | 'from-mrp' | null;
 export function WorkOrderWorkbench({
   canUse,
   canUseMrp,
+  focusDocNo,
 }: {
   canUse: boolean;
   canUseMrp: boolean;
+  focusDocNo?: string;
 }) {
   const [items, setItems] = useState<workOrderApi.WorkOrderSummary[]>([]);
   const [selected, setSelected] = useState<workOrderApi.WorkOrder | null>(null);
@@ -219,6 +222,13 @@ export function WorkOrderWorkbench({
       }
     });
   };
+
+  useFocusDocument(focusDocNo, (docNo) => {
+    if (!canUse) return;
+    void workOrderApi.getWorkOrder(docNo).then(choose).catch((cause: unknown) => {
+      setError(errorMessage(cause, '工单详情加载失败'));
+    });
+  });
 
   const applySearch = () => {
     if (saving) return;

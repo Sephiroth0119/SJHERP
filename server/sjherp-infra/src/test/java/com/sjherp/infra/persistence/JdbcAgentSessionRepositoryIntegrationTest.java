@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 
 import com.sjherp.agent.session.AgentMessage;
 import com.sjherp.agent.session.AgentSession;
+import com.sjherp.agent.session.AgentSessionSummary;
 import com.sjherp.agent.session.MessageRole;
 import com.sjherp.agent.session.SessionStatus;
 
@@ -121,5 +122,23 @@ class JdbcAgentSessionRepositoryIntegrationTest extends MySqlContainerTestBase {
         AgentSession afterSame = sessionRepository.findById(sessionId).orElseThrow();
         assertThat(afterSame.getSummarizedUntilSeq()).isEqualTo(5);
         assertThat(afterSame.getHistorySummary()).contains("修订");
+    }
+
+    @Test
+    void 会话摘要列表按用户过滤且不含他人会话() {
+        String userA = "it-user-list-a-" + uniqueSuffix();
+        String userB = "it-user-list-b-" + uniqueSuffix();
+        AgentSession a1 = new AgentSession("it-sess-a1-" + uniqueSuffix(), userA);
+        a1.setTitle("本人会话");
+        sessionRepository.save(a1);
+        AgentSession b1 = new AgentSession("it-sess-b1-" + uniqueSuffix(), userB);
+        b1.setTitle("他人会话");
+        sessionRepository.save(b1);
+
+        List<AgentSessionSummary> summaries = sessionRepository.listSummariesByUserId(userA);
+        assertThat(summaries).extracting(AgentSessionSummary::userId).containsOnly(userA);
+        assertThat(summaries).extracting(AgentSessionSummary::title).containsExactly("本人会话");
+        assertThat(summaries).extracting(AgentSessionSummary::sessionId)
+                .doesNotContain(b1.getSessionId());
     }
 }

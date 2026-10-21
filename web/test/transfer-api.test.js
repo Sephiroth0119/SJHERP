@@ -171,7 +171,7 @@ test('transfer tab is fail-closed on inventory:transfer and uses real workbench'
   const appSource = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
   assert.match(appSource, /permissions\.includes\('inventory:transfer'\)/);
   assert.equal(appSource.includes('>调拨</button>}'), true);
-  assert.equal(appSource.includes('<TransferWorkbench />'), true);
+  assert.equal(appSource.includes('<TransferWorkbench focusDocNo={docNo} />'), true);
   assert.doesNotMatch(appSource, /Role\.WAREHOUSE|roles\.includes/);
 });
 

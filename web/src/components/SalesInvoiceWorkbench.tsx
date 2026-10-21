@@ -5,6 +5,7 @@ import { ApiError } from '../api/http.ts';
 import * as masterDataApi from '../api/masterDataApi.ts';
 import * as invoiceApi from '../api/salesInvoiceApi.ts';
 import { createInFlightGuard, createRequestGate } from '../security/workbenchControl.ts';
+import { useFocusDocument } from './useFocusDocument.ts';
 
 const PAGE_SIZE = 20;
 const statusLabels: Record<invoiceApi.SalesInvoiceStatus, string> = {
@@ -26,7 +27,7 @@ const emptyForm = (): invoiceApi.SalesInvoiceForm => ({
 const errorMessage = (cause: unknown, fallback: string) =>
   cause instanceof ApiError ? cause.message : fallback;
 
-export function SalesInvoiceWorkbench() {
+export function SalesInvoiceWorkbench({ focusDocNo }: { focusDocNo?: string } = {}) {
   const [items, setItems] = useState<invoiceApi.SalesInvoice[]>([]);
   const [selected, setSelected] = useState<invoiceApi.SalesInvoice | null>(null);
   const [customerDraft, setCustomerDraft] = useState('');
@@ -133,6 +134,12 @@ export function SalesInvoiceWorkbench() {
       if (detailVersion.current.isCurrent(version)) setError(errorMessage(cause, '销售发票详情加载失败'));
     });
   };
+
+  useFocusDocument(focusDocNo, (docNo) => {
+    void invoiceApi.getSalesInvoice(docNo).then(choose).catch((cause: unknown) => {
+      setError(errorMessage(cause, '销售发票详情加载失败'));
+    });
+  });
 
   const applySearch = () => {
     if (saving) return;

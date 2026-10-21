@@ -3,6 +3,7 @@ import * as customerApi from '../api/customerApi.ts';
 import { ApiError } from '../api/http.ts';
 import * as collectionApi from '../api/collectionApi.ts';
 import { createInFlightGuard, createRequestGate } from '../security/workbenchControl.ts';
+import { useFocusDocument } from './useFocusDocument.ts';
 
 const PAGE_SIZE = 20;
 const statusLabels: Record<collectionApi.CollectionStatus, string> = {
@@ -37,7 +38,7 @@ const canAllocate = (receivable: collectionApi.Receivable) =>
   (receivable.status === 'OPEN' || receivable.status === 'PARTIAL')
   && collectionApi.positiveAllocatedAmountPattern.test(receivable.openAmount);
 
-export function CollectionWorkbench() {
+export function CollectionWorkbench({ focusDocNo }: { focusDocNo?: string } = {}) {
   const [items, setItems] = useState<collectionApi.Collection[]>([]);
   const [selected, setSelected] = useState<collectionApi.Collection | null>(null);
   const [customerDraft, setCustomerDraft] = useState<number | null>(null);
@@ -178,6 +179,12 @@ export function CollectionWorkbench() {
       }
     });
   };
+
+  useFocusDocument(focusDocNo, (docNo) => {
+    void collectionApi.getCollection(docNo).then(choose).catch((cause: unknown) => {
+      setError(errorMessage(cause, '收款单详情加载失败'));
+    });
+  });
 
   const applySearch = () => {
     if (saving) return;

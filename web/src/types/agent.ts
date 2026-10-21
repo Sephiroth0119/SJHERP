@@ -110,6 +110,21 @@ export interface AgentReply {
    * 后端只准备动作，由人点击确认后才执行。
    */
   requiresConfirmation?: boolean;
+  /**
+   * 单据引用（加性可选字段，M7-T04；只出现在完整回复 / SSE complete）。
+   * 前端按权限 fail-closed 渲染可点击卡片，跳转传统 UI 工作台详情。
+   */
+  documents?: AgentDocumentRef[];
+}
+
+/**
+ * 消息内嵌单据卡片的稳定结构。金额/数量不出现在卡片上，避免无权限时额外暴露明细。
+ * type 必须是已登记的稳定标识；未知 type 前端不渲染。
+ */
+export interface AgentDocumentRef {
+  type: string;
+  docNo: string;
+  title?: string;
 }
 
 /** 流式分片事件类型（协议 v0.2） */
