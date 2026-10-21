@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as catalogApi from '../api/catalogApi.ts';
 import * as demandPlanApi from '../api/demandPlanApi.ts';
 import { ApiError } from '../api/http.ts';
+import { formatQuantityDisplay } from '../api/productionBomApi.ts';
 import { createInFlightGuard, createRequestGate } from '../security/workbenchControl.ts';
 
 const PAGE_SIZE = 20;
@@ -340,7 +341,7 @@ function DemandPlanDetails({
       </tr></thead><tbody>
         {plan.lines.map((line, index) => <tr key={`${line.productId}-${line.unitId}-${index}`}>
           <td>{productName(line.productId)}</td>
-          <td>{line.quantity}</td>
+          <td>{formatQuantityDisplay(line.quantity)}</td>
           <td>{unitName(line.unitId)}</td>
           <td>{line.dueDate || '—'}</td>
         </tr>)}

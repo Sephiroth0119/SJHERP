@@ -85,6 +85,20 @@ type BomExplosionWire = Omit<BomExplosion, 'rootQuantity' | 'nodes'> & {
 export const positiveDecimalPattern =
   /^(?!0(?:\.0{1,6})?$)(?:0|[1-9]\d{0,11})(?:\.\d{1,6})?$/;
 
+const decimalDisplayPattern = /^-?(?:0|[1-9]\d*)(?:\.\d+)?$/;
+
+/**
+ * 仅用于展示：去掉小数末尾 0（`5.000000` → `5`）。
+ * 字符串处理，不参与运算，不改提交/真源。
+ */
+export function formatQuantityDisplay(value: string): string {
+  const trimmed = value.trim();
+  if (!decimalDisplayPattern.test(trimmed) || !trimmed.includes('.')) {
+    return trimmed === '' ? value : trimmed;
+  }
+  return trimmed.replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+}
+
 /** 损耗率：范围 [0, 1)，空表示默认 0。 */
 export const scrapRatePattern = /^(?:0(?:\.\d{1,6})?|0?\.\d{1,6})$/;
 
