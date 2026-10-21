@@ -16,7 +16,7 @@ test('permission grants expose only modules allowed by the signed-in permission 
   ]);
   assert.deepEqual(
     purchaserItems.map((item) => item.key),
-    ['agent', 'purchase'],
+    ['agent', 'purchase', 'reports'],
   );
   assert.equal(canAccessModule('finance', ['purchase:order']), false);
   assert.equal(canAccessModule('purchase', ['purchase:order']), true);
@@ -39,18 +39,24 @@ test('unknown or unrelated permission codes do not unlock navigation', () => {
   const permissions = ['sales:order', 'finance:voucher', 'permission:from-a-new-server'];
   assert.deepEqual(
     filterNavItems(MODULE_NAV_ITEMS, permissions).map((item) => item.key),
-    ['agent', 'sales', 'finance'],
+    ['agent', 'sales', 'finance', 'reports'],
   );
   assert.deepEqual(
     filterNavItems(MODULE_NAV_ITEMS, ['UNKNOWN']).map((item) => item.key),
-    ['agent'],
+    ['agent', 'reports'],
   );
+});
+
+test('reports module is visible to every signed-in user because inventory reports are login-scoped', () => {
+  assert.equal(canAccessModule('reports', []), true);
+  assert.equal(canAccessModule('reports', ['UNKNOWN']), true);
+  assert.equal(canAccessModule('finance', []), false);
 });
 
 test('the frontend does not infer elevated access from a role label', () => {
   assert.deepEqual(
     filterNavItems(MODULE_NAV_ITEMS, ['ADMIN']).map((item) => item.key),
-    ['agent'],
+    ['agent', 'reports'],
   );
   assert.equal(canAccessModule('memory', ['ADMIN']), false);
 });

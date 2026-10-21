@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { ApiError } from '../api/http.ts';
 import * as statementApi from '../api/financialStatementApi.ts';
+import { downloadSpreadsheet, spreadsheetFilename } from '../report/excelExport.ts';
 import { createRequestGate } from '../security/workbenchControl.ts';
+import { BarChart } from './report/BarChart.tsx';
 
 type StatementKind = 'balance-sheet' | 'income-statement';
 
@@ -155,6 +157,9 @@ function FinancialStatementWorkbench({ kind }: { kind: StatementKind }) {
           }} />
       </label>
       <button type="button" className="memory-button" onClick={applySearch}>查询</button>
+      <button type="button" className="memory-button memory-button-primary"
+        disabled={loading || (!sheet && !income)}
+        onClick={() => exportCurrentStatement(kind, copy.title, sheet, income)}>导出 Excel</button>
     </div>
     {error && <div className="memory-error" role="alert">{error}</div>}
     {loading && <p className="memory-empty" role="status">{copy.loading}</p>}
@@ -165,11 +170,59 @@ function FinancialStatementWorkbench({ kind }: { kind: StatementKind }) {
   </section>;
 }
 
+function exportCurrentStatement(
+  kind: StatementKind,
+  title: string,
+  sheet: statementApi.BalanceSheet | null,
+  income: statementApi.IncomeStatement | null,
+) {
+  switch (kind) {
+    case 'balance-sheet':
+      if (!sheet) return;
+      downloadSpreadsheet(spreadsheetFilename(title, sheet.period), [{
+        name: title,
+        headers: ['类别', '项目', '金额'],
+        rows: [
+          ...sheet.assetLines.map((line) => ['资产', line.name, amountText(line.amount)]),
+          ['资产', '资产总计', amountText(sheet.totalAssets)],
+          ...sheet.liabilityLines.map((line) => ['负债', line.name, amountText(line.amount)]),
+          ['负债', '负债合计', amountText(sheet.totalLiabilities)],
+          ...sheet.equityLines.map((line) => ['所有者权益', line.name, amountText(line.amount)]),
+          ['所有者权益', '权益合计', amountText(sheet.totalEquity)],
+        ],
+      }]);
+      return;
+    case 'income-statement':
+      if (!income) return;
+      downloadSpreadsheet(spreadsheetFilename(title, income.period), [{
+        name: title,
+        headers: ['项目', '本期', '本年累计'],
+        rows: income.lines.map((line) => [
+          line.name, amountText(line.currentPeriod), amountText(line.yearToDate),
+        ]),
+      }]);
+      return;
+    default: {
+      const exhaustive: never = kind;
+      throw new Error(`未知报表类型: ${exhaustive}`);
+    }
+  }
+}
+
 function BalanceSheetPanel({ sheet }: { sheet: statementApi.BalanceSheet }) {
   return <>
     <p className="memory-empty" role="status">
       账期 {sheet.period} · {sheet.balanced ? '已平衡（资产 = 负债 + 权益）' : '未平衡，请核对未分类科目或凭证'}
     </p>
+    <BarChart
+      title="资产负债结构"
+      empty="暂无资产负债表金额可绘图。"
+      bars={[
+        { label: '资产总计', value: sheet.totalAssets },
+        { label: '负债合计', value: sheet.totalLiabilities },
+        { label: '权益合计', value: sheet.totalEquity },
+      ]}
+    />
     <div className="customer-layout purchase-order-layout">
       <StatementBlock title="资产" lines={sheet.assetLines} totalLabel="资产总计" total={sheet.totalAssets} />
       <StatementBlock title="负债" lines={sheet.liabilityLines} totalLabel="负债合计" total={sheet.totalLiabilities} />
@@ -212,6 +265,14 @@ function IncomeStatementPanel({ statement }: { statement: statementApi.IncomeSta
       账期 {statement.period} · 本期净利润 {amountText(statement.netProfitCurrent)} ·
       本年累计净利润 {amountText(statement.netProfitYtd)}
     </p>
+    <BarChart
+      title="净利润本期 vs 本年累计"
+      empty="暂无利润金额可绘图。"
+      bars={[
+        { label: '本期净利润', value: statement.netProfitCurrent },
+        { label: '本年累计净利润', value: statement.netProfitYtd },
+      ]}
+    />
     <div className="memory-table-wrap"><table className="memory-table"><thead><tr>
       <th>项目</th><th>本期</th><th>本年累计</th>
     </tr></thead><tbody>

@@ -33,6 +33,7 @@ import { PurchaseReceiptWorkbench } from './components/PurchaseReceiptWorkbench'
 import { SalesDeliveryWorkbench } from './components/SalesDeliveryWorkbench';
 import { SalesInvoiceWorkbench } from './components/SalesInvoiceWorkbench';
 import { SalesOrderWorkbench } from './components/SalesOrderWorkbench';
+import { ReportWorkbench } from './components/ReportWorkbench';
 import { type ModuleKey } from './types/navigation';
 import {
   clearAuth,
@@ -184,6 +185,12 @@ export function App() {
             permissions={permissions}
             tab={guardedRoute.tab}
             docNo={guardedRoute.docNo}
+            onTabChange={selectTab}
+          />
+        ) : guardedModule === 'reports' ? (
+          <ReportWorkbench
+            permissions={permissions}
+            tab={guardedRoute.tab}
             onTabChange={selectTab}
           />
         ) : guardedModule === 'memory' && canManageMemory ? (

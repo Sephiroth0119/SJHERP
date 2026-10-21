@@ -1586,3 +1586,61 @@ body {
     position: static;
   }
 }
+
+/* ===== 报表查询（M7-T06）===== */
+.report-filters {
+  align-items: flex-end;
+}
+
+.report-checkbox {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px;
+}
+
+.report-checkbox input {
+  width: auto;
+  min-height: auto;
+}
+
+.report-table-panel {
+  margin-top: 12px;
+}
+
+.report-chart {
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+
+.report-chart figcaption {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.report-chart-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.report-chart-svg-label,
+.report-chart-svg-value {
+  fill: var(--color-text);
+  font-size: 13px;
+}
+
+.report-chart-svg-value {
+  fill: var(--color-text-muted);
+}
+
+.report-chart-svg-track {
+  fill: #eef2f7;
+}
+
+.report-chart-svg-bar {
+  fill: var(--color-primary);
+}

@@ -3,7 +3,10 @@ import * as agingReportApi from '../api/agingReportApi.ts';
 import * as customerApi from '../api/customerApi.ts';
 import { ApiError } from '../api/http.ts';
 import * as masterDataApi from '../api/masterDataApi.ts';
+import { collectAllPages, REPORT_EXPORT_PAGE_SIZE } from '../api/inventoryReportApi.ts';
+import { downloadSpreadsheet, spreadsheetFilename } from '../report/excelExport.ts';
 import { createRequestGate } from '../security/workbenchControl.ts';
+import { BarChart } from './report/BarChart.tsx';
 
 const PAGE_SIZE = 20;
 
@@ -93,6 +96,7 @@ function AgingReportWorkbench({ kind }: { kind: agingReportApi.AgingKind }) {
   const [grandTotal, setGrandTotal] = useState<agingReportApi.AgingBuckets>(emptyBuckets);
   const [refreshKey, setRefreshKey] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
   const listVersion = useRef(createRequestGate());
 
@@ -143,6 +147,51 @@ function AgingReportWorkbench({ kind }: { kind: agingReportApi.AgingKind }) {
     setRefreshKey((value) => value + 1);
   };
 
+  const exportExcel = () => {
+    if (exporting) return;
+    setExporting(true);
+    setError('');
+    const fetchPage = (targetPage: number, size: number) => {
+      switch (kind) {
+        case 'receivable':
+          return agingReportApi.searchReceivableAging(asOf, counterpartyId, targetPage, size);
+        case 'payable':
+          return agingReportApi.searchPayableAging(asOf, counterpartyId, targetPage, size);
+        default: {
+          const exhaustive: never = kind;
+          throw new Error(`未知账龄类型: ${exhaustive}`);
+        }
+      }
+    };
+    void collectAllPages(fetchPage, REPORT_EXPORT_PAGE_SIZE)
+      .then(({ first, items }) => {
+        const headers = [
+          copy.counterpartyLabel, '未到期', '逾期 1-30', '逾期 31-60', '逾期 61-90', '逾期 90+', '合计',
+        ];
+        const rowOf = (item: agingReportApi.AgingItem | agingReportApi.AgingBuckets, label: string) => [
+          label,
+          amountText(item.notDue),
+          amountText(item.overdue1To30),
+          amountText(item.overdue31To60),
+          amountText(item.overdue61To90),
+          amountText(item.overdue90Plus),
+          amountText(item.totalOutstanding),
+        ];
+        downloadSpreadsheet(spreadsheetFilename(copy.title, first.asOf || asOf), [{
+          name: copy.title,
+          headers,
+          rows: [
+            rowOf(first.grandTotal, '全量合计'),
+            ...items.map((item) => rowOf(item, counterpartyLabel(item))),
+          ],
+        }]);
+      })
+      .catch((cause: unknown) => {
+        setError(errorMessage(cause, copy.permissionHint));
+      })
+      .finally(() => setExporting(false));
+  };
+
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return <section className="customer-page">
@@ -151,6 +200,12 @@ function AgingReportWorkbench({ kind }: { kind: agingReportApi.AgingKind }) {
         <p className="page-kicker">{copy.kicker}</p>
         <h1>{copy.title}</h1>
         <p>{copy.intro}</p>
+      </div>
+      <div className="customer-toolbar">
+        <button type="button" className="memory-button memory-button-primary"
+          disabled={exporting || loading} onClick={exportExcel}>
+          {exporting ? '正在导出…' : '导出 Excel'}
+        </button>
       </div>
     </header>
     <div className="purchase-order-filters">
@@ -173,6 +228,17 @@ function AgingReportWorkbench({ kind }: { kind: agingReportApi.AgingKind }) {
       逾期 90+ {amountText(grandTotal.overdue90Plus)} ·
       合计 {amountText(grandTotal.totalOutstanding)}
     </p>
+    <BarChart
+      title="账龄分桶（当前筛选全集）"
+      empty="暂无账龄金额可绘图。"
+      bars={[
+        { label: '未到期', value: grandTotal.notDue },
+        { label: '逾期 1-30', value: grandTotal.overdue1To30 },
+        { label: '逾期 31-60', value: grandTotal.overdue31To60 },
+        { label: '逾期 61-90', value: grandTotal.overdue61To90 },
+        { label: '逾期 90+', value: grandTotal.overdue90Plus },
+      ]}
+    />
     <div className="customer-layout purchase-order-layout">
       <section className="customer-list-panel">
         <div className="memory-table-wrap"><table className="memory-table"><thead><tr>

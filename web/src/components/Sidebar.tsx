@@ -1,5 +1,5 @@
 /**
- * 左侧导航：Agent 主入口 + 传统业务入口（采购/销售/库存/生产/财务）。
+ * 左侧导航：Agent 主入口 + 传统业务入口（采购/销售/库存/生产/财务/报表）。
  */
 import { MODULE_NAV_ITEMS, type ModuleKey } from '../types/navigation';
 import { filterNavItems } from '../security/access';

@@ -44,6 +44,16 @@ const MODULE_TAB_PERMISSION: Record<string, Record<string, string>> = {
     balanceSheet: 'finance:report',
     incomeStatement: 'finance:report',
   },
+  reports: {
+    'purchase-detail': 'purchase:order',
+    'sales-detail': 'sales:order',
+    'receivable-aging': 'finance:settlement',
+    'payable-aging': 'finance:settlement',
+    'trial-balance': 'finance:voucher',
+    'account-balance': 'finance:voucher',
+    'balance-sheet': 'finance:report',
+    'income-statement': 'finance:report',
+  },
 };
 
 export function parseWorkbenchRoute(hash: string): WorkbenchRoute {

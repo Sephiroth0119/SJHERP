@@ -39,3 +39,22 @@ test('resolveWorkbenchRoute drops unauthorized document tabs fail-closed', () =>
   assert.equal(noPurchase.tab, undefined);
   assert.equal(noPurchase.docNo, undefined);
 });
+
+test('report tabs fail-closed on their REST permission while login-scoped reports stay open', () => {
+  assert.deepEqual(
+    resolveWorkbenchRoute({ module: 'reports', tab: 'balance-sheet' }, []),
+    { module: 'reports' },
+  );
+  assert.deepEqual(
+    resolveWorkbenchRoute({ module: 'reports', tab: 'trial-balance' }, ['finance:voucher']),
+    { module: 'reports', tab: 'trial-balance', docNo: undefined },
+  );
+  assert.deepEqual(
+    resolveWorkbenchRoute({ module: 'reports', tab: 'inventory-balance' }, []),
+    { module: 'reports', tab: 'inventory-balance', docNo: undefined },
+  );
+  assert.deepEqual(
+    resolveWorkbenchRoute({ module: 'reports', tab: 'receivable-aging' }, ['sales:order']),
+    { module: 'reports' },
+  );
+});
