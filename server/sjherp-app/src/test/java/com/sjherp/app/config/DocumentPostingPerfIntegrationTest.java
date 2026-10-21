@@ -217,7 +217,7 @@ class DocumentPostingPerfIntegrationTest {
             skus.add(new Sku(nextId(), nextId()));
         }
         Queue<Throwable> errors = new ConcurrentLinkedQueue<>();
-        List<Long> latencies = runConcurrently(users, thread -> () -> {
+        List<Long> latencies = runConcurrently(users, thread -> {
             Sku sku = skus.get(thread);
             String key = label + ":" + uniqueSuffix() + ":" + thread;
             long t0 = System.nanoTime();
@@ -255,7 +255,7 @@ class DocumentPostingPerfIntegrationTest {
             prepared.add(new PreparedReceipt(prNo, warehouseId, productId));
         }
         Queue<Throwable> errors = new ConcurrentLinkedQueue<>();
-        List<Long> latencies = runConcurrently(users, thread -> () -> {
+        List<Long> latencies = runConcurrently(users, thread -> {
             PreparedReceipt doc = prepared.get(thread);
             long t0 = System.nanoTime();
             txTemplate.executeWithoutResult(status -> receiptService.post(doc.prNo, OPERATOR));

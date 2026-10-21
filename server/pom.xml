@@ -45,7 +45,7 @@
                本地手动运行：mvn test -DexcludedGroups=none -Dgroups=integration
              - integration-db：Testcontainers MySQL（需本机 Docker；X-2，CI 有独立 job）；
                手动运行：mvn test -pl sjherp-infra -Dgroups=integration-db -DexcludedGroups=none
-             - perf：百万行/50 并发压测（M8-T05），默认排除；./deploy/perf.sh --full 显式跑 -->
+             - perf：百万行/50 并发压测（M8-T05），默认排除；deploy/perf.sh full 模式显式跑 -->
         <excludedGroups>integration,integration-db,perf</excludedGroups>
     </properties>
 
