@@ -119,3 +119,7 @@ SJHERP/
 **M7-T04 多会话聊天与单据卡片已完成实现（2026-10-21）**：登录用户可新建/切换/列出本人会话，重命名与归档（CLOSED，无物理删除）；越权一律 404。AgentReply 加性 `documents[]` 渲染可点击卡片，hash 跳转传统工作台详情，无权限 fail-closed 不露数据。复用 T03 SSE/v0.2，文件/图片上传 P2 本刀不做；未改 `web-dist/`。详见 `docs/测试-M7-T04多会话聊天.md`。
 
 **M7-T05 组件库引入已完成实现（2026-10-21）**：因 `web/` 为 React 18 + Vite，ADR-004 选定 Ant Design React 5（否决 Ant Design Vue / Naive UI，避免整站迁 Vue）。`web/src/ui` 封装表格/筛选表单/Modal/Drawer/Message，主题 token 对齐现有深蓝侧栏与 `#2563eb` 主色，不引入 reset.css。本刀迁客户档案（含新建编辑弹窗与详情抽屉）、供应商/仓库列表，以及 T06 `QueryTable` 与账龄表；金额字符串展示、权限 fail-closed、错误展示 `{error}` 原文。未改 `web-dist/`、未做 T07 移动适配、未重做报表业务。详见 `docs/ADR-004-前端组件库选型.md`、`docs/测试-M7-T05组件库.md`。
+
+**M7-T06 报表前端已完成实现（2026-10-21）**：侧边栏「报表」模块只读查询 + 导出 Excel + SVG 条形图；金额/数量字符串；权限 fail-closed。未改 `web-dist/`。详见 `docs/测试-M7-T06报表前端.md`。
+
+**M7-T07 响应式/平板适配已完成实现（2026-10-21）**：≤1023 自定义 CSS 抽屉化侧栏（不迁 antd Menu）；≤767 聊天会话轨抽屉化；报表与客户/供应商/仓库表格横滚、筛选可用、档案次要列可藏。登录 430 可用。未改 `web-dist/` / `server/`。本地 `npm test` 280/280、production build 通过；PR #64 首轮三项 CI 全绿。详见 `docs/测试-M7-T07响应式.md`。

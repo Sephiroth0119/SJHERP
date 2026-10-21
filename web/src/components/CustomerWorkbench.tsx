@@ -145,7 +145,7 @@ export function CustomerWorkbench({ permissions }: { permissions: string[] }) {
       <FilterItem>
         <Input
           allowClear
-          style={{ width: 280 }}
+          className="workbench-filter-input"
           aria-label="搜索客户"
           placeholder="编码、名称、联系人或电话"
           value={draftKeyword}
@@ -172,8 +172,8 @@ export function CustomerWorkbench({ permissions }: { permissions: string[] }) {
         columns={[
           { title: '编码', dataIndex: 'code', key: 'code' },
           { title: '客户名称', dataIndex: 'name', key: 'name' },
-          { title: '联系人', dataIndex: 'contactPerson', key: 'contactPerson', render: (value: string | null) => value || '—' },
-          { title: '电话', dataIndex: 'contactPhone', key: 'contactPhone', render: (value: string | null) => value || '—' },
+          { title: '联系人', dataIndex: 'contactPerson', key: 'contactPerson', responsive: ['md'], render: (value: string | null) => value || '—' },
+          { title: '电话', dataIndex: 'contactPhone', key: 'contactPhone', responsive: ['md'], render: (value: string | null) => value || '—' },
           {
             title: '状态',
             dataIndex: 'status',

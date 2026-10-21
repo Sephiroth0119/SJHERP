@@ -55,6 +55,22 @@ body {
   border-bottom: 1px solid var(--color-border);
 }
 
+.app-topbar-end {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+  min-width: 0;
+}
+
+.app-nav-toggle,
+.app-nav-backdrop,
+.chat-session-toggle,
+.chat-session-backdrop {
+  display: none;
+}
+
 .app-topbar-user {
   font-size: 13px;
   font-weight: 600;
@@ -899,6 +915,11 @@ body {
 .workbench-filter-bar {
   margin-bottom: 14px;
   row-gap: 8px;
+  flex-wrap: wrap;
+}
+
+.workbench-filter-input {
+  width: min(280px, 100%);
 }
 
 .workbench-table-row-selected > td {
@@ -1014,6 +1035,8 @@ body {
   gap: 6px;
   border-bottom: 1px solid var(--color-border);
   margin-bottom: 16px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .memory-tabs button {
@@ -1634,6 +1657,7 @@ body {
   background: #fff;
   border: 1px solid var(--color-border);
   border-radius: 8px;
+  overflow-x: auto;
 }
 
 .report-chart figcaption {
@@ -1645,6 +1669,7 @@ body {
 .report-chart-svg {
   display: block;
   width: 100%;
+  min-width: 280px;
   height: auto;
 }
 
@@ -1664,4 +1689,210 @@ body {
 
 .report-chart-svg-bar {
   fill: var(--color-primary);
+}
+
+/* ===== M7-T07 响应式：壳 / 聊天 / 报表 / 档案 ===== */
+@media (max-width: 1023px) {
+  .app-nav-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    appearance: none;
+    min-height: 32px;
+    min-width: 44px;
+    padding: 5px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text);
+    background: #ffffff;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  .app-nav-toggle:hover,
+  .app-nav-toggle[aria-expanded='true'] {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+  }
+
+  .sidebar {
+    position: fixed;
+    z-index: 40;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: min(200px, 86vw);
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+
+  .app-nav-open .sidebar {
+    transform: translateX(0);
+    box-shadow: 8px 0 24px rgba(15, 28, 46, 0.18);
+  }
+
+  .app-nav-open .app-nav-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: rgba(15, 28, 46, 0.45);
+    cursor: pointer;
+  }
+
+  .app-topbar {
+    padding: 8px 16px;
+  }
+
+  .sidebar-item {
+    min-height: 44px;
+  }
+
+  .memory-tabs,
+  .purchase-workbench-tabs,
+  .inventory-workbench-tabs {
+    margin-left: 16px;
+    margin-right: 16px;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .memory-tabs button {
+    flex: 0 0 auto;
+  }
+}
+
+@media (max-width: 767px) {
+  .chat-panel {
+    position: relative;
+  }
+
+  .chat-session-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    appearance: none;
+    min-height: 32px;
+    min-width: 44px;
+    padding: 4px 10px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text);
+    background: #ffffff;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  .session-rail {
+    position: absolute;
+    z-index: 20;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: min(220px, 86vw);
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+
+  .chat-panel-rail-open .session-rail {
+    transform: translateX(0);
+    box-shadow: 8px 0 24px rgba(15, 28, 46, 0.12);
+  }
+
+  .chat-panel-rail-open .chat-session-backdrop {
+    display: block;
+    position: absolute;
+    inset: 0;
+    z-index: 15;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: rgba(15, 28, 46, 0.28);
+    cursor: pointer;
+  }
+
+  .chat-header {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .message-list,
+  .message-input {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .option-card,
+  .document-card {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .workbench-filter-bar.ant-form-inline {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .workbench-filter-bar .ant-form-item {
+    margin-inline-end: 0 !important;
+    width: 100%;
+  }
+
+  .workbench-filter-input,
+  .workbench-filter-bar .ant-select,
+  .workbench-filter-bar .ant-input-affix-wrapper {
+    width: 100% !important;
+    max-width: 100%;
+  }
+
+  .customer-list-panel .ant-pagination-total-text {
+    display: none;
+  }
+
+  .customer-list-panel .ant-pagination {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .app-topbar-roles {
+    display: none;
+  }
+
+  .app-token-warning {
+    max-width: 42vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 430px) {
+  .customer-page {
+    padding: 12px;
+  }
+
+  .app-topbar {
+    padding: 8px 12px;
+  }
+
+  .memory-tabs,
+  .purchase-workbench-tabs,
+  .inventory-workbench-tabs {
+    margin: 8px 12px 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .session-rail {
+    transition: none;
+  }
 }

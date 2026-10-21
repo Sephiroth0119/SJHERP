@@ -47,6 +47,7 @@ import { fetchMe, formatRoles } from './api/authApi';
 import { canAccessModule } from './security/access';
 import { isTokenExpiringSoon } from './security/token';
 import { hashForRoute, parseWorkbenchRoute, resolveWorkbenchRoute, type WorkbenchRoute } from './security/workbenchRoute';
+import { COMPACT_SHELL_MEDIA, useMediaQuery } from './layout/useMediaQuery';
 
 export function App() {
   // 有 token 即先按已登录渲染（展示信息取本地缓存），后台 me 校验兜底
@@ -88,10 +89,13 @@ export function App() {
 
   const permissions = user?.permissions ?? [];
   const canManageMemory = canAccessModule('memory', permissions);
+  const compactShell = useMediaQuery(COMPACT_SHELL_MEDIA);
+  const [navOpen, setNavOpen] = useState(false);
   const selectModule = useCallback((module: ModuleKey) => {
     const next = resolveWorkbenchRoute({ module }, permissions);
     setRoute(next);
     window.history.replaceState(null, '', hashForRoute(next));
+    setNavOpen(false);
   }, [permissions]);
   const selectTab = useCallback((tab: string) => {
     const next = resolveWorkbenchRoute({ module: route.module, tab }, permissions);
@@ -116,6 +120,19 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (!compactShell) setNavOpen(false);
+  }, [compactShell]);
+
+  useEffect(() => {
+    if (!navOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setNavOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [navOpen]);
+
+  useEffect(() => {
     if (!user) return;
     const requested = parseWorkbenchRoute(window.location.hash);
     const guarded = resolveWorkbenchRoute(requested, permissions);
@@ -138,19 +155,40 @@ export function App() {
   const tokenWarning = isTokenExpiringSoon(getToken() ?? '', nowMs);
 
   return (
-    <div className="app-layout">
+    <div className={navOpen ? 'app-layout app-nav-open' : 'app-layout'}>
+      {compactShell && navOpen && (
+        <button
+          type="button"
+          className="app-nav-backdrop"
+          aria-label="关闭导航"
+          onClick={() => setNavOpen(false)}
+        />
+      )}
       <Sidebar active={guardedModule} onSelect={selectModule} permissions={permissions} />
       <main className="app-main">
         <header className="app-topbar">
-          <NotificationBell />
-          {tokenWarning && <span className="app-token-warning">登录会话即将过期，请重新登录</span>}
-          <span className="app-topbar-user" title={`角色：${formatRoles(user.roles)}`}>
-            {user.displayName}
-            <span className="app-topbar-roles">{formatRoles(user.roles)}</span>
-          </span>
-          <button type="button" className="app-topbar-logout" onClick={handleLogout}>
-            退出
-          </button>
+          {compactShell && (
+            <button
+              type="button"
+              className="app-nav-toggle"
+              aria-expanded={navOpen}
+              aria-controls="app-sidebar"
+              onClick={() => setNavOpen((open) => !open)}
+            >
+              菜单
+            </button>
+          )}
+          <div className="app-topbar-end">
+            <NotificationBell />
+            {tokenWarning && <span className="app-token-warning">登录会话即将过期，请重新登录</span>}
+            <span className="app-topbar-user" title={`角色：${formatRoles(user.roles)}`}>
+              {user.displayName}
+              <span className="app-topbar-roles">{formatRoles(user.roles)}</span>
+            </span>
+            <button type="button" className="app-topbar-logout" onClick={handleLogout}>
+              退出
+            </button>
+          </div>
         </header>
         {guardedModule === 'sales' ? (
           <SalesWorkbench

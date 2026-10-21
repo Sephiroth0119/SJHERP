@@ -24,10 +24,12 @@ export function AppModal({
       title={title}
       onCancel={onCancel}
       footer={footer}
-      width={width}
+      width={`min(${width}px, calc(100vw - 24px))`}
       confirmLoading={confirmLoading}
       destroyOnHidden
+      centered
       maskClosable={false}
+      styles={{ body: { maxHeight: 'calc(100dvh - 160px)', overflowY: 'auto' } }}
     >
       {children}
     </Modal>

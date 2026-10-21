@@ -15,7 +15,13 @@ export function AppDrawer({
   width?: number;
 }) {
   return (
-    <Drawer open={open} title={title} onClose={onClose} width={width} destroyOnHidden>
+    <Drawer
+      open={open}
+      title={title}
+      onClose={onClose}
+      width={`min(${width}px, 100vw)`}
+      destroyOnHidden
+    >
       {children}
     </Drawer>
   );

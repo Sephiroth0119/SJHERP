@@ -193,6 +193,30 @@
   }
 }
 
+@media (max-width: 430px) {
+  .login-hero {
+    flex: 0 0 120px;
+    min-height: 120px;
+  }
+
+  .login-hero-brand {
+    left: 16px;
+    bottom: 12px;
+  }
+
+  .login-brand-name {
+    font-size: 20px;
+  }
+
+  .login-panel {
+    padding: 16px 12px 24px;
+  }
+
+  .login-card {
+    padding: 24px 16px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .login-card {
     animation: none;
