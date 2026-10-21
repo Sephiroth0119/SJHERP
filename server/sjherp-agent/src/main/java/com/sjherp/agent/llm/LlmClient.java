@@ -31,4 +31,23 @@ public interface LlmClient {
      * @return 模型回复（可能包含工具调用请求）
      */
     LlmResponse chat(List<LlmMessage> messages, LlmRequestOptions options);
+
+    /**
+     * 流式对话补全。默认实现回退为一次 {@link #chat}，把完整 content 作为单次增量回调，
+     * 保证假客户端与不支持流式的实现无需改动即可被终轮打字机消费。
+     *
+     * <p>真实厂商实现应边生成边回调 {@link LlmStreamHandler#onContentDelta}，
+     * 结束时 {@link LlmStreamHandler#onComplete} 恰好一次。
+     */
+    default void chatStream(List<LlmMessage> messages, LlmRequestOptions options,
+                            LlmStreamHandler handler) {
+        if (handler == null) {
+            throw new IllegalArgumentException("handler 不能为空");
+        }
+        LlmResponse response = chat(messages, options);
+        if (response.content() != null && !response.content().isEmpty()) {
+            handler.onContentDelta(response.content());
+        }
+        handler.onComplete(response);
+    }
 }

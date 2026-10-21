@@ -544,4 +544,59 @@ class AgentLoopTest {
         assertNotNull(messages.get(messages.size() - 3).toolCalls());
         assertEquals(2, messages.get(messages.size() - 3).toolCalls().size());
     }
+
+    // ---------------------------------------------------------------- 终轮流式（M7-T03）
+
+    static final class RecordingStreamListener implements AgentLoopStreamListener {
+        final StringBuilder deltas = new StringBuilder();
+        int calls;
+
+        @Override
+        public void onFinalContentDelta(String delta) {
+            calls++;
+            deltas.append(delta);
+        }
+    }
+
+    @Test
+    void noToolsFinalRoundForwardsContentDeltas() {
+        FakeLlmClient client = new FakeLlmClient(new LlmResponse("{\"text\":\"你好\"}"));
+        RecordingStreamListener listener = new RecordingStreamListener();
+        AgentLoopResult result = loop(client).run(request(List.of()).build(), listener);
+
+        assertEquals("{\"text\":\"你好\"}", result.finalText());
+        assertEquals("{\"text\":\"你好\"}", listener.deltas.toString());
+        assertEquals(1, listener.calls);
+    }
+
+    @Test
+    void toolRoundDoesNotForwardDeltasAndHighRiskStillIntercepts() {
+        StubTool post = StubTool.high("demo_post_document");
+        FakeLlmClient client = new FakeLlmClient(
+                toolCallResponse("c1", "demo_post_document", "{\"documentId\":\"DOC-1\"}"));
+        RecordingStreamListener listener = new RecordingStreamListener();
+        AgentLoopResult result = loop(client).run(request(List.of(post)).build(), listener);
+
+        assertTrue(result.isPendingConfirmation());
+        assertEquals(0, post.executions);
+        assertEquals(0, listener.calls);
+        assertEquals("", listener.deltas.toString());
+    }
+
+    @Test
+    void separateFinalCallStreamsOnlyTheJsonRound() {
+        StubTool echo = StubTool.normal("echo");
+        FakeLlmClient client = new FakeLlmClient(
+                new LlmResponse("自由文本（应被丢弃）"),
+                new LlmResponse("{\"text\":\"final\"}"));
+        RecordingStreamListener listener = new RecordingStreamListener();
+        AgentLoopResult result = loop(client).run(request(List.of(echo))
+                .finalJsonMode(FinalJsonMode.JSON_SEPARATE_FINAL_CALL)
+                .build(), listener);
+
+        assertEquals("{\"text\":\"final\"}", result.finalText());
+        assertEquals("{\"text\":\"final\"}", listener.deltas.toString());
+        assertEquals(1, listener.calls);
+        assertEquals(1, echo.executions);
+    }
 }

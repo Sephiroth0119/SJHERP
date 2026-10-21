@@ -42,6 +42,9 @@ export function MessageList({ messages, pending, error, onSelectOption, onSubmit
   }, [messages, pending, error]);
 
   const lastAgentId = [...messages].reverse().find((m) => m.role === 'agent')?.id;
+  const last = messages[messages.length - 1];
+  const streamingLast = last?.role === 'agent' && Boolean(last.streaming);
+  const showThinking = pending && !streamingLast;
 
   return (
     <div className="message-list">
@@ -54,13 +57,19 @@ export function MessageList({ messages, pending, error, onSelectOption, onSubmit
             </div>
           );
         }
-        // Agent 消息：仅最新一条的选项/表单可交互，避免对历史消息重复操作
-        const interactive = !pending && message.id === lastAgentId;
+        // Agent 消息：仅最新一条的选项/表单可交互；流式进行中不渲染 options/form
+        const streaming = Boolean(message.streaming);
+        const interactive = !pending && !streaming && message.id === lastAgentId;
         const { reply } = message;
+        const showCards = !streaming;
         return (
           <div key={message.id} className="message message-agent">
-            <div className="message-bubble message-bubble-agent">{reply.text}</div>
-            {reply.options && reply.options.length > 0 && (
+            <div
+              className={`message-bubble message-bubble-agent${streaming ? ' message-streaming' : ''}`}
+            >
+              {reply.text}
+            </div>
+            {showCards && reply.options && reply.options.length > 0 && (
               <div className="option-card-list">
                 {reply.options.map((option) => (
                   <OptionCard
@@ -72,14 +81,14 @@ export function MessageList({ messages, pending, error, onSelectOption, onSubmit
                 ))}
               </div>
             )}
-            {reply.form && (
+            {showCards && reply.form && (
               <FormCard form={reply.form} interactive={interactive} onSubmit={onSubmitForm} />
             )}
             <div className="message-time">{formatTime(message.createdAt)}</div>
           </div>
         );
       })}
-      {pending && <div className="message-pending">助手正在思考…</div>}
+      {showThinking && <div className="message-pending">助手正在思考…</div>}
       {!pending && error && (
         <div className="message-error" role="alert">
           <span className="message-error-text">{error.text}</span>

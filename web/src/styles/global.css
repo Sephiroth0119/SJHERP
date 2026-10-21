@@ -463,6 +463,19 @@ body {
   padding: 4px 2px;
 }
 
+.message-streaming::after {
+  content: '▍';
+  margin-left: 2px;
+  color: var(--color-text-muted);
+  animation: stream-caret 1s step-end infinite;
+}
+
+@keyframes stream-caret {
+  50% {
+    opacity: 0;
+  }
+}
+
 /* 聊天流中的错误提示（网络失败等，可重试） */
 .message-error {
   align-self: flex-start;

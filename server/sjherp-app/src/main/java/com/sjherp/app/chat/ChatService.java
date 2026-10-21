@@ -2,11 +2,13 @@ package com.sjherp.app.chat;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 import org.springframework.stereotype.Service;
 
 import com.sjherp.agent.reply.AgentReply;
+import com.sjherp.agent.reply.AgentStreamEvent;
 import com.sjherp.agent.reply.Option;
 import com.sjherp.agent.session.AgentMessage;
 import com.sjherp.agent.session.AgentSession;
@@ -101,6 +103,89 @@ public class ChatService {
             return reply;
         } finally {
             AuditContext.clear();
+        }
+    }
+
+    /**
+     * 流式处理一条用户消息：边生成边回调 {@link AgentStreamEvent}，完整回复落库后再发 complete。
+     * 归属校验、选项还原、HITL 确认语义与 {@link #handleMessage} 完全相同。
+     */
+    public void handleMessageStreaming(String sessionId, String currentUserId,
+                                       SendMessageRequest request, AgentStreamListener listener) {
+        Objects.requireNonNull(listener, "listener 不能为空");
+        AgentSession session = getSession(sessionId, currentUserId);
+
+        AuditContext.setSessionId(sessionId);
+        try {
+            CollectingSink sink = new CollectingSink(listener);
+            if (request.text() != null && !request.text().isBlank()) {
+                agent.replyToText(session, request.text(), sink);
+                session.append(AgentMessage.user(request.text()));
+                if (session.getTitle() == null) {
+                    session.setTitle(truncate(request.text()));
+                }
+            } else if (request.optionId() != null) {
+                Option option = resolveOption(session, request.optionId());
+                agent.replyToOption(session, option, sink);
+                session.append(AgentMessage.user(option.label()));
+            } else if (request.formId() != null) {
+                Map<String, String> values = request.values() == null ? Map.of() : request.values();
+                agent.replyToForm(session, request.formId(), values, sink);
+                session.append(AgentMessage.user("提交表单 " + request.formId() + "：" + values));
+            } else {
+                throw new IllegalArgumentException("请求体必须提供 text / optionId / formId 三者之一");
+            }
+
+            AgentReply reply = sink.requireComplete();
+            session.append(AgentMessage.assistant(codec.toJson(reply)));
+            repository.save(session);
+            listener.onEvent(AgentStreamEvent.complete(reply));
+        } finally {
+            AuditContext.clear();
+        }
+    }
+
+    /** SSE 流式事件监听器 */
+    @FunctionalInterface
+    public interface AgentStreamListener {
+        void onEvent(AgentStreamEvent event);
+    }
+
+    /**
+     * 把 Agent 的 status/delta 转发给 SSE，暂存 complete 回复；
+     * complete 事件由 ChatService 在落库之后发送，避免回放丢尾包。
+     */
+    private static final class CollectingSink implements AgentReplySink {
+
+        private final AgentStreamListener listener;
+        private AgentReply completed;
+
+        private CollectingSink(AgentStreamListener listener) {
+            this.listener = listener;
+        }
+
+        @Override
+        public void onStatus(String status) {
+            listener.onEvent(AgentStreamEvent.status(status));
+        }
+
+        @Override
+        public void onTextDelta(String text) {
+            if (text != null && !text.isEmpty()) {
+                listener.onEvent(AgentStreamEvent.delta(text));
+            }
+        }
+
+        @Override
+        public void onComplete(AgentReply reply) {
+            this.completed = reply;
+        }
+
+        private AgentReply requireComplete() {
+            if (completed == null) {
+                throw new IllegalStateException("Agent 流式调用未给出完整回复");
+            }
+            return completed;
         }
     }
 

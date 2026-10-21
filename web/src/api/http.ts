@@ -103,6 +103,12 @@ export function setUnauthorizedHandler(handler: (() => void) | null): void {
   unauthorizedHandler = handler;
 }
 
+/** 登录已过期：清登录态并通知 App。SSE 与普通 JSON 请求共用，fail-closed。 */
+export function handleUnauthorizedResponse(): void {
+  endFrontendSession();
+  unauthorizedHandler?.();
+}
+
 // ============================================================
 // 通用请求封装
 // ============================================================
@@ -153,9 +159,7 @@ export async function request<T>(path: string, init?: RequestInitLite): Promise<
       // 响应体不是 JSON，忽略，用通用文案
     }
     if (response.status === 401 && !init?.skipUnauthorizedHandler) {
-      // 登录已过期 / 用户被停用：清登录态并通知 App 跳登录页
-      endFrontendSession();
-      unauthorizedHandler?.();
+      handleUnauthorizedResponse();
     }
     throw new ApiError(message, response.status, reasons);
   }

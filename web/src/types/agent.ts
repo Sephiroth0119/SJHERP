@@ -1,12 +1,18 @@
 /**
- * 选项返回协议 v0.1 —— 前后端核心契约的前端侧定义。
+ * 选项返回协议 v0.2 —— 前后端核心契约的前端侧定义。
  *
  * 对应 docs/选项返回协议.md 与后端 server/sjherp-agent/.../reply/，
  * 本文件须与之保持严格一致；字段变更必须升协议版本并三处同步修订。
+ *
+ * v0.2：完整 AgentReply 字段与 v0.1 兼容；新增流式分片事件 AgentStreamEvent。
+ * 非流式客户端继续消费完整回复；流式客户端按 delta 拼正文，complete 还原完整回复。
  */
 
 /** 协议版本号：与后端 AgentReply.PROTOCOL_VERSION、docs/ 协议文档保持一致 */
-export const AGENT_PROTOCOL_VERSION = '0.1';
+export const AGENT_PROTOCOL_VERSION = '0.2';
+
+/** 仍可解析的上一稳定版本（历史落库 / 非流式客户端） */
+export const AGENT_LEGACY_PROTOCOL_VERSION = '0.1';
 
 /**
  * 选项级风险标记（Human-in-the-loop）：
@@ -87,9 +93,10 @@ export interface AgentForm {
 /**
  * Agent 回复 —— 协议核心结构。
  * version、text 必有；options / form 按需出现。
+ * v0.1 与 v0.2 字段相同，仅 version 字面值演进。
  */
 export interface AgentReply {
-  /** 协议版本，每条回复必带，当前 "0.1" */
+  /** 协议版本，每条回复必带，当前 "0.2"（历史消息可能为 "0.1"） */
   version: string;
   /** 回复正文（markdown 文本） */
   text: string;
@@ -103,6 +110,71 @@ export interface AgentReply {
    * 后端只准备动作，由人点击确认后才执行。
    */
   requiresConfirmation?: boolean;
+}
+
+/** 流式分片事件类型（协议 v0.2） */
+export type AgentStreamEventType = 'status' | 'delta' | 'complete' | 'error';
+
+/** 处理阶段提示，不改变正文 */
+export interface AgentStreamStatusEvent {
+  version: string;
+  type: 'status';
+  status: string;
+}
+
+/** 正文增量，按到达顺序拼接等于最终 AgentReply.text */
+export interface AgentStreamDeltaEvent {
+  version: string;
+  type: 'delta';
+  text: string;
+}
+
+/** 流结束：完整 AgentReply，此时才渲染 options/form */
+export interface AgentStreamCompleteEvent {
+  version: string;
+  type: 'complete';
+  reply: AgentReply;
+}
+
+/** 失败：error 为可展示的后端原文 */
+export interface AgentStreamErrorEvent {
+  version: string;
+  type: 'error';
+  error: string;
+}
+
+export type AgentStreamEvent =
+  | AgentStreamStatusEvent
+  | AgentStreamDeltaEvent
+  | AgentStreamCompleteEvent
+  | AgentStreamErrorEvent;
+
+/** 把流式分片还原为完整 AgentReply；没有 complete 时仅拼出正文 */
+export function reconstructReplyFromStreamEvents(events: AgentStreamEvent[]): AgentReply | null {
+  let text = '';
+  let complete: AgentReply | null = null;
+  for (const event of events) {
+    switch (event.type) {
+      case 'status':
+        break;
+      case 'delta':
+        text += event.text;
+        break;
+      case 'complete':
+        complete = event.reply;
+        break;
+      case 'error':
+        break;
+      default: {
+        const exhaustive: never = event;
+        void exhaustive;
+        break;
+      }
+    }
+  }
+  if (complete) return complete;
+  if (text === '') return null;
+  return { version: AGENT_PROTOCOL_VERSION, text };
 }
 
 /** 表单提交载荷：字段名 → 字符串值 */
@@ -127,6 +199,8 @@ export interface AgentMessage {
   role: 'agent';
   createdAt: string;
   reply: AgentReply;
+  /** 正在流式生成：只渲染正文，不渲染 options/form */
+  streaming?: boolean;
 }
 
 /** 聊天消息（可辨识联合，按 role 区分） */
