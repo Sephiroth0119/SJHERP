@@ -1,5 +1,5 @@
 export type ModuleKey =
-  | 'agent' | 'purchase' | 'sales' | 'inventory' | 'production' | 'finance' | 'reports' | 'memory';
+  | 'agent' | 'purchase' | 'sales' | 'inventory' | 'production' | 'finance' | 'reports' | 'help' | 'memory';
 
 export interface ModuleNavItem {
   key: ModuleKey;
@@ -40,6 +40,10 @@ export const MODULE_NAV_ITEMS: readonly ModuleNavItem[] = [
   {
     key: 'reports', label: '报表',
     description: '账龄、试算、资产负债表、利润表及进销存只读查询，支持导出 Excel',
+  },
+  {
+    key: 'help', label: '帮助',
+    description: '上手指南、各模块操作说明与新手引导',
   },
   {
     key: 'memory', label: '记忆管理', description: '查看、编辑、失效并处理重复或冲突记忆',

@@ -40,6 +40,14 @@ test('resolveWorkbenchRoute drops unauthorized document tabs fail-closed', () =>
   assert.equal(noPurchase.docNo, undefined);
 });
 
+test('help module stays open for every signed-in permission set', () => {
+  assert.deepEqual(
+    resolveWorkbenchRoute({ module: 'help' }, []),
+    { module: 'help' },
+  );
+  assert.equal(moduleFromHash('#/help'), 'help');
+});
+
 test('report tabs fail-closed on their REST permission while login-scoped reports stay open', () => {
   assert.deepEqual(
     resolveWorkbenchRoute({ module: 'reports', tab: 'balance-sheet' }, []),

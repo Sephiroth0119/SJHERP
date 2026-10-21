@@ -34,6 +34,13 @@ import { SalesDeliveryWorkbench } from './components/SalesDeliveryWorkbench';
 import { SalesInvoiceWorkbench } from './components/SalesInvoiceWorkbench';
 import { SalesOrderWorkbench } from './components/SalesOrderWorkbench';
 import { ReportWorkbench } from './components/ReportWorkbench';
+import { HelpWorkbench } from './components/HelpWorkbench';
+import { OnboardingWizard } from './components/OnboardingWizard';
+import {
+  readOnboardingStatus,
+  writeOnboardingStatus,
+  type OnboardingStatus,
+} from './onboarding/onboarding';
 import { type ModuleKey } from './types/navigation';
 import {
   clearAuth,
@@ -91,6 +98,8 @@ export function App() {
   const canManageMemory = canAccessModule('memory', permissions);
   const compactShell = useMediaQuery(COMPACT_SHELL_MEDIA);
   const [navOpen, setNavOpen] = useState(false);
+  const [forceWizard, setForceWizard] = useState(false);
+  const [onboardingStatus, setOnboardingStatus] = useState<OnboardingStatus>('pending');
   const selectModule = useCallback((module: ModuleKey) => {
     const next = resolveWorkbenchRoute({ module }, permissions);
     setRoute(next);
@@ -124,6 +133,15 @@ export function App() {
   }, [compactShell]);
 
   useEffect(() => {
+    if (user) {
+      setOnboardingStatus(readOnboardingStatus(user.username));
+      return;
+    }
+    setForceWizard(false);
+    setOnboardingStatus('pending');
+  }, [user]);
+
+  useEffect(() => {
     if (!navOpen) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setNavOpen(false);
@@ -153,6 +171,19 @@ export function App() {
   const guardedRoute = resolveWorkbenchRoute(route, permissions);
   const guardedModule = guardedRoute.module;
   const tokenWarning = isTokenExpiringSoon(getToken() ?? '', nowMs);
+  const wizardOpen = forceWizard || onboardingStatus === 'pending';
+
+  const closeWizard = (status: Exclude<OnboardingStatus, 'pending'>) => {
+    writeOnboardingStatus(user.username, status);
+    setOnboardingStatus(status);
+    setForceWizard(false);
+  };
+
+  const openHash = (hash: string) => {
+    const next = resolveWorkbenchRoute(parseWorkbenchRoute(hash), permissions);
+    setRoute(next);
+    window.history.replaceState(null, '', hashForRoute(next));
+  };
 
   return (
     <div className={navOpen ? 'app-layout app-nav-open' : 'app-layout'}>
@@ -185,6 +216,9 @@ export function App() {
               {user.displayName}
               <span className="app-topbar-roles">{formatRoles(user.roles)}</span>
             </span>
+            <button type="button" className="app-topbar-help" onClick={() => setForceWizard(true)}>
+              新手引导
+            </button>
             <button type="button" className="app-topbar-logout" onClick={handleLogout}>
               退出
             </button>
@@ -231,12 +265,36 @@ export function App() {
             tab={guardedRoute.tab}
             onTabChange={selectTab}
           />
+        ) : guardedModule === 'help' ? (
+          <HelpWorkbench
+            onRestartOnboarding={() => setForceWizard(true)}
+            onOpenHash={openHash}
+          />
         ) : guardedModule === 'memory' && canManageMemory ? (
           <MemoryGovernancePage />
         ) : (
           <ChatPanel permissions={permissions} />
         )}
       </main>
+      <OnboardingWizard
+        open={wizardOpen}
+        permissions={permissions}
+        onDismiss={() => closeWizard('dismissed')}
+        onComplete={() => closeWizard('completed')}
+        onOpenHelp={() => {
+          closeWizard('completed');
+          selectModule('help');
+        }}
+        onOpenFirstOrder={(docNo) => {
+          closeWizard('completed');
+          const next = resolveWorkbenchRoute(
+            { module: 'purchase', tab: 'order', docNo },
+            permissions,
+          );
+          setRoute(next);
+          window.history.replaceState(null, '', hashForRoute(next));
+        }}
+      />
     </div>
   );
 }
