@@ -126,3 +126,5 @@ SJHERP/
 **M7-T07 响应式/平板适配已完成实现（2026-10-21）**：≤1023 自定义 CSS 抽屉化侧栏（不迁 antd Menu）；≤767 聊天会话轨抽屉化；报表与客户/供应商/仓库表格横滚、筛选可用、档案次要列可藏。登录 430 可用。未改 `web-dist/` / `server/`。本地 `npm test` 280/280、production build 通过；PR #64 首轮三项 CI 全绿。详见 `docs/测试-M7-T07响应式.md`。
 
 **M8-T01 一键部署已完成实现（2026-10-21）**：生产 `deploy/docker-compose.yml` 覆盖 nginx（`web/` 现编静态 + `/api` 反代，含 SSE）/ Spring Boot app / MySQL 8.4 / Qdrant；`./deploy/install.sh` 在 Ubuntu 上装 Docker、生成 `deploy/.env`、启动并冒烟；`./deploy/upgrade.sh` 升级前 dump + 重建，Flyway 随 app 启动自动迁移。密钥不进 git。未改 `web-dist/` 与领域逻辑。PR #65 rebase 到含 M7-T07 的 `main` 后四项 CI 全绿（含部署资产 job）。说明见 `docs/部署-一键安装.md`。
+
+**M8-T02 备份与恢复已完成实现（2026-10-21）**：`deploy/backup.sh` 对运行中的 MySQL 做 `mysqldump` gzip、对 Qdrant 打全库快照并归档到宿主机 `deploy/backups/`（默认保留 14 天，cron 模板 `deploy/crontab.example`）；`restore.sh` 停 nginx/app 后灌回**现有** named volume，禁止把 `docker compose down -v` 当恢复；`restore-smoke.sh` 用金丝雀表证明 dump 被真正灌回，再走登录冒烟。Qdrant 为派生索引，救数以 MySQL 为准。未改 `web-dist/`、领域逻辑与 Flyway。说明见 `docs/部署-备份恢复.md`。

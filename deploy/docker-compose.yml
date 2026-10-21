@@ -7,8 +7,22 @@
 #   docker compose --project-directory <仓库根> -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
 #
 # 国内拉镜像慢时，给 Docker 配镜像加速（见 docs/部署-一键安装.md「常见失败」）。
+#
+# 备份约定（M8-T02，见 docs/部署-备份恢复.md）：
+# - 定时备份由宿主机 cron 调用 ./deploy/backup.sh（模板 deploy/crontab.example）
+# - 文件落在 ./backups/{mysql,qdrant}/（宿主机磁盘，不在 named volume 里）
+# - Qdrant 快照目录 bind 到 ./backups/qdrant/live
+# - 恢复走 ./deploy/restore.sh；禁止把 docker compose down -v 当常规恢复
 
 name: sjherp
+
+x-sjherp-backup:
+  cron: deploy/crontab.example
+  script: ./deploy/backup.sh
+  restore: ./deploy/restore.sh
+  keep_days_env: SJHERP_BACKUP_KEEP_DAYS
+  mysql_dir: ./backups/mysql
+  qdrant_dir: ./backups/qdrant
 
 services:
   mysql:
@@ -40,8 +54,12 @@ services:
   qdrant:
     image: qdrant/qdrant:v1.13.4
     restart: unless-stopped
+    environment:
+      QDRANT__STORAGE__SNAPSHOTS_PATH: /qdrant/snapshots
     volumes:
       - qdrant-data:/qdrant/storage
+      # 快照落到宿主机，便于 backup.sh 归档；不要把这个目录放进 named volume
+      - ./backups/qdrant/live:/qdrant/snapshots
     networks:
       - sjherp
     # 生产不把 6333/6334 暴露到宿主机。
