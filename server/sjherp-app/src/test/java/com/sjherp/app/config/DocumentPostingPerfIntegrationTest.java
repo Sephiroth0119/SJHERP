@@ -95,6 +95,8 @@ class DocumentPostingPerfIntegrationTest {
         if (context != null) {
             context.close();
         }
+        // 显式停容器，避免 CI 上多个 MySQL 8.4 占满 InnoDB native AIO（io_setup EAGAIN）
+        MYSQL.stop();
     }
 
     @Configuration
