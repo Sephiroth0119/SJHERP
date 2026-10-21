@@ -10,6 +10,7 @@ import com.sjherp.agent.llm.LlmClient;
 import com.sjherp.agent.llm.LlmMessage;
 import com.sjherp.agent.llm.LlmRequestOptions;
 import com.sjherp.agent.llm.LlmResponse;
+import com.sjherp.agent.llm.LlmStreamHandler;
 import com.sjherp.agent.llm.ToolCall;
 import com.sjherp.agent.llm.ToolChoice;
 import com.sjherp.agent.llm.ToolDefinition;
@@ -70,10 +71,18 @@ public final class AgentLoop {
 
     /** 从头开始一次执行循环 */
     public AgentLoopResult run(AgentLoopRequest request) {
+        return run(request, null);
+    }
+
+    /**
+     * 从头开始一次执行循环，终轮 content 可经 {@code streamListener} 增量转发。
+     * {@code streamListener} 为 null 时行为与 {@link #run(AgentLoopRequest)} 完全一致。
+     */
+    public AgentLoopResult run(AgentLoopRequest request, AgentLoopStreamListener streamListener) {
         Objects.requireNonNull(request, "request 不能为空");
         Long deadline = deadlineOf(request);
         List<LlmMessage> messages = baseMessages(request);
-        return loop(request, messages, new ArrayList<>(), deadline);
+        return loop(request, messages, new ArrayList<>(), deadline, streamListener);
     }
 
     /**
@@ -92,13 +101,22 @@ public final class AgentLoop {
      * @param confirmed 用户是否点击了确认
      */
     public AgentLoopResult resume(AgentLoopRequest request, PendingToolCall pending, boolean confirmed) {
+        return resume(request, pending, confirmed, null);
+    }
+
+    /**
+     * 从高风险拦截现场恢复，终轮可流式转发。
+     * 工具执行与 HITL 门禁与 {@link #resume(AgentLoopRequest, PendingToolCall, boolean)} 相同，
+     * 流式只作用于恢复后的终轮文本。
+     */
+    public AgentLoopResult resume(AgentLoopRequest request, PendingToolCall pending, boolean confirmed,
+                                  AgentLoopStreamListener streamListener) {
         Objects.requireNonNull(request, "request 不能为空");
         Objects.requireNonNull(pending, "pending 不能为空");
         Long deadline = deadlineOf(request);
         List<LlmMessage> messages = baseMessages(request);
         List<ToolCallRecord> records = new ArrayList<>();
 
-        // 重建中断现场：该轮 assistant 工具调用消息 + 已执行调用的结果
         messages.add(LlmMessage.assistant(pending.assistantContent(), pending.toolCalls()));
         List<LlmMessage> toolMessages = new ArrayList<>();
         for (PendingToolCall.ExecutedResult executed : pending.executedResults()) {
@@ -107,26 +125,23 @@ public final class AgentLoop {
 
         int pendingIndex = indexOfPendingCall(pending);
         if (confirmed) {
-            // 带确认标记执行待确认调用，并继续执行该轮剩余调用（门禁仍生效）
             PendingToolCall next = executeCalls(request, pending.assistantContent(), pending.toolCalls(),
                     pendingIndex, pending.pendingToolCallId(), records, toolMessages);
             if (next != null) {
                 return AgentLoopResult.pendingConfirmation(next, records);
             }
         } else {
-            // 取消：待确认调用与剩余调用一律回灌"用户已取消"（每个 tool_call_id 都必须有应答）
             Map<String, Tool> toolsByName = toolsByName(request);
             for (int i = pendingIndex; i < pending.toolCalls().size(); i++) {
                 ToolCall call = pending.toolCalls().get(i);
                 String content = errorContent("用户已取消该高风险操作，工具未执行。请告知用户并继续对话。");
                 records.add(new ToolCallRecord(call.id(), call.name(), call.argumentsJson(), content, false, 0));
                 toolMessages.add(LlmMessage.tool(call.id(), content));
-                // 观测：取消的调用也上报（success=false、耗时 0、未经确认），口径与 ToolCallRecord 一致
                 notifyToolCall(request, call, toolsByName.get(call.name()), false, content, 0, false);
             }
         }
         messages.addAll(toolMessages);
-        return loop(request, messages, records, deadline);
+        return loop(request, messages, records, deadline, streamListener);
     }
 
     // ---------------------------------------------------------------- 循环主体
@@ -136,7 +151,8 @@ public final class AgentLoop {
      * 迭代预算用尽后强制做一次不带工具的终轮调用。
      */
     private AgentLoopResult loop(AgentLoopRequest request, List<LlmMessage> messages,
-                                 List<ToolCallRecord> records, Long deadline) {
+                                 List<ToolCallRecord> records, Long deadline,
+                                 AgentLoopStreamListener streamListener) {
         List<ToolDefinition> definitions = ToolDefinitions.fromAll(request.tools());
         boolean hasTools = !definitions.isEmpty();
         // LLM 调用序号（观测用，1 起）：含终轮单独 JSON 调用与强制收尾调用
@@ -144,16 +160,19 @@ public final class AgentLoop {
 
         for (int iteration = 1; iteration <= request.maxIterations(); iteration++) {
             checkDeadline(request, deadline);
-            // 无工具时直接按终轮参数调用：行为退化为单轮对话
+            // 无工具时直接按终轮参数调用：行为退化为单轮对话（已知终轮，可流式）
+            boolean knownFinal = !hasTools;
             LlmRequestOptions options = hasTools ? toolRoundOptions(request, definitions)
                     : finalRoundOptions(request);
-            LlmResponse response = observedChat(request, messages, options, ++llmRound);
+            LlmResponse response = observedChat(request, messages, options, ++llmRound,
+                    knownFinal, streamListener);
 
             if (!response.hasToolCalls()) {
                 if (hasTools && request.finalJsonMode() == FinalJsonMode.JSON_SEPARATE_FINAL_CALL) {
-                    // 厂商不支持 tools+json_object 同时携带：终轮单独再调一次
+                    // 厂商不支持 tools+json_object 同时携带：终轮单独再调一次（已知终轮，可流式）
                     checkDeadline(request, deadline);
-                    LlmResponse finalResponse = observedChat(request, messages, finalRoundOptions(request), ++llmRound);
+                    LlmResponse finalResponse = observedChat(request, messages, finalRoundOptions(request),
+                            ++llmRound, true, streamListener);
                     // 终轮 json_object 偶发返回空内容（DeepSeek 已知抖动）：退回本轮自由文本，
                     // 由上层 parseReply 降级为纯文本回复，避免给用户「请重试」死胡同。
                     String finalText = finalResponse.content();
@@ -165,7 +184,7 @@ public final class AgentLoop {
                 return AgentLoopResult.completed(response.content(), records);
             }
 
-            // 工具轮：逐个执行（高风险未确认 → 中断返回待确认现场）
+            // 工具轮：逐个执行（高风险未确认 → 中断返回待确认现场）。工具轮从不流式转发。
             List<LlmMessage> toolMessages = new ArrayList<>();
             PendingToolCall pending = executeCalls(request, response.content(), response.toolCalls(),
                     0, null, records, toolMessages);
@@ -176,9 +195,10 @@ public final class AgentLoop {
             messages.addAll(toolMessages);
         }
 
-        // 迭代预算用尽：强制终轮（不带工具），保证循环必然收敛产出文本
+        // 迭代预算用尽：强制终轮（不带工具），保证循环必然收敛产出文本（已知终轮，可流式）
         checkDeadline(request, deadline);
-        LlmResponse forced = observedChat(request, messages, finalRoundOptions(request), ++llmRound);
+        LlmResponse forced = observedChat(request, messages, finalRoundOptions(request), ++llmRound,
+                true, streamListener);
         return AgentLoopResult.completed(forced.content(), records);
     }
 
@@ -188,6 +208,37 @@ public final class AgentLoop {
      */
     private LlmResponse observedChat(AgentLoopRequest request, List<LlmMessage> messages,
                                      LlmRequestOptions options, int round) {
+        return observedChat(request, messages, options, round, false, null);
+    }
+
+    /**
+     * 带观测的 LLM 调用。{@code streamFinal} 且 listener 非空时走 {@link LlmClient#chatStream}，
+     * 把 content 增量转给循环的流式监听器；工具轮必须 {@code streamFinal=false}。
+     */
+    private LlmResponse observedChat(AgentLoopRequest request, List<LlmMessage> messages,
+                                     LlmRequestOptions options, int round,
+                                     boolean streamFinal, AgentLoopStreamListener streamListener) {
+        if (!streamFinal || streamListener == null) {
+            return observedBlockingChat(request, messages, options, round);
+        }
+        long start = System.nanoTime();
+        LlmResponse response;
+        try {
+            response = streamingChat(messages, options, streamListener);
+        } catch (RuntimeException e) {
+            String error = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            notifyLlmCall(request, round, null, elapsedMillis(start), null, null, false, error);
+            throw e;
+        }
+        notifyLlmCall(request, round, response.model(), elapsedMillis(start),
+                response.usage() == null ? null : response.usage().promptTokens(),
+                response.usage() == null ? null : response.usage().completionTokens(),
+                response.hasToolCalls(), null);
+        return response;
+    }
+
+    private LlmResponse observedBlockingChat(AgentLoopRequest request, List<LlmMessage> messages,
+                                             LlmRequestOptions options, int round) {
         if (invocationListener == null) {
             return llmClient.chat(messages, options);
         }
@@ -205,6 +256,28 @@ public final class AgentLoop {
                 response.usage() == null ? null : response.usage().completionTokens(),
                 response.hasToolCalls(), null);
         return response;
+    }
+
+    private LlmResponse streamingChat(List<LlmMessage> messages, LlmRequestOptions options,
+                                      AgentLoopStreamListener streamListener) {
+        LlmResponse[] holder = new LlmResponse[1];
+        llmClient.chatStream(messages, options, new LlmStreamHandler() {
+            @Override
+            public void onContentDelta(String delta) {
+                if (delta != null && !delta.isEmpty()) {
+                    streamListener.onFinalContentDelta(delta);
+                }
+            }
+
+            @Override
+            public void onComplete(LlmResponse response) {
+                holder[0] = response;
+            }
+        });
+        if (holder[0] == null) {
+            throw new IllegalStateException("LLM 流式调用未返回完成结果");
+        }
+        return holder[0];
     }
 
     /** 观测回调兜底：回调异常一律吞掉，绝不影响主流程 */

@@ -86,8 +86,9 @@ public class SecurityConfig {
                 .cors(Customizer.withDefaults())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> {
-                    // ERROR 转发（Spring Boot /error）放行，避免业务异常被误报成 401
-                    auth.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll();
+                    // ERROR 转发（Spring Boot /error）放行，避免业务异常被误报成 401；
+                    // ASYNC 放行：SSE（SseEmitter）二次分发时 JWT 已在初次 REQUEST 校验过。
+                    auth.dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR).permitAll();
                     // knife4j 文档路径仅 dev/local profile 放行；生产姿态保持受保护
                     if (isDevProfile(environment)) {
                         auth.requestMatchers(KNIFE4J_PATHS).permitAll();

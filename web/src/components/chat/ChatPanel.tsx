@@ -5,7 +5,7 @@
  * - 首次进入：localStorage 有 sessionId 则 GET 回放历史（404 则清掉重建）；
  *   没有则 POST 新建并写入 localStorage。
  * - 发送文本 → { text }；点击选项 → { optionId }；提交表单 → { formId, values }。
- *   均按选项返回协议 v0.1 回传，响应即 AgentReply。
+ *   均按选项返回协议 v0.2 回传；流式消费 SSE，正文打字机，结束后再渲染选项/表单。
  * - 网络错误在聊天流末尾显示中文错误提示，可点击重试，不白屏。
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -22,7 +22,7 @@ import {
   USE_MOCK,
   createChatSession,
   getChatSession,
-  sendChatMessage,
+  sendChatMessageStream,
   type SendMessagePayload,
   type ServerChatMessage,
 } from '../../api/chatApi';
@@ -147,19 +147,58 @@ export function ChatPanel() {
     void initSession();
   }, [initSession]);
 
-  /** 实际发送（重试时复用：不再追加用户气泡，只重发载荷） */
+  /** 实际发送（重试时复用：不再追加用户气泡，只重发载荷）；流式打字机，结束后再出选项 */
   const performSend = useCallback(async (sid: string, payload: SendMessagePayload) => {
     setPending(true);
     setError(null);
+    const streamId = nextLocalId();
+    setMessages((prev) => {
+      const withoutFailedStream = prev.filter((message) => !(message.role === 'agent' && message.streaming));
+      return [
+        ...withoutFailedStream,
+        {
+          id: streamId,
+          role: 'agent',
+          createdAt: new Date().toISOString(),
+          streaming: true,
+          reply: { version: AGENT_PROTOCOL_VERSION, text: '' },
+        },
+      ];
+    });
     try {
-      const reply: AgentReply = await sendChatMessage(sid, payload);
-      setMessages((prev) => [
-        ...prev,
-        { id: nextLocalId(), role: 'agent', createdAt: new Date().toISOString(), reply },
-      ]);
+      await sendChatMessageStream(sid, payload, {
+        onDelta: (text) => {
+          setMessages((prev) =>
+            prev.map((message) =>
+              message.id === streamId && message.role === 'agent'
+                ? { ...message, reply: { ...message.reply, text: message.reply.text + text } }
+                : message,
+            ),
+          );
+        },
+        onComplete: (reply: AgentReply) => {
+          setMessages((prev) =>
+            prev.map((message) =>
+              message.id === streamId && message.role === 'agent'
+                ? { ...message, streaming: false, reply }
+                : message,
+            ),
+          );
+        },
+        onError: (errorText) => {
+          setPending(false);
+          setError({
+            text: errorText,
+            retry: () => {
+              void performSend(sid, payload);
+            },
+          });
+        },
+      });
       setPending(false);
     } catch (e) {
       setPending(false);
+      setMessages((prev) => prev.filter((message) => message.id !== streamId || (message.role === 'agent' && message.reply.text !== '')));
       setError({
         text: toErrorText(e, '消息发送失败，请重试'),
         retry: () => {

@@ -1,9 +1,11 @@
 /**
- * 聊天后端 API 封装（前后端契约，配合选项返回协议 v0.1）：
+ * 聊天后端 API 封装（前后端契约，配合选项返回协议 v0.2）：
  *
  * - POST /api/chat/sessions                 → 201 { sessionId, createdAt }
  * - GET  /api/chat/sessions/{id}            → 200 { sessionId, status, messages[] }（旧→新）；404 { error }
- * - POST /api/chat/sessions/{id}/messages   → 200 AgentReply
+ * - POST /api/chat/sessions/{id}/messages
+ *     Accept: application/json → 200 完整 AgentReply（非流式客户端，字段兼容 v0.1）
+ *     Accept: text/event-stream → SSE 分片（status/delta/complete/error）
  *   请求体三选一：{ text } / { optionId } / { formId, values }
  *
  * mock 切换收敛在本文件：VITE_USE_MOCK=true 时全部走内存 mock（src/mock/mockAgent.ts），
@@ -11,10 +13,17 @@
  *
  * 请求封装与 Authorization 头统一走 src/api/http.ts（M2-T05 认证）。
  */
-import { AGENT_PROTOCOL_VERSION, type AgentReply } from '../types/agent';
-import { GREETING_REPLY, getMockReply } from '../mock/mockAgent';
-import { ApiError, request } from './http';
-import { CHAT_SESSION_STORAGE_KEY as SESSION_STORAGE_KEY } from './session';
+import {
+  AGENT_PROTOCOL_VERSION,
+  type AgentReply,
+  type AgentStreamEvent,
+} from '../types/agent.ts';
+import { GREETING_REPLY, getMockReply } from '../mock/mockAgent.ts';
+import { ApiError, getToken, handleUnauthorizedResponse, request } from './http.ts';
+import { CHAT_SESSION_STORAGE_KEY as SESSION_STORAGE_KEY } from './session.ts';
+import { parseSseBlock } from './chatStream.ts';
+
+export { parseSseBlock, parseSseBlocks } from './chatStream.ts';
 
 /** 是否启用 mock 模式（默认 false，走真实后端） */
 export const USE_MOCK = import.meta.env.VITE_USE_MOCK === 'true';
@@ -36,7 +45,7 @@ export interface ServerChatMessage {
   role: 'user' | 'agent';
   /** 用户消息正文；agent 消息可能为 null */
   text: string | null;
-  /** role=agent 时为结构化回复（协议 v0.1），role=user 时为 null */
+  /** role=agent 时为结构化回复（协议 v0.1/v0.2），role=user 时为 null */
   reply: AgentReply | null;
   createdAt: string;
 }
@@ -158,11 +167,155 @@ export function getChatSession(sessionId: string): Promise<ChatSessionDetail> {
   return request<ChatSessionDetail>(`/api/chat/sessions/${encodeURIComponent(sessionId)}`);
 }
 
-/** 发送一条消息（文本 / 选项 / 表单），响应即 AgentReply（协议 v0.1） */
+/** 发送一条消息（文本 / 选项 / 表单），响应即完整 AgentReply（非流式，兼容 v0.1 客户端） */
 export function sendChatMessage(sessionId: string, payload: SendMessagePayload): Promise<AgentReply> {
   if (USE_MOCK) return mockSendMessage(sessionId, payload);
   return request<AgentReply>(`/api/chat/sessions/${encodeURIComponent(sessionId)}/messages`, {
     method: 'POST',
     body: payload,
   });
+}
+
+/** 流式回调：delta 只含正文；complete 才带 options/form；error 为后端原文 */
+export interface ChatStreamHandlers {
+  onStatus?: (status: string) => void;
+  onDelta: (text: string) => void;
+  onComplete: (reply: AgentReply) => void;
+  onError: (error: string) => void;
+}
+
+async function mockSendMessageStream(
+  sessionId: string,
+  payload: SendMessagePayload,
+  handlers: ChatStreamHandlers,
+): Promise<void> {
+  handlers.onStatus?.('thinking');
+  const reply = await mockSendMessage(sessionId, payload);
+  const chunks = chunkText(reply.text, 8);
+  for (const chunk of chunks) {
+    handlers.onDelta(chunk);
+  }
+  handlers.onComplete(reply);
+}
+
+function chunkText(text: string, size: number): string[] {
+  if (text === '') return [];
+  const chunks: string[] = [];
+  for (let i = 0; i < text.length; i += size) {
+    chunks.push(text.slice(i, i + size));
+  }
+  return chunks;
+}
+
+async function readErrorMessage(response: Response, fallback: string): Promise<string> {
+  try {
+    const body = (await response.json()) as { error?: unknown };
+    if (typeof body.error === 'string' && body.error !== '') return body.error;
+  } catch {
+    // 非 JSON 错误体：展示后端状态，不发明文案掩盖原文缺失
+  }
+  return fallback;
+}
+
+/**
+ * 流式发送：消费 SSE 分片。结束前不把 options/form 交给 UI。
+ * 错误与断线回调 onError，文案优先后端原文。
+ */
+export async function sendChatMessageStream(
+  sessionId: string,
+  payload: SendMessagePayload,
+  handlers: ChatStreamHandlers,
+): Promise<void> {
+  if (USE_MOCK) {
+    await mockSendMessageStream(sessionId, payload, handlers);
+    return;
+  }
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Accept: 'text/event-stream',
+  };
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  let response: Response;
+  try {
+    response = await fetch(`/api/chat/sessions/${encodeURIComponent(sessionId)}/messages`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    throw new ApiError('无法连接服务器，请检查网络或稍后重试');
+  }
+
+  if (!response.ok) {
+    const fallback = `请求失败（HTTP ${response.status}）`;
+    const message = await readErrorMessage(response, fallback);
+    if (response.status === 401) handleUnauthorizedResponse();
+    throw new ApiError(message, response.status);
+  }
+
+  if (!response.body) {
+    throw new ApiError('服务器未返回流式响应，请稍后重试', response.status);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+  let completed = false;
+  let streamError: string | null = null;
+
+  const dispatch = (event: AgentStreamEvent) => {
+    switch (event.type) {
+      case 'status':
+        handlers.onStatus?.(event.status);
+        break;
+      case 'delta':
+        handlers.onDelta(event.text);
+        break;
+      case 'complete':
+        completed = true;
+        handlers.onComplete(event.reply);
+        break;
+      case 'error':
+        streamError = event.error;
+        break;
+      default: {
+        const exhaustive: never = event;
+        void exhaustive;
+        break;
+      }
+    }
+  };
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split(/\r?\n\r?\n/);
+      buffer = parts.pop() ?? '';
+      for (const part of parts) {
+        const event = parseSseBlock(part);
+        if (event) dispatch(event);
+      }
+    }
+    if (buffer.trim() !== '') {
+      const event = parseSseBlock(buffer);
+      if (event) dispatch(event);
+    }
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    handlers.onError('连接已中断，请重试');
+    return;
+  }
+
+  if (streamError) {
+    handlers.onError(streamError);
+    return;
+  }
+  if (!completed) {
+    handlers.onError('连接已中断，未收到完整回复');
+  }
 }

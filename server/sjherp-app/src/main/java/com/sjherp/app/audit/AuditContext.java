@@ -3,10 +3,11 @@ package com.sjherp.app.audit;
 /**
  * 审计上下文（M2-T07）：线程级传递 Agent 会话 id。
  *
- * <p>Agent 工具调用在 ChatService.handleMessage 的请求线程内同步执行
- * （ADR-001：执行循环同步占线程），由 ChatService 在处理消息前设置会话 id、
- * finally 中清除；审计切面据此把 Agent 写操作关联到来源会话（audit_log.session_id）。
- * 人工 REST 路径不设置，session_id 落空。
+ * <p>Agent 工具调用在 ChatService.handleMessage / handleMessageStreaming
+ * 的处理线程内执行（JSON 入口为请求线程；SSE 入口为 chat-sse 线程池），
+ * 由 ChatService 在处理消息前设置会话 id、finally 中清除；审计切面据此把
+ * Agent 写操作关联到来源会话（audit_log.session_id）。人工 REST 路径不设置，
+ * session_id 落空。
  */
 public final class AuditContext {
 

@@ -2,7 +2,7 @@
  * Mock Agent：纯前端假数据，演示选项返回协议 v0.1 的各种形态。
  * 真实后端就绪后，本模块由 /api 的 Agent 会话接口替换。
  */
-import { AGENT_PROTOCOL_VERSION, type AgentReply } from '../types/agent';
+import { AGENT_PROTOCOL_VERSION, type AgentReply } from '../types/agent.ts';
 
 /** 会话开场白：文本 + 业务入口选项（无 action，仅语义化回答） */
 export const GREETING_REPLY: AgentReply = {

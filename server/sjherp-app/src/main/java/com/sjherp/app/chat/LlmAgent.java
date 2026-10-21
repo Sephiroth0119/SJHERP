@@ -19,11 +19,13 @@ import com.sjherp.agent.llm.LlmMessage;
 import com.sjherp.agent.loop.AgentLoop;
 import com.sjherp.agent.loop.AgentLoopRequest;
 import com.sjherp.agent.loop.AgentLoopResult;
+import com.sjherp.agent.loop.AgentLoopStreamListener;
 import com.sjherp.agent.loop.FinalJsonMode;
 import com.sjherp.agent.loop.PendingToolCall;
 import com.sjherp.agent.loop.ToolCallRecord;
 import com.sjherp.agent.loop.ToolConfirmation;
 import com.sjherp.agent.reply.AgentReply;
+import com.sjherp.agent.reply.AgentReplyTextExtractor;
 import com.sjherp.agent.reply.Option;
 import com.sjherp.agent.session.AgentMessage;
 import com.sjherp.agent.session.AgentSession;
@@ -38,7 +40,7 @@ import com.sjherp.infra.agent.PendingToolCallJsonCodec;
 /**
  * LLM 驱动的聊天 Agent：基于 {@link AgentLoop} 执行循环（M1-T02）——
  * 系统提示 + 会话历史 + 已注册工具交给循环，模型可多轮调用工具后产出
- * 符合选项返回协议 v0.1 的最终 JSON，由 {@link AgentReplyJsonCodec} 反序列化。
+ * 符合选项返回协议 v0.2 的最终 JSON，由 {@link AgentReplyJsonCodec} 反序列化。
  * ToolRegistry 为空时循环退化为单轮对话（行为与接入工具前一致）。
  *
  * <p>Human-in-the-loop（M1-T03）：循环拦截高风险工具后返回待确认现场，
@@ -50,7 +52,7 @@ import com.sjherp.infra.agent.PendingToolCallJsonCodec;
  *
  * <p>容错策略（不让用户看到异常）：
  * <ul>
- *   <li>模型输出不符合协议 → 把原始文本包成纯文本 AgentReply（version 由构造器补 0.1）；</li>
+ *   <li>模型输出不符合协议 → 把原始文本包成纯文本 AgentReply（version 由构造器补当前协议版本）；</li>
  *   <li>LLM 调用失败 / 循环超时预算用尽 → 记录 ERROR 日志并返回致歉文本。</li>
  * </ul>
  */
@@ -63,7 +65,7 @@ public class LlmAgent implements Agent {
 
     /**
      * 系统提示词主体：协议字段结构、optionId 回传机制、Human-in-the-loop 规则、
-     * decimal 字符串约定均取自 docs/选项返回协议.md（v0.1 定稿）。
+     * decimal 字符串约定均取自 docs/选项返回协议.md（v0.2，完整回复字段兼容 v0.1）。
      * 能力边界部分按是否注册工具二选一（见下两个常量）。
      */
     private static final String SYSTEM_PROMPT_BASE = """
@@ -71,11 +73,13 @@ public class LlmAgent implements Agent {
             用户通过和你聊天完成业务操作（采购、销售、库存、生产、财务）。
 
             ## 输出格式（最高优先级硬性要求）
-            你给用户的最终回复必须是且只能是一个 JSON 对象，符合「选项返回协议 v0.1」。\
-            不要输出 JSON 以外的任何内容（不要用 markdown 代码块包裹，不要附加解释文字）。
+            你给用户的最终回复必须是且只能是一个 JSON 对象，符合「选项返回协议 v0.2」。\
+            不要输出 JSON 以外的任何内容（不要用 markdown 代码块包裹，不要附加解释文字）。\
+            字段顺序必须是 version、text，然后才是 options / form / requiresConfirmation，\
+            以便系统把 text 边生成边展示给用户。
 
             协议字段：
-            - version：string，必填，固定为 "0.1"。
+            - version：string，必填，固定为 "0.2"。
             - text：string，必填，markdown 文本，是展示给用户的消息正文（中文）。
             - options：数组，可选。每个元素渲染为可点击卡片，字段：
               - id：string，必填，一条回复内唯一（如 "opt-confirm"）。用户点击后系统只回传这个 id，\
@@ -374,23 +378,42 @@ public class LlmAgent implements Agent {
 
     @Override
     public AgentReply replyToText(AgentSession session, String text) {
-        return handle(session, text);
+        return handle(session, text, null);
+    }
+
+    @Override
+    public void replyToText(AgentSession session, String text, AgentReplySink sink) {
+        handle(session, text, sink);
     }
 
     @Override
     public AgentReply replyToOption(AgentSession session, Option option) {
+        return dispatchOption(session, option, null);
+    }
+
+    @Override
+    public void replyToOption(AgentSession session, Option option, AgentReplySink sink) {
+        dispatchOption(session, option, sink);
+    }
+
+    private AgentReply dispatchOption(AgentSession session, Option option, AgentReplySink sink) {
         // 协议约定前端只回传 optionId，ChatService 已按 id 还原；这里把 label 回灌给模型
         String userText = "[用户点击选项] " + option.label();
         if (session.hasPendingToolCall() && ToolConfirmation.CONFIRM_OPTION_ID.equals(option.id())) {
-            // 用户点击「确认执行」：恢复被拦截的高风险调用
-            return resumePending(session, userText, true);
+            return resumePending(session, userText, true, sink);
         }
-        return handle(session, userText);
+        return handle(session, userText, sink);
     }
 
     @Override
     public AgentReply replyToForm(AgentSession session, String formId, Map<String, String> values) {
-        return handle(session, "[用户提交表单 " + formId + "] 表单值：" + toJson(values));
+        return handle(session, "[用户提交表单 " + formId + "] 表单值：" + toJson(values), null);
+    }
+
+    @Override
+    public void replyToForm(AgentSession session, String formId, Map<String, String> values,
+                            AgentReplySink sink) {
+        handle(session, "[用户提交表单 " + formId + "] 表单值：" + toJson(values), sink);
     }
 
     // ---------------------------------------------------------------- 主流程
@@ -400,22 +423,27 @@ public class LlmAgent implements Agent {
      * 提交表单）都按取消语义恢复循环（工具一律不执行，告知模型由其向用户说明）；
      * 否则正常从头跑一次执行循环。
      */
-    private AgentReply handle(AgentSession session, String currentUserText) {
+    private AgentReply handle(AgentSession session, String currentUserText, AgentReplySink sink) {
         if (session.hasPendingToolCall()) {
-            return resumePending(session, currentUserText, false);
+            return resumePending(session, currentUserText, false, sink);
         }
         try {
-            AgentLoopResult result = agentLoop.run(loopRequest(session, currentUserText));
-            return toReply(session, result);
+            notifyStatus(sink, "thinking");
+            AgentReplyTextExtractor extractor = new AgentReplyTextExtractor();
+            AgentLoopResult result = agentLoop.run(loopRequest(session, currentUserText),
+                    streamListener(extractor, sink));
+            return toReply(session, result, extractor, sink);
         } catch (RuntimeException e) {
             // LLM 调用失败（超时/网络/非 200）/ 循环预算用尽：不把异常抛给用户
             log.error("Agent 执行循环失败，返回兜底回复（sessionId={}）", session.getSessionId(), e);
-            return AgentReply.text("抱歉，AI 服务暂时不可用，请稍后重试。");
+            return finishReply(AgentReply.text("抱歉，AI 服务暂时不可用，请稍后重试。"),
+                    new AgentReplyTextExtractor(), sink);
         }
     }
 
     /** 从会话中的待确认现场恢复循环（confirmed=false 表示取消） */
-    private AgentReply resumePending(AgentSession session, String currentUserText, boolean confirmed) {
+    private AgentReply resumePending(AgentSession session, String currentUserText, boolean confirmed,
+                                     AgentReplySink sink) {
         PendingToolCall pending;
         try {
             pending = pendingCodec.fromJson(session.getPendingToolCallJson());
@@ -423,26 +451,31 @@ public class LlmAgent implements Agent {
             // 现场损坏（不应发生）：清掉并按全新输入处理，避免会话卡死
             log.error("pending_tool_call 反序列化失败，已丢弃现场（sessionId={}）", session.getSessionId(), e);
             session.setPendingToolCallJson(null);
-            return handle(session, currentUserText);
+            return handle(session, currentUserText, sink);
         }
         // 先清现场：若恢复过程中再次产生待确认调用，toReply 会重新写入
         session.setPendingToolCallJson(null);
         log.info("恢复高风险工具确认流程（sessionId={}, tool={}, confirmed={}）",
                 session.getSessionId(), pending.toolName(), confirmed);
         try {
+            notifyStatus(sink, "thinking");
+            AgentReplyTextExtractor extractor = new AgentReplyTextExtractor();
             String memoryQuery = latestUserText(session, currentUserText);
             AgentLoopResult result = agentLoop.resume(
-                    loopRequest(session, currentUserText, memoryQuery), pending, confirmed);
-            return toReply(session, result);
+                    loopRequest(session, currentUserText, memoryQuery), pending, confirmed,
+                    streamListener(extractor, sink));
+            return toReply(session, result, extractor, sink);
         } catch (RuntimeException e) {
             log.error("确认流程恢复失败，返回兜底回复（sessionId={}, tool={}）",
                     session.getSessionId(), pending.toolName(), e);
-            return AgentReply.text("抱歉，AI 服务暂时不可用，请稍后重试。");
+            return finishReply(AgentReply.text("抱歉，AI 服务暂时不可用，请稍后重试。"),
+                    new AgentReplyTextExtractor(), sink);
         }
     }
 
     /** 循环结果 → 协议回复：完成则解析最终 JSON；待确认则写入会话现场并出确认卡片 */
-    private AgentReply toReply(AgentSession session, AgentLoopResult result) {
+    private AgentReply toReply(AgentSession session, AgentLoopResult result,
+                               AgentReplyTextExtractor extractor, AgentReplySink sink) {
         logToolCallRecords(session, result.toolCallRecords());
         if (result.isPendingConfirmation()) {
             PendingToolCall pending = result.pendingToolCall();
@@ -450,13 +483,54 @@ public class LlmAgent implements Agent {
             session.setPendingToolCallJson(pendingCodec.toJson(pending));
             log.info("高风险工具被框架拦截，等待用户确认（sessionId={}, tool={}, arguments={}）",
                     session.getSessionId(), pending.toolName(), pending.argumentsJson());
-            return toConfirmationReply(pending);
+            // HITL 确认卡片由框架生成，不把工具轮碎片当正文；options 只出现在 complete
+            return finishReply(toConfirmationReply(pending), extractor, sink);
         }
-        return parseReply(result.finalText());
+        return finishReply(parseReply(result.finalText()), extractor, sink);
+    }
+
+    private static AgentLoopStreamListener streamListener(AgentReplyTextExtractor extractor,
+                                                          AgentReplySink sink) {
+        if (sink == null) {
+            return null;
+        }
+        return delta -> {
+            String text = extractor.feed(delta);
+            if (!text.isEmpty()) {
+                sink.onTextDelta(text);
+            }
+        };
+    }
+
+    private static void notifyStatus(AgentReplySink sink, String status) {
+        if (sink != null) {
+            sink.onStatus(status);
+        }
     }
 
     /**
-     * 待确认现场 → requiresConfirmation=true 的确认卡片（协议 v0.1）。
+     * 把尚未抽出的正文补发给 sink，再 complete。
+     * 已抽出前缀与最终 text 对齐时只补后缀；抽取失败则整段一次推送。
+     */
+    private static AgentReply finishReply(AgentReply reply, AgentReplyTextExtractor extractor,
+                                          AgentReplySink sink) {
+        if (sink != null) {
+            String already = extractor.extractedText();
+            String full = reply.text() == null ? "" : reply.text();
+            if (already.isEmpty()) {
+                if (!full.isEmpty()) {
+                    sink.onTextDelta(full);
+                }
+            } else if (full.startsWith(already) && full.length() > already.length()) {
+                sink.onTextDelta(full.substring(already.length()));
+            }
+            sink.onComplete(reply);
+        }
+        return reply;
+    }
+
+    /**
+     * 待确认现场 → requiresConfirmation=true 的确认卡片（协议 v0.2，字段兼容 v0.1）。
      * 「确认执行」「取消」用框架固定选项 id（docs/选项返回协议.md「框架级工具确认选项」），
      * 本类凭固定 id 识别确认 / 取消语义。
      */
@@ -604,7 +678,7 @@ public class LlmAgent implements Agent {
         return text.length() <= 300 ? text : text.substring(0, 300) + "...";
     }
 
-    /** 模型输出 → AgentReply；不符合协议时降级为纯文本回复（version 由构造器补 0.1） */
+    /** 模型输出 → AgentReply；不符合协议时降级为纯文本回复（version 由构造器补当前协议版本） */
     private AgentReply parseReply(String raw) {
         if (raw == null || raw.isBlank()) {
             log.warn("模型返回空内容，降级为提示文本");

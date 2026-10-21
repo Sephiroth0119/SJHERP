@@ -16,11 +16,12 @@ import com.fasterxml.jackson.databind.SerializerProvider;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.sjherp.agent.reply.AgentReply;
+import com.sjherp.agent.reply.AgentStreamEvent;
 import com.sjherp.agent.reply.Form;
 import com.sjherp.agent.reply.Option;
 
 /**
- * AgentReply（选项返回协议 v0.1）的 JSON 编解码器。
+ * AgentReply / AgentStreamEvent（选项返回协议 v0.2）的 JSON 编解码器。
  *
  * <p>Jackson 依赖刻意只出现在 infra 层——sjherp-agent 模块保持零依赖纯 Java。
  * 协议映射规则（docs/选项返回协议.md）：枚举 JSON 值 = 枚举名小写
@@ -32,7 +33,7 @@ public final class AgentReplyJsonCodec {
     private final ObjectMapper mapper;
 
     public AgentReplyJsonCodec() {
-        SimpleModule protocol = new SimpleModule("sjherp-agent-protocol-v0.1");
+        SimpleModule protocol = new SimpleModule("sjherp-agent-protocol-v0.2");
         // RiskLevel：JSON 小写 <-> 枚举（大小写不敏感）
         protocol.addSerializer(Option.RiskLevel.class, new JsonSerializer<>() {
             @Override
@@ -57,6 +58,19 @@ public final class AgentReplyJsonCodec {
             @Override
             public Form.FieldType deserialize(JsonParser p, DeserializationContext ctx) throws IOException {
                 return Form.FieldType.fromJson(p.getValueAsString());
+            }
+        });
+        protocol.addSerializer(AgentStreamEvent.Type.class, new JsonSerializer<>() {
+            @Override
+            public void serialize(AgentStreamEvent.Type value, JsonGenerator gen, SerializerProvider sp)
+                    throws IOException {
+                gen.writeString(value.json());
+            }
+        });
+        protocol.addDeserializer(AgentStreamEvent.Type.class, new JsonDeserializer<>() {
+            @Override
+            public AgentStreamEvent.Type deserialize(JsonParser p, DeserializationContext ctx) throws IOException {
+                return AgentStreamEvent.Type.fromJson(p.getValueAsString());
             }
         });
 
@@ -93,6 +107,24 @@ public final class AgentReplyJsonCodec {
             return mapper.readTree(json);
         } catch (JsonProcessingException e) {
             throw new IllegalStateException("AgentReply JSON 解析失败: " + json, e);
+        }
+    }
+
+    /** 序列化流式分片事件（SSE data 行） */
+    public String toStreamJson(AgentStreamEvent event) {
+        try {
+            return mapper.writeValueAsString(event);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("AgentStreamEvent 序列化失败", e);
+        }
+    }
+
+    /** 反序列化流式分片事件（测试与重建完整回复） */
+    public AgentStreamEvent fromStreamJson(String json) {
+        try {
+            return mapper.readValue(json, AgentStreamEvent.class);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("AgentStreamEvent 反序列化失败: " + json, e);
         }
     }
 }

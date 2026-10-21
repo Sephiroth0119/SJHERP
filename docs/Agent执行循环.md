@@ -237,7 +237,18 @@ sjherp:
 - `ChatServiceToolConfirmationTest`(sjherp-app)：对话触发 → 确认卡片 + 现场落库 → 确认执行 / 取消 / 待确认期间改发文本视为取消；
 - infra：`JacksonToolArgumentsCodecTest` / `JsonSchemaToolArgumentValidatorTest` / `PendingToolCallJsonCodecTest` / `DeepSeekLlmClientTest`（含 usage 与 model 解析）/ `PersistingAgentInvocationListenerTest`（假仓储，字段映射 / detail JSON / 错误截断 / 落库失败兜底）。
 
-## 10. 已知边界与后续
+## 10. 终轮流式（M7-T03，还 D-4）
+
+LLM 同步占线程最长 60s 的债项通过「已知终轮走 `LlmClient.chatStream` + 聊天 SSE」归还：
+
+- **工具轮**继续 `chat()`，不向用户转发 content / tool_calls 碎片，HIGH 拦截语义不变；
+- **已知终轮**（无工具单轮、`JSON_SEPARATE_FINAL_CALL` 的单独 JSON 调用、迭代用尽强制收尾）走 `chatStream`，content 增量经 `AgentLoopStreamListener` 交给 `LlmAgent`，由 `AgentReplyTextExtractor` 抽出协议 `text` 再发 SSE `delta`；
+- 确认卡片仍由框架生成，只出现在 SSE `complete.reply`（可先有正文 delta）；
+- 聊天 SSE 在 `chat-sse` 线程池执行，Tomcat 请求线程在返回 `SseEmitter` 后释放。
+
+契约见 [选项返回协议.md](./选项返回协议.md)「消息流式分片」。
+
+## 11. 已知边界与后续
 
 - 工具轮的中间消息（assistant tool_calls 与 TOOL 结果）不落会话历史，只有最终协议回复落库——下一轮对话依赖最终文本携带必要信息；调用明细经 agent_invocation 表可查（§7）；
 - 观测落库为同步写入，高并发异步化留 TODO（§7）；

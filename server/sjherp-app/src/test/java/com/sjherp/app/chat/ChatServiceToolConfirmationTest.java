@@ -19,6 +19,7 @@ import com.sjherp.agent.loop.AgentLoop;
 import com.sjherp.agent.loop.FinalJsonMode;
 import com.sjherp.agent.loop.ToolConfirmation;
 import com.sjherp.agent.reply.AgentReply;
+import com.sjherp.agent.reply.AgentStreamEvent;
 import com.sjherp.agent.reply.Option;
 import com.sjherp.agent.session.AgentSession;
 import com.sjherp.agent.session.InMemoryAgentSessionRepository;
@@ -196,6 +197,51 @@ class ChatServiceToolConfirmationTest {
 
         assertThat(highRiskTool.executions).isZero();
         assertThat(reply.text()).isNotBlank();
+        assertThat(repository.findById(session.getSessionId()).orElseThrow().hasPendingToolCall()).isFalse();
+    }
+
+    @Test
+    void streamingHighRiskStillReturnsConfirmationOnlyOnComplete() {
+        llm.scripted.add(toolCallResponse());
+        AgentSession session = chatService.createSession("test-user");
+        List<AgentStreamEvent> events = new ArrayList<>();
+
+        chatService.handleMessageStreaming(session.getSessionId(), "test-user",
+                new SendMessageRequest("把单据 DOC-1 过账", null, null, null), events::add);
+
+        assertThat(highRiskTool.executions).isZero();
+        AgentStreamEvent complete = events.stream()
+                .filter(event -> event.type() == AgentStreamEvent.Type.COMPLETE)
+                .findFirst().orElseThrow();
+        assertThat(complete.reply().requiresConfirmation()).isTrue();
+        assertThat(complete.reply().options()).extracting(Option::id)
+                .containsExactly(ToolConfirmation.CONFIRM_OPTION_ID, ToolConfirmation.CANCEL_OPTION_ID);
+        String streamedText = events.stream()
+                .filter(event -> event.type() == AgentStreamEvent.Type.DELTA)
+                .map(AgentStreamEvent::text)
+                .reduce("", String::concat);
+        assertThat(streamedText).isEqualTo(complete.reply().text());
+        assertThat(repository.findById(session.getSessionId()).orElseThrow().hasPendingToolCall()).isTrue();
+    }
+
+    @Test
+    void streamingConfirmExecutesToolAndPersistsCompleteReply() {
+        llm.scripted.add(toolCallResponse());
+        llm.scripted.add(finalText("单据 DOC-1 已成功过账"));
+        AgentSession session = chatService.createSession("test-user");
+        chatService.handleMessage(session.getSessionId(), "test-user",
+                new SendMessageRequest("把单据 DOC-1 过账", null, null, null));
+
+        List<AgentStreamEvent> events = new ArrayList<>();
+        chatService.handleMessageStreaming(session.getSessionId(), "test-user",
+                new SendMessageRequest(null, ToolConfirmation.CONFIRM_OPTION_ID, null, null), events::add);
+
+        assertThat(highRiskTool.executions).isEqualTo(1);
+        AgentStreamEvent complete = events.stream()
+                .filter(event -> event.type() == AgentStreamEvent.Type.COMPLETE)
+                .findFirst().orElseThrow();
+        assertThat(complete.reply().requiresConfirmation()).isFalse();
+        assertThat(complete.reply().text()).contains("DOC-1 已成功过账");
         assertThat(repository.findById(session.getSessionId()).orElseThrow().hasPendingToolCall()).isFalse();
     }
 }

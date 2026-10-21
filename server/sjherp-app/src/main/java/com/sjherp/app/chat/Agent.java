@@ -26,4 +26,31 @@ public interface Agent {
 
     /** 处理用户提交的表单（values 一律字符串，金额/数量由后端 BigDecimal 解析） */
     AgentReply replyToForm(AgentSession session, String formId, Map<String, String> values);
+
+    /**
+     * 流式处理自由文本。默认实现一次给出完整回复：先推全文 delta，再 complete。
+     * {@link LlmAgent} 覆盖为真正的边生成边推。
+     */
+    default void replyToText(AgentSession session, String text, AgentReplySink sink) {
+        emitComplete(replyToText(session, text), sink);
+    }
+
+    /** 流式处理选项点击。默认一次完整回复。 */
+    default void replyToOption(AgentSession session, Option option, AgentReplySink sink) {
+        emitComplete(replyToOption(session, option), sink);
+    }
+
+    /** 流式处理表单提交。默认一次完整回复。 */
+    default void replyToForm(AgentSession session, String formId, Map<String, String> values,
+                             AgentReplySink sink) {
+        emitComplete(replyToForm(session, formId, values), sink);
+    }
+
+    private static void emitComplete(AgentReply reply, AgentReplySink sink) {
+        sink.onStatus("thinking");
+        if (reply.text() != null && !reply.text().isEmpty()) {
+            sink.onTextDelta(reply.text());
+        }
+        sink.onComplete(reply);
+    }
 }

@@ -27,7 +27,7 @@ import com.sjherp.infra.agent.PendingToolCallJsonCodec;
  * <ul>
  *   <li>非法 JSON → 原始文本包成纯文本 AgentReply 兜底（不向用户抛异常）；</li>
  *   <li>markdown 代码块包裹的合法协议 JSON → 正确剥离后解析；</li>
- *   <li>缺 version 字段 → AgentReply 构造器补默认 "0.1"；</li>
+ *   <li>缺 version 字段 → AgentReply 构造器补默认协议版本；</li>
  *   <li>空内容 → 固定提示文本。</li>
  * </ul>
  * parseReply 为私有方法，经公开入口 replyToText（假 LlmClient 注入原始输出）验证。
@@ -105,7 +105,7 @@ class LlmAgentParseReplyTest {
 
         AgentReply reply = replyFor(raw);
 
-        assertThat(reply.version()).isEqualTo("0.1");
+        assertThat(reply.version()).isEqualTo(AgentReply.PROTOCOL_VERSION);
         assertThat(reply.text()).isEqualTo("无版本字段的回复");
     }
 
@@ -114,6 +114,6 @@ class LlmAgentParseReplyTest {
         AgentReply reply = replyFor("   ");
 
         assertThat(reply.text()).isEqualTo("（模型未返回内容，请重试）");
-        assertThat(reply.version()).isEqualTo("0.1");
+        assertThat(reply.version()).isEqualTo(AgentReply.PROTOCOL_VERSION);
     }
 }

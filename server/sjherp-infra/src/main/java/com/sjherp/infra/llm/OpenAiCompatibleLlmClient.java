@@ -1,6 +1,9 @@
 package com.sjherp.infra.llm;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -11,6 +14,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.TreeMap;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -21,6 +25,7 @@ import com.sjherp.agent.llm.LlmClient;
 import com.sjherp.agent.llm.LlmMessage;
 import com.sjherp.agent.llm.LlmRequestOptions;
 import com.sjherp.agent.llm.LlmResponse;
+import com.sjherp.agent.llm.LlmStreamHandler;
 import com.sjherp.agent.llm.LlmUsage;
 import com.sjherp.agent.llm.ToolCall;
 import com.sjherp.agent.llm.ToolChoice;
@@ -135,13 +140,63 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
         return parseResponse(response.body());
     }
 
+    @Override
+    public void chatStream(List<LlmMessage> messages, LlmRequestOptions options, LlmStreamHandler handler) {
+        if (messages == null || messages.isEmpty()) {
+            throw new IllegalArgumentException("messages 不能为空");
+        }
+        Objects.requireNonNull(options, "options 不能为空（无特殊要求传 LlmRequestOptions.defaults()）");
+        Objects.requireNonNull(handler, "handler 不能为空");
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(endpoint()))
+                .timeout(timeout)
+                .header("Authorization", "Bearer " + apiKey)
+                .header("Content-Type", "application/json")
+                .header("Accept", "text/event-stream")
+                .POST(HttpRequest.BodyPublishers.ofString(
+                        buildRequestBody(messages, options, true), StandardCharsets.UTF_8))
+                .build();
+
+        HttpResponse<InputStream> response;
+        try {
+            response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+        } catch (HttpTimeoutException e) {
+            throw new LlmClientException(
+                    "LLM 请求超时（" + context() + ", timeout=" + timeout.toSeconds() + "s）", e);
+        } catch (IOException e) {
+            throw new LlmClientException("LLM 网络异常（" + context() + "）", e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new LlmClientException("LLM 请求被中断（" + context() + "）", e);
+        }
+
+        if (response.statusCode() != 200) {
+            throw new LlmClientException(
+                    "LLM 返回非 200（status=" + response.statusCode() + ", " + context()
+                            + "）: " + abbreviate(readQuietly(response.body())));
+        }
+        try (InputStream body = response.body()) {
+            consumeSseStream(body, handler);
+        } catch (IOException e) {
+            throw new LlmClientException("LLM 流式读取异常（" + context() + "）", e);
+        }
+    }
+
     /**
      * 组装 OpenAI 兼容请求体（用 Jackson 树模型，避免手拼 JSON 的转义问题）。
      * 包级可见：单元测试直接断言 JSON 结构，不发真实请求。
      */
     String buildRequestBody(List<LlmMessage> messages, LlmRequestOptions options) {
+        return buildRequestBody(messages, options, false);
+    }
+
+    String buildRequestBody(List<LlmMessage> messages, LlmRequestOptions options, boolean stream) {
         ObjectNode body = mapper.createObjectNode();
         body.put("model", model);
+        if (stream) {
+            body.put("stream", true);
+        }
         // 按次温度覆盖：options 未指定时用实例默认值
         body.put("temperature", options.temperature() != null ? options.temperature() : temperature);
         if (options.jsonResponseFormat()) {
@@ -168,6 +223,133 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
             body.set("tool_choice", toToolChoiceNode(options.toolChoice()));
         }
         return body.toString();
+    }
+
+    /**
+     * 消费 OpenAI 兼容 SSE 流（data: JSON 行 + data: [DONE]）。
+     * 包级可见：单元测试用固定样本驱动，不发真实请求。
+     */
+    void consumeSseStream(InputStream in, LlmStreamHandler handler) throws IOException {
+        Objects.requireNonNull(handler, "handler 不能为空");
+        StreamAccumulator accumulator = new StreamAccumulator(handler, model, mapper);
+        BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8));
+        String line;
+        while ((line = reader.readLine()) != null) {
+            if (line.isEmpty() || line.startsWith(":")) {
+                continue;
+            }
+            if (!line.startsWith("data:")) {
+                continue;
+            }
+            String data = line.substring("data:".length()).strip();
+            if (data.isEmpty()) {
+                continue;
+            }
+            if ("[DONE]".equals(data)) {
+                break;
+            }
+            accumulator.applyChunk(data);
+        }
+        handler.onComplete(accumulator.toResponse(context()));
+    }
+
+    private static String readQuietly(InputStream in) {
+        if (in == null) {
+            return "(空响应体)";
+        }
+        try (InputStream stream = in) {
+            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            return "(无法读取错误响应体)";
+        }
+    }
+
+    /** 流式增量累加器：content 边到边回调，tool_calls 按 index 拼接，结束时组装 LlmResponse */
+    static final class StreamAccumulator {
+
+        private final LlmStreamHandler handler;
+        private final String fallbackModel;
+        private final ObjectMapper mapper;
+        private final StringBuilder content = new StringBuilder();
+        private final TreeMap<Integer, ToolCallBuffer> toolCalls = new TreeMap<>();
+        private String model;
+        private LlmUsage usage;
+
+        StreamAccumulator(LlmStreamHandler handler, String fallbackModel, ObjectMapper mapper) {
+            this.handler = handler;
+            this.fallbackModel = fallbackModel;
+            this.mapper = mapper;
+        }
+
+        void applyChunk(String json) {
+            JsonNode root;
+            try {
+                root = mapper.readTree(json);
+            } catch (JsonProcessingException e) {
+                throw new LlmClientException("LLM 流式分片 JSON 解析失败: " + abbreviateStatic(json), e);
+            }
+            if (root.hasNonNull("model")) {
+                model = root.get("model").asText();
+            }
+            if (root.path("usage").isObject()) {
+                usage = parseUsage(root);
+            }
+            JsonNode delta = root.path("choices").path(0).path("delta");
+            JsonNode contentNode = delta.get("content");
+            if (contentNode != null && !contentNode.isNull()) {
+                String piece = contentNode.asText();
+                if (piece != null && !piece.isEmpty()) {
+                    content.append(piece);
+                    handler.onContentDelta(piece);
+                }
+            }
+            JsonNode toolCallsNode = delta.path("tool_calls");
+            if (toolCallsNode.isArray()) {
+                for (JsonNode toolCallNode : toolCallsNode) {
+                    int index = toolCallNode.path("index").asInt(0);
+                    ToolCallBuffer buffer = toolCalls.computeIfAbsent(index, ignored -> new ToolCallBuffer());
+                    if (toolCallNode.hasNonNull("id")) {
+                        buffer.id = toolCallNode.get("id").asText();
+                    }
+                    JsonNode function = toolCallNode.path("function");
+                    if (function.hasNonNull("name")) {
+                        buffer.name = function.get("name").asText();
+                    }
+                    if (function.has("arguments") && !function.get("arguments").isNull()) {
+                        buffer.arguments.append(function.get("arguments").asText(""));
+                    }
+                }
+            }
+        }
+
+        LlmResponse toResponse(String context) {
+            String text = content.isEmpty() ? null : content.toString();
+            List<ToolCall> calls = new ArrayList<>();
+            for (ToolCallBuffer buffer : toolCalls.values()) {
+                if (buffer.name == null || buffer.name.isBlank()) {
+                    throw new LlmClientException("LLM 流式 tool_calls 缺少 function.name（" + context + "）");
+                }
+                calls.add(new ToolCall(buffer.id, buffer.name,
+                        buffer.arguments.isEmpty() ? "{}" : buffer.arguments.toString()));
+            }
+            if (text == null && calls.isEmpty()) {
+                throw new LlmClientException("LLM 流式响应既无 content 也无 tool_calls（" + context + "）");
+            }
+            return new LlmResponse(text, calls, model == null ? fallbackModel : model, usage);
+        }
+
+        private static String abbreviateStatic(String text) {
+            if (text == null) {
+                return "(空响应体)";
+            }
+            return text.length() <= 500 ? text : text.substring(0, 500) + "...";
+        }
+    }
+
+    private static final class ToolCallBuffer {
+        String id;
+        String name;
+        final StringBuilder arguments = new StringBuilder();
     }
 
     /** 统一消息 → OpenAI 兼容消息节点（含 assistant 带 tool_calls 与 role=tool 的回灌序列化） */

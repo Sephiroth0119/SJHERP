@@ -4,7 +4,11 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * Agent 结构化回复——选项返回协议 v0.1（前后端核心契约，docs/选项返回协议.md）。
+ * Agent 结构化回复——选项返回协议 v0.2（前后端核心契约，docs/选项返回协议.md）。
+ *
+ * <p>v0.2 相对 v0.1：完整回复字段不变，仅协议版本号演进，并新增流式分片
+ * （见 {@link AgentStreamEvent}）。非流式客户端仍按完整 JSON 消费；version 为
+ * {@code "0.1"} 的历史回复同样可解析。
  *
  * <p>Agent 回复永远是结构化消息：文本 + 可选项数组 + 可选表单。
  * 前端将 options 渲染为可点击卡片、将 form 渲染为表单，用户点击/提交后
@@ -27,7 +31,10 @@ public record AgentReply(String version, String text, List<Option> options,
                          Form form, boolean requiresConfirmation) {
 
     /** 当前协议版本（与 docs/选项返回协议.md、web/src/types/agent.ts 保持一致） */
-    public static final String PROTOCOL_VERSION = "0.1";
+    public static final String PROTOCOL_VERSION = "0.2";
+
+    /** 仍可解析的上一稳定版本（历史落库 / 非流式客户端） */
+    public static final String LEGACY_PROTOCOL_VERSION = "0.1";
 
     public AgentReply {
         version = version == null ? PROTOCOL_VERSION : version;

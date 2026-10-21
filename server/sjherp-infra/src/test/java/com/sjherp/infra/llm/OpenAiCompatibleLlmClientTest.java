@@ -224,4 +224,47 @@ class OpenAiCompatibleLlmClientTest {
         assertThat(response.usage().promptTokens()).isEqualTo(10);
         assertThat(response.usage().completionTokens()).isNull();
     }
+
+    @Test
+    void streamRequestBodySetsStreamTrue() throws Exception {
+        JsonNode body = mapper.readTree(client().buildRequestBody(
+                List.of(LlmMessage.user("hi")), LlmRequestOptions.defaults(), true));
+        assertThat(body.get("stream").asBoolean()).isTrue();
+        JsonNode nonStream = mapper.readTree(client().buildRequestBody(
+                List.of(LlmMessage.user("hi")), LlmRequestOptions.defaults()));
+        assertThat(nonStream.has("stream")).isFalse();
+    }
+
+    @Test
+    void consumeSseStreamForwardsContentDeltasAndCompletes() throws Exception {
+        String sse = """
+                data: {"model":"deepseek-chat","choices":[{"delta":{"content":"你"}}]}
+
+                data: {"choices":[{"delta":{"content":"好"}}]}
+
+                : keep-alive
+
+                data: [DONE]
+
+                """;
+        StringBuilder deltas = new StringBuilder();
+        LlmResponse[] complete = new LlmResponse[1];
+        client().consumeSseStream(new java.io.ByteArrayInputStream(sse.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                new com.sjherp.agent.llm.LlmStreamHandler() {
+                    @Override
+                    public void onContentDelta(String delta) {
+                        deltas.append(delta);
+                    }
+
+                    @Override
+                    public void onComplete(LlmResponse response) {
+                        complete[0] = response;
+                    }
+                });
+        assertThat(deltas.toString()).isEqualTo("你好");
+        assertThat(complete[0]).isNotNull();
+        assertThat(complete[0].content()).isEqualTo("你好");
+        assertThat(complete[0].hasToolCalls()).isFalse();
+        assertThat(complete[0].model()).isEqualTo("deepseek-chat");
+    }
 }

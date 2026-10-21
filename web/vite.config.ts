@@ -15,6 +15,9 @@ export default defineConfig({
       '/api': {
         target: 'http://localhost:8080',
         changeOrigin: true,
+        // 聊天 SSE 可能持续数分钟（循环预算 300s），避免代理提前断开
+        timeout: 360_000,
+        proxyTimeout: 360_000,
       },
     },
   },
