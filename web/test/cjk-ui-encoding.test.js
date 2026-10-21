@@ -89,6 +89,7 @@ test('production workbenches use real UTF-8 Chinese, not escaped or garbled lite
     '../src/components/RoutingWorkbench.tsx',
     '../src/components/DemandPlanWorkbench.tsx',
     '../src/components/MrpWorkbench.tsx',
+    '../src/components/WorkOrderWorkbench.tsx',
   ];
   for (const file of files) {
     const source = readFileSync(new URL(file, import.meta.url), 'utf8');
@@ -125,6 +126,14 @@ test('production workbenches use real UTF-8 Chinese, not escaped or garbled lite
   assert.match(mrp, /MRP 运行/);
   assert.match(mrp, /生产建议/);
   assert.match(mrp, /采购建议/);
+  const workOrders = readFileSync(
+    new URL('../src/components/WorkOrderWorkbench.tsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(workOrders, /生产工单/);
+  assert.match(workOrders, /手工建单/);
+  assert.match(workOrders, /从 MRP 建单/);
+  assert.match(production, />工单</);
 });
 
 test('inventory workbenches use real UTF-8 Chinese, not escaped or garbled literals', () => {

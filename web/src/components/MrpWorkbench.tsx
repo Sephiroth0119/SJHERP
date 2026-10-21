@@ -3,6 +3,7 @@ import * as catalogApi from '../api/catalogApi.ts';
 import { ApiError } from '../api/http.ts';
 import * as masterDataApi from '../api/masterDataApi.ts';
 import * as mrpApi from '../api/mrpApi.ts';
+import { formatQuantityDisplay } from '../api/productionBomApi.ts';
 import { createInFlightGuard, createRequestGate } from '../security/workbenchControl.ts';
 
 const PAGE_SIZE = 20;
@@ -349,9 +350,9 @@ function SuggestionTable({
               <td>{suggestionTypeLabel(item.type)}</td>
               <td>{productName(item.productId)}</td>
               <td>L{item.level}</td>
-              <td>{item.grossRequirement}</td>
-              <td>{item.onHand}</td>
-              <td>{item.netRequirement}</td>
+              <td>{formatQuantityDisplay(item.grossRequirement)}</td>
+              <td>{formatQuantityDisplay(item.onHand)}</td>
+              <td>{formatQuantityDisplay(item.netRequirement)}</td>
               <td>{unitName(item.baseUnitId)}</td>
             </tr>)}
           </tbody></table>
