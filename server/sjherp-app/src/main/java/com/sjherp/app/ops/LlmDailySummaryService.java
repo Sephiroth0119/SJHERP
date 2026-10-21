@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import com.sjherp.infra.persistence.invocation.AgentInvocationRepository;
@@ -26,10 +27,12 @@ public class LlmDailySummaryService {
     private final OpsProperties properties;
     private final Clock clock;
 
+    @Autowired
     public LlmDailySummaryService(AgentInvocationRepository repository, OpsProperties properties) {
         this(repository, properties, Clock.systemUTC());
     }
 
+    /** 测试构造（注入固定 Clock）。 */
     LlmDailySummaryService(AgentInvocationRepository repository, OpsProperties properties, Clock clock) {
         this.repository = Objects.requireNonNull(repository, "repository 不能为空");
         this.properties = Objects.requireNonNull(properties, "properties 不能为空");

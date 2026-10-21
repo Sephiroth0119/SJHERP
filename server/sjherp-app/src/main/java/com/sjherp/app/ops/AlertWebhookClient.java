@@ -38,6 +38,7 @@ public class AlertWebhookClient {
                 .build());
     }
 
+    /** 测试构造（注入 mock HttpClient）。 */
     AlertWebhookClient(OpsProperties properties, ObjectMapper objectMapper, HttpClient httpClient) {
         this.properties = Objects.requireNonNull(properties, "properties 不能为空");
         this.objectMapper = Objects.requireNonNull(objectMapper, "objectMapper 不能为空");
