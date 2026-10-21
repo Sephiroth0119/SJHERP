@@ -124,7 +124,7 @@ restore_mysql() {
 
 wipe_qdrant_storage() {
   info "清空 Qdrant storage 文件（保留 named volume，不是 down -v）"
-  compose run --rm -T --no-deps --no-build --user root --entrypoint sh qdrant -c \
+  compose run --rm -T --no-deps --user root --entrypoint sh qdrant -c \
     'if [ -d /qdrant/storage ]; then find /qdrant/storage -mindepth 1 -maxdepth 1 -exec rm -rf {} +; fi'
 }
 

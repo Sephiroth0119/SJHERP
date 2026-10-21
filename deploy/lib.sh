@@ -246,7 +246,7 @@ qdrant_curl() {
   if service_is_running app; then
     compose exec -T app curl -fsS --max-time 300 -X "$method" "$url" "$@"
   else
-    compose run --rm -T --no-deps --no-build --entrypoint curl app -fsS --max-time 300 -X "$method" "$url" "$@"
+    compose run --rm -T --no-deps --entrypoint curl app -fsS --max-time 300 -X "$method" "$url" "$@"
   fi
 }
 
