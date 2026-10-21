@@ -135,11 +135,13 @@ class DocumentPostingPerfIntegrationTest {
     @Test
     void 热查询EXPLAIN命中既有与来源单号索引() {
         assertThat(seededRows).isGreaterThanOrEqualTo(LedgerPerfSupport.SMOKE_ROWS);
+        Sku explainSku = new Sku(nextId(), nextId());
+        openBalance(explainSku, "explain");
         LedgerPerfSupport.assertUsesIndex(jdbc,
                 "SELECT id, warehouse_id, product_id, quantity, cost_amount FROM inventory_balance "
                         + "WHERE tenant_id = 0 AND warehouse_id = ? AND product_id = ? AND batch_id = 0 FOR UPDATE",
                 "uk_inventory_balance_dim",
-                LedgerPerfSupport.SEED_WAREHOUSE_ID, LedgerPerfSupport.SEED_PRODUCT_ID);
+                explainSku.warehouseId(), explainSku.productId());
         LedgerPerfSupport.assertUsesIndex(jdbc,
                 "SELECT id, unit_cost FROM inventory_transaction "
                         + "WHERE tenant_id = 0 AND warehouse_id = ? AND product_id = ? "
@@ -215,7 +217,9 @@ class DocumentPostingPerfIntegrationTest {
     private void runInventoryInboundWave(int users, String label) throws Exception {
         List<Sku> skus = new ArrayList<>(users);
         for (int i = 0; i < users; i++) {
-            skus.add(new Sku(nextId(), nextId()));
+            Sku sku = new Sku(nextId(), nextId());
+            openBalance(sku, label + "-open-" + i);
+            skus.add(sku);
         }
         Queue<Throwable> errors = new ConcurrentLinkedQueue<>();
         List<Long> latencies = runConcurrently(users, thread -> {
@@ -253,6 +257,8 @@ class DocumentPostingPerfIntegrationTest {
                         List.of(new PurchaseReceiptLineInput(1, new BigDecimal("10"), null)), OPERATOR);
                 receiptService.approve(prNo, OPERATOR);
             });
+            Sku sku = new Sku(warehouseId, productId);
+            openBalance(sku, label + "-open-" + i);
             prepared.add(new PreparedReceipt(prNo, warehouseId, productId));
         }
         Queue<Throwable> errors = new ConcurrentLinkedQueue<>();
@@ -321,6 +327,18 @@ class DocumentPostingPerfIntegrationTest {
             pool.shutdownNow();
         }
         return List.copyOf(latencies);
+    }
+
+    /**
+     * 先串行建余额行，再并发过账。全新 SKU 同时 INSERT 唯一键会撞 InnoDB 间隙锁死锁，
+     * 小企业日常是已有库存的仓库×商品并发过账；M3 已有 20 线程同行专项。
+     */
+    private void openBalance(Sku sku, String label) {
+        String key = "open:" + label + ":" + uniqueSuffix();
+        inventoryService.inbound(new InboundCommand(
+                sku.warehouseId(), sku.productId(), InventoryTxnType.OPENING,
+                new BigDecimal("1"), new BigDecimal("10.00"), null,
+                "PERF_OPEN", "OPEN-" + key, 1, key), OPERATOR);
     }
 
     private static long nextId() {
