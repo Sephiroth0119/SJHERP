@@ -1,0 +1,30 @@
+# 镜像构建上下文：只带运行所需源码，排除密钥、测试产物和预发静态包
+.git
+.github
+**/.git
+**/.idea
+**/*.iml
+**/.vscode
+**/.DS_Store
+**/*.log
+logs/
+
+# 密钥与本地覆盖
+**/.env
+**/.env.*
+!**/.env.example
+**/application-local.yml
+
+# 构建产物（镜像内重新编译）
+**/target/
+**/node_modules/
+web/dist/
+web-dist/
+**/src/test
+web/test
+
+# 运维本地备份、文档与测试夹具不进镜像
+deploy/backups/
+docs/
+**/*.md
+!deploy/**/*.md

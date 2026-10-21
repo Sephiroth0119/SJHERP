@@ -1,5 +1,8 @@
 # SJHERP 开发中间件声明（MySQL 真源 + Qdrant 派生索引）
 #
+# 生产一键安装请用 deploy/docker-compose.yml + ./deploy/install.sh，
+# 说明见 docs/部署-一键安装.md。本文件只起开发用 MySQL/Qdrant，不含 app/nginx。
+#
 # 安全要求（公开仓库）：
 # - 所有密码必须通过环境变量配置，不提供弱默认值；
 # - 启动命令示例：

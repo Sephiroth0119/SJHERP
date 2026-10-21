@@ -12,6 +12,10 @@ spring:
     username: ${SJHERP_DB_USERNAME:}
     password: ${SJHERP_DB_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      connection-timeout: 30000
+      # 容器里 MySQL 刚 healthy 时仍可能短暂拒绝连接；等待而不是立刻失败
+      initialization-fail-timeout: 60000
 
   # Flyway 数据库迁移（脚本位于 sjherp-infra 模块 classpath:db/migration，随应用启动自动执行）
   flyway:
@@ -47,8 +51,8 @@ sjherp:
   # 数据一致性校验（M3-T13 检查 Agent）。按需查走 REST/Agent 工具随时可跑；定时巡检参数如下。
   consistency:
     # 定时巡检开关（@ConditionalOnProperty）：默认关——本地/测试不跑（避免污染、并发抢库），
-    # 生产显式打开。打开后按 cron 自动跑校验并按严重度记日志告警（M3 仅日志，LLM 上报留 M6-T06）。
-    enabled: false
+    # 生产 compose 通过 SJHERP_CONSISTENCY_ENABLED=true 打开。打开后按 cron 自动跑校验并按严重度记日志告警。
+    enabled: ${SJHERP_CONSISTENCY_ENABLED:false}
     # 巡检 cron（默认每日凌晨 3 点）。仅 enabled=true 时生效。
     cron: "0 0 3 * * *"
 
