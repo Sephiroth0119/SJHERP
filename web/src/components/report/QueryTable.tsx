@@ -25,6 +25,7 @@ export function QueryTable({
           title: column.title,
           dataIndex: column.key,
           key: column.key,
+          ellipsis: true,
           render: (value: string | undefined) => formatAmountText(value),
         }))}
         dataSource={rows}

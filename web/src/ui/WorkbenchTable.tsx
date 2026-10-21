@@ -48,6 +48,7 @@ export function WorkbenchTable<T extends object>({
       loading={loading}
       rowKey={(record) => recordKey(record, rowKey)}
       locale={{ emptyText }}
+      scroll={{ x: 'max-content' }}
       pagination={paged ? {
         current: page,
         pageSize,

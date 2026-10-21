@@ -52,7 +52,7 @@ export function SessionRail({
   };
 
   return (
-    <aside className="session-rail" aria-label="历史会话">
+    <aside className="session-rail" id="chat-session-rail" aria-label="历史会话">
       <div className="session-rail-header">
         <span className="session-rail-title">会话</span>
         <button

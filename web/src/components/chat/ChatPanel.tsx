@@ -27,6 +27,7 @@ import {
   type SendMessagePayload,
   type ServerChatMessage,
 } from '../../api/chatApi';
+import { COMPACT_CHAT_MEDIA, useMediaQuery } from '../../layout/useMediaQuery';
 import { MessageList, type ChatStreamError } from './MessageList';
 import { MessageInput } from './MessageInput';
 import { SessionRail } from './SessionRail';
@@ -101,6 +102,8 @@ interface ChatPanelProps {
 }
 
 export function ChatPanel({ permissions }: ChatPanelProps) {
+  const compactChat = useMediaQuery(COMPACT_CHAT_MEDIA);
+  const [railOpen, setRailOpen] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -198,10 +201,18 @@ export function ChatPanel({ permissions }: ChatPanelProps) {
     void initSession();
   }, [initSession]);
 
+  useEffect(() => {
+    if (!compactChat) setRailOpen(false);
+  }, [compactChat]);
+
   const handleSelectSession = useCallback(async (id: string) => {
-    if (id === sessionId) return;
+    if (id === sessionId) {
+      setRailOpen(false);
+      return;
+    }
     setPending(true);
     setError(null);
+    setRailOpen(false);
     try {
       await openSession(id);
       setPending(false);
@@ -219,6 +230,7 @@ export function ChatPanel({ permissions }: ChatPanelProps) {
   const handleNewSession = useCallback(async () => {
     setPending(true);
     setError(null);
+    setRailOpen(false);
     try {
       await createAndOpen();
       setPending(false);
@@ -380,7 +392,15 @@ export function ChatPanel({ permissions }: ChatPanelProps) {
           : '正在连接后端…';
 
   return (
-    <section className="chat-panel">
+    <section className={compactChat && railOpen ? 'chat-panel chat-panel-rail-open' : 'chat-panel'}>
+      {compactChat && railOpen && (
+        <button
+          type="button"
+          className="chat-session-backdrop"
+          aria-label="关闭会话列表"
+          onClick={() => setRailOpen(false)}
+        />
+      )}
       <SessionRail
         sessions={sessions}
         currentSessionId={sessionId}
@@ -392,6 +412,17 @@ export function ChatPanel({ permissions }: ChatPanelProps) {
       />
       <div className="chat-main">
         <header className="chat-header">
+          {compactChat && (
+            <button
+              type="button"
+              className="chat-session-toggle"
+              aria-expanded={railOpen}
+              aria-controls="chat-session-rail"
+              onClick={() => setRailOpen((open) => !open)}
+            >
+              会话
+            </button>
+          )}
           <h1>Agent 助手</h1>
           <span className="chat-header-hint">{headerHint}</span>
         </header>

@@ -16,7 +16,7 @@ export function Sidebar({ active, onSelect, permissions }: SidebarProps) {
   const visibleItems = filterNavItems(MODULE_NAV_ITEMS, permissions);
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" id="app-sidebar" aria-label="主导航">
       <div className="sidebar-brand">
         <span className="sidebar-brand-name">SJHERP</span>
         <span className="sidebar-brand-sub">Agent 原生 ERP</span>

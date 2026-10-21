@@ -189,7 +189,7 @@ function MasterDataWorkbench<I extends BaseItem, F>({
         <FilterItem>
           <Input
             allowClear
-            style={{ width: 280 }}
+            className="workbench-filter-input"
             aria-label={`搜索${config.title}`}
             placeholder={config.placeholder}
             value={draftKeyword}
@@ -217,7 +217,7 @@ function MasterDataWorkbench<I extends BaseItem, F>({
             columns={[
               { title: "编码", dataIndex: "code", key: "code" },
               { title: "名称", dataIndex: "name", key: "name" },
-              { title: config.thirdLabel, key: "third", render: (_: unknown, item: I) => config.third(item) },
+              { title: config.thirdLabel, key: "third", responsive: ['md'], render: (_: unknown, item: I) => config.third(item) },
               {
                 title: "状态",
                 dataIndex: "status",
