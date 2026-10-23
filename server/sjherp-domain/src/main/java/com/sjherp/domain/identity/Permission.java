@@ -254,6 +254,12 @@ public enum Permission {
     GAP_ISSUE("gap:issue", "缺口 Issue 治理"),
     DEVELOPER_AGENT("developer:agent", "开发者 Agent"),
 
+    /**
+     * 演示种子试点装载（M8-T07）：把虚构「演示*」档案与完整会计期间业务种子
+     * 经领域/应用服务写入预发或本地库。默认关闭；仅 ADMIN/BOSS。
+     */
+    PILOT_SEED("pilot:seed", "演示种子装载"),
+
     // ------------------------------------------------- 演示（仅 dev/local profile 注册的演示工具）
 
     /** 演示用高风险工具 demo_post_document（dev/local 验证 HITL 链路；生产不注册该工具） */

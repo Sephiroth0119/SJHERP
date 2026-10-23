@@ -73,7 +73,8 @@ class RolePermissionsTest {
                 Permission.DATA_IMPORT,
                 Permission.GAP_TRIAGE,
                 Permission.GAP_ISSUE,
-                Permission.DEVELOPER_AGENT), boss);
+                Permission.DEVELOPER_AGENT,
+                Permission.PILOT_SEED), boss);
         assertFalse(boss.contains(Permission.DEMO_POST_DOCUMENT));
     }
 
