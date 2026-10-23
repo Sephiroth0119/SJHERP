@@ -135,6 +135,8 @@ SJHERP/
 
 **M8-T06 用户文档与引导已完成实现（2026-10-21）**：中文上手指南与各模块操作手册（`docs/用户-*.md`）；首次登录向导覆盖建档案→期初→第一张采购订单草稿，只调现有 API、不写假数据；登录可见「帮助」模块与顶栏「新手引导」。未改 `web-dist/`、领域状态机与 Flyway。详见 `docs/测试-M8-T06用户文档与引导.md`。
 
+**M8-T08 许可与计费已完成离线骨架（2026-10-23）**：商业模式未定，不接 Stripe/微信支付/订阅后台。JSON + Ed25519 license 文件（签发对象/日期/可选到期与席位模块 + 签名）；启动与定期校验；未配置不挡业务，硬阻断仅 `SJHERP_LICENSE_ENFORCE=true`；`GET /api/license/status`（`license:view`，ADMIN/BOSS）+ 帮助页只读；`deploy/license.sh --check|--issue`。未改 `web-dist/`、领域状态机与 Flyway。详见 `docs/测试-M8-T08许可与计费.md`、`docs/部署-许可.md`。
+
 **M8-T07 种子用户试点已完成演示干跑（2026-10-23）**：不接真实企业。`DemoSeedService` 经档案/单据 AppService 装入 1 家虚构演示企业（sunshine 默认 / qinghe 可切换，单租户互斥），走采购→入库→发票→付款→销售→出库→发票→收款，另给独立 SKU 做 OPENING；**不关账**。REST `POST /api/pilot/demo-seed`（`pilot:seed`，ADMIN/BOSS），启动开关 `SJHERP_DEMO_SEED` 默认 false；`deploy/seed-pilot.sh --check` 纳入部署资产。样例缺口走既有 `GapRecordService`。未改 `web-dist/`、领域状态机与 Flyway 业务种子。真实客户名以后再换。详见 `docs/测试-M8-T07种子用户试点.md`。
 
 **M8-T02 备份与恢复已完成实现（2026-10-21）**：`deploy/backup.sh` 对运行中的 MySQL 做 `mysqldump` gzip、对 Qdrant 打全库快照并归档到宿主机 `deploy/backups/`（默认保留 14 天，cron 模板 `deploy/crontab.example`）；`restore.sh` 停 nginx/app 后灌回**现有** named volume，禁止把 `docker compose down -v` 当恢复；`restore-smoke.sh` 用金丝雀表证明 dump 被真正灌回，再走登录冒烟。Qdrant 为派生索引，救数以 MySQL 为准。未改 `web-dist/`、领域逻辑与 Flyway。本机与 PR #66 CI 四项全绿（run `39591815279`，部署资产含恢复演练）。说明见 `docs/部署-备份恢复.md`。

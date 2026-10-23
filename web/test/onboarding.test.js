@@ -251,6 +251,8 @@ test('app mounts the first-login wizard before the main shell and never seeds de
   assert.doesNotMatch(wizard, /测试商品|demo-sku|fake product/i);
   assert.doesNotMatch(run, /测试商品|DemoSupplier|seed/i);
   assert.match(help, /打开新手引导/);
+  assert.match(help, /许可状态/);
+  assert.match(app, /license:view/);
   assert.doesNotMatch(`${app}\n${wizard}\n${help}`, unicodeEscape);
 });
 

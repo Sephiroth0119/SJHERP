@@ -1,13 +1,49 @@
+import { useEffect, useState } from 'react';
 import { Button } from 'antd';
 import { GETTING_STARTED_STEPS, HELP_TOPICS } from '../onboarding/helpContent.ts';
+import {
+  fetchLicenseStatus,
+  licenseStatusTone,
+  type LicenseStatus,
+} from '../api/licenseApi.ts';
+import { ApiError } from '../api/http.ts';
 
 export function HelpWorkbench({
   onRestartOnboarding,
   onOpenHash,
+  canViewLicense,
 }: {
   onRestartOnboarding: () => void;
   onOpenHash: (hash: string) => void;
+  canViewLicense: boolean;
 }) {
+  const [license, setLicense] = useState<LicenseStatus | null>(null);
+  const [licenseError, setLicenseError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!canViewLicense) {
+      setLicense(null);
+      setLicenseError(null);
+      return;
+    }
+    let cancelled = false;
+    fetchLicenseStatus()
+      .then((status) => {
+        if (!cancelled) {
+          setLicense(status);
+          setLicenseError(null);
+        }
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setLicense(null);
+        setLicenseError(error instanceof ApiError ? error.message : '无法读取许可状态');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canViewLicense]);
+
   return (
     <section className="help-page" aria-label="帮助">
       <header className="help-header">
@@ -17,6 +53,28 @@ export function HelpWorkbench({
         </div>
         <Button type="primary" onClick={onRestartOnboarding}>打开新手引导</Button>
       </header>
+
+      {canViewLicense ? (
+        <section className="help-panel" aria-label="许可状态">
+          <h2>许可状态</h2>
+          {licenseError ? <p>{licenseError}</p> : null}
+          {!licenseError && !license ? <p>正在读取许可状态…</p> : null}
+          {license ? (
+            <>
+              <p className={`license-status license-status-${licenseStatusTone(license.status)}`}>
+                {license.statusLabel}
+                {license.expiresAt ? ` · 到期 ${license.expiresAt}` : ''}
+                {!license.configured ? ' · 未放置 license 文件' : ''}
+              </p>
+              {license.subject ? <p>签发对象：{license.subject}</p> : null}
+              {license.graceUntil && license.status === 'GRACE' ? <p>宽限至 {license.graceUntil}</p> : null}
+              {license.blocking ? <p>硬阻断已开启，业务接口已暂停。把有效 license 放到约定路径或关闭 SJHERP_LICENSE_ENFORCE 后重试。</p> : null}
+              <p>{license.message}</p>
+              <p>这是私有部署的离线许可校验，没有在线支付或订阅入口。商业模式未定。</p>
+            </>
+          ) : null}
+        </section>
+      ) : null}
 
       <section className="help-panel">
         <h2>第一次怎么走</h2>

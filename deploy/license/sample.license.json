@@ -1,0 +1,18 @@
+{
+  "v": 1,
+  "subject": "演示阳光文具",
+  "issuedAt": "2026-10-23",
+  "expiresAt": "2027-10-23",
+  "seats": 5,
+  "modules": [
+    "core",
+    "finance",
+    "inventory",
+    "production",
+    "purchase",
+    "sales"
+  ],
+  "graceDays": 14,
+  "kid": "dev-2026",
+  "sig": "m6_O8z9UBWb5tcvpHpCU_BHQjsTQsHauo1tdOcLFOBcL0BUtLQLBYUPPbLn1PIY6lAcQw9xstby3Lhhia7usDA"
+}

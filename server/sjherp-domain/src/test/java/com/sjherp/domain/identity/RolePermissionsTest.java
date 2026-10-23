@@ -74,7 +74,8 @@ class RolePermissionsTest {
                 Permission.GAP_TRIAGE,
                 Permission.GAP_ISSUE,
                 Permission.DEVELOPER_AGENT,
-                Permission.PILOT_SEED), boss);
+                Permission.PILOT_SEED,
+                Permission.LICENSE_VIEW), boss);
         assertFalse(boss.contains(Permission.DEMO_POST_DOCUMENT));
     }
 
@@ -117,6 +118,16 @@ class RolePermissionsTest {
         // 账期重开是高敏操作，ACCOUNTANT 不持有（仅 ADMIN/BOSS）
         assertFalse(RolePermissions.permissionsOf(Role.ACCOUNTANT)
                 .contains(Permission.FINANCE_PERIOD_REOPEN));
+    }
+
+    @Test
+    void 许可状态查看仅管理员和老板持有() {
+        assertTrue(RolePermissions.permissionsOf(Role.ADMIN).contains(Permission.LICENSE_VIEW));
+        assertTrue(RolePermissions.permissionsOf(Role.BOSS).contains(Permission.LICENSE_VIEW));
+        assertFalse(RolePermissions.permissionsOf(Role.ACCOUNTANT).contains(Permission.LICENSE_VIEW));
+        assertFalse(RolePermissions.permissionsOf(Role.PURCHASER).contains(Permission.LICENSE_VIEW));
+        assertFalse(RolePermissions.permissionsOf(Role.SALES).contains(Permission.LICENSE_VIEW));
+        assertFalse(RolePermissions.permissionsOf(Role.WAREHOUSE).contains(Permission.LICENSE_VIEW));
     }
 
     @Test

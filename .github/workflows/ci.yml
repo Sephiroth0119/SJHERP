@@ -70,7 +70,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: 脚本 dry-run 与 compose config
         run: |
-          chmod +x deploy/install.sh deploy/upgrade.sh deploy/smoke.sh deploy/backup.sh deploy/restore.sh deploy/restore-smoke.sh deploy/monitor.sh deploy/perf.sh deploy/seed-pilot.sh deploy/nginx/40-sjherp-tls.sh
+          chmod +x deploy/install.sh deploy/upgrade.sh deploy/smoke.sh deploy/backup.sh deploy/restore.sh deploy/restore-smoke.sh deploy/monitor.sh deploy/perf.sh deploy/seed-pilot.sh deploy/license.sh deploy/nginx/40-sjherp-tls.sh
           ./deploy/install.sh --check
           ./deploy/upgrade.sh --check
       - name: 一键安装冒烟（构建镜像、启动、探活）
