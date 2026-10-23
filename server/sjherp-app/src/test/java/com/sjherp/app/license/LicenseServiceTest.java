@@ -15,11 +15,24 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 class LicenseServiceTest {
 
     @TempDir
     Path tempDir;
+
+    @Test
+    void Spring选用带LicenseProperties的构造器() {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.registerBean(LicenseProperties.class,
+                    () -> new LicenseProperties(null, null, null, false, 14, 3600000));
+            context.register(LicenseService.class);
+            context.refresh();
+            assertThat(context.getBean(LicenseService.class).current().status())
+                    .isEqualTo(LicenseStatus.UNCONFIGURED);
+        }
+    }
 
     @Test
     void 路径未配置返回未配置() {

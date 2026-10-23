@@ -4,11 +4,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
-import org.springframework.core.Ordered;
-import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import jakarta.servlet.FilterChain;
@@ -20,8 +17,6 @@ import jakarta.servlet.http.HttpServletResponse;
  * 硬阻断过滤器：仅 {@code SJHERP_LICENSE_ENFORCE=true} 且许可过期/签名无效/无法解析时拦截业务 API。
  * 未配置永远放行。探活、登录、许可状态与 {@code /api/auth/me} 始终可访问，避免把试点客户锁死。
  */
-@Component
-@Order(Ordered.LOWEST_PRECEDENCE)
 public class LicenseEnforceFilter extends OncePerRequestFilter {
 
     static final String REJECT_BODY = "{\"error\":\"许可无效或已过期，业务接口已暂停（SJHERP_LICENSE_ENFORCE）\"}";

@@ -11,6 +11,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -27,10 +28,12 @@ public class LicenseService {
     private final Clock clock;
     private final AtomicReference<LicenseEvaluation> snapshot = new AtomicReference<>();
 
+    @Autowired
     public LicenseService(LicenseProperties properties) {
         this(properties, Clock.systemUTC());
     }
 
+    /** 单测用：固定时钟。生产走上面的 {@link Autowired} 单参构造器。 */
     LicenseService(LicenseProperties properties, Clock clock) {
         this.properties = properties;
         this.clock = clock;
