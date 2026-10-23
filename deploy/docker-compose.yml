@@ -21,6 +21,10 @@
 # 性能（M8-T05，见 docs/部署-性能基线.md）：
 # - MySQL 打开慢查询日志（long_query_time=1），文件在数据卷 datadir
 # - 压测脚本 ./deploy/perf.sh；不要对生产库灌百万行合成数据
+#
+# 许可（M8-T08，见 docs/部署-许可.md）：
+# - app 只读挂载 ./license ；缺 sjherp.license.json 视为未配置，不挡业务
+# - 硬阻断仅 SJHERP_LICENSE_ENFORCE=true
 
 name: sjherp
 
@@ -105,6 +109,11 @@ services:
       SJHERP_CONSISTENCY_ENABLED: ${SJHERP_CONSISTENCY_ENABLED:-true}
       SJHERP_DEMO_SEED: ${SJHERP_DEMO_SEED:-false}
       SJHERP_DEMO_SEED_PACK: ${SJHERP_DEMO_SEED_PACK:-sunshine}
+      SJHERP_LICENSE_PATH: ${SJHERP_LICENSE_PATH:-/app/license/sjherp.license.json}
+      SJHERP_LICENSE_PUBLIC_KEY: ${SJHERP_LICENSE_PUBLIC_KEY:-}
+      SJHERP_LICENSE_PUBLIC_KEY_PATH: ${SJHERP_LICENSE_PUBLIC_KEY_PATH:-}
+      SJHERP_LICENSE_ENFORCE: ${SJHERP_LICENSE_ENFORCE:-false}
+      SJHERP_LICENSE_GRACE_DAYS: ${SJHERP_LICENSE_GRACE_DAYS:-14}
       MANAGEMENT_SERVER_PORT: 8081
       SJHERP_ALERT_WEBHOOK: ${SJHERP_ALERT_WEBHOOK:-}
       SJHERP_ALERT_LLM_DAILY: ${SJHERP_ALERT_LLM_DAILY:-false}
@@ -126,6 +135,9 @@ services:
     ports:
       # 仅本机刮取 Prometheus；不要改成 0.0.0.0
       - "127.0.0.1:${SJHERP_METRICS_PORT:-8081}:8081"
+    volumes:
+      # 离线 license（M8-T08）：宿主机 deploy/license/ 只读挂进容器；缺文件=未配置不挡业务
+      - ./license:/app/license:ro
     networks:
       - sjherp
 

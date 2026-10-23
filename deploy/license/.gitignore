@@ -1,0 +1,7 @@
+# 客户自己的 license 不要入库。测试密钥与样例文件例外。
+*
+!.gitignore
+!README.md
+!dev-ed25519-private.pem
+!dev-ed25519-public.pem
+!sample.license.json

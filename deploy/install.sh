@@ -52,6 +52,7 @@ assert_files() {
   [[ -f "$DEPLOY_DIR/monitor.sh" ]] || die "缺少 monitor.sh"
   [[ -f "$DEPLOY_DIR/perf.sh" ]] || die "缺少 perf.sh"
   [[ -f "$DEPLOY_DIR/seed-pilot.sh" ]] || die "缺少 seed-pilot.sh"
+  [[ -f "$DEPLOY_DIR/license.sh" ]] || die "缺少 license.sh"
   [[ -d "$REPO_ROOT/server" ]] || die "缺少 server/ ，请在仓库根执行"
   [[ -d "$REPO_ROOT/web" ]] || die "缺少 web/ ，请在仓库根执行"
 }
@@ -69,6 +70,7 @@ check_assets() {
   bash -n "$DEPLOY_DIR/monitor.sh"
   bash -n "$DEPLOY_DIR/perf.sh"
   bash -n "$DEPLOY_DIR/seed-pilot.sh"
+  bash -n "$DEPLOY_DIR/license.sh"
   sh -n "$DEPLOY_DIR/nginx/40-sjherp-tls.sh"
   require_env_keys "$ENV_EXAMPLE"
   "$DEPLOY_DIR/backup.sh" --check
@@ -77,6 +79,7 @@ check_assets() {
   "$DEPLOY_DIR/monitor.sh" --check
   "$DEPLOY_DIR/perf.sh" --check
   "$DEPLOY_DIR/seed-pilot.sh" --check
+  "$DEPLOY_DIR/license.sh" --check
   if command -v docker >/dev/null 2>&1; then
     info "校验 docker compose 配置"
     compose config >/dev/null

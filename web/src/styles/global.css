@@ -200,6 +200,26 @@ body {
   line-height: 1.6;
 }
 
+.license-status {
+  font-weight: 600;
+}
+
+.license-status-ok {
+  color: #047857;
+}
+
+.license-status-warn {
+  color: #b45309;
+}
+
+.license-status-info {
+  color: var(--color-text-muted);
+}
+
+.license-status-error {
+  color: #b91c1c;
+}
+
 @media (max-width: 767px) {
   .help-page {
     padding: 12px;

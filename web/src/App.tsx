@@ -51,7 +51,7 @@ import {
   type AuthUser,
 } from './api/http';
 import { fetchMe, formatRoles } from './api/authApi';
-import { canAccessModule } from './security/access';
+import { canAccessModule, hasPermission } from './security/access';
 import { isTokenExpiringSoon } from './security/token';
 import { hashForRoute, parseWorkbenchRoute, resolveWorkbenchRoute, type WorkbenchRoute } from './security/workbenchRoute';
 import { COMPACT_SHELL_MEDIA, useMediaQuery } from './layout/useMediaQuery';
@@ -269,6 +269,7 @@ export function App() {
           <HelpWorkbench
             onRestartOnboarding={() => setForceWizard(true)}
             onOpenHash={openHash}
+            canViewLicense={hasPermission(permissions, 'license:view')}
           />
         ) : guardedModule === 'memory' && canManageMemory ? (
           <MemoryGovernancePage />

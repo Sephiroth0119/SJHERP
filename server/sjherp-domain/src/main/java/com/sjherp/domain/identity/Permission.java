@@ -260,6 +260,12 @@ public enum Permission {
      */
     PILOT_SEED("pilot:seed", "演示种子装载"),
 
+    /**
+     * 离线许可状态只读（M8-T08）：GET /api/license/status。
+     * 授 ADMIN/BOSS。不含下单/支付；商业模式未定。
+     */
+    LICENSE_VIEW("license:view", "许可状态查看"),
+
     // ------------------------------------------------- 演示（仅 dev/local profile 注册的演示工具）
 
     /** 演示用高风险工具 demo_post_document（dev/local 验证 HITL 链路；生产不注册该工具） */
