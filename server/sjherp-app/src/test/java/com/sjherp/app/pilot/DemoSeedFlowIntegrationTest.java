@@ -119,8 +119,15 @@ class DemoSeedFlowIntegrationTest {
 
     @AfterAll
     static void tearDown() {
-        if (context != null) {
-            context.close();
+        try {
+            if (context != null) {
+                context.close();
+            }
+        } finally {
+            // 必须显式 stop：多数兄弟类把容器留给 Ryuk 直到 JVM 退出。
+            // 本类若再泄漏一台 mysql:8.4，GitHub runner aio-max-nr 会在后续
+            // DeveloperAgentStartRollback.setUp 上 io_setup EAGAIN。
+            MYSQL.stop();
         }
     }
 
