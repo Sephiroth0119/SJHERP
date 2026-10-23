@@ -67,6 +67,12 @@ sjherp:
   admin:
     password: ${SJHERP_ADMIN_PASSWORD:}
 
+  # 演示种子试点（M8-T07）：默认关闭。打开后启动时经领域/应用服务装入「演示*」虚构企业。
+  # 生产一键安装不要打开；预发/本地用 deploy/seed-pilot.sh 或本开关。
+  demo-seed:
+    enabled: ${SJHERP_DEMO_SEED:false}
+    pack: ${SJHERP_DEMO_SEED_PACK:sunshine}
+
   # 库存与成本（M3-T01，拆解见 docs/M3拆解-库存与成本.md）。
   inventory:
     # 负库存开关（§1.5）：默认禁止——出库后数量为负时抛 InsufficientStockException 整体回滚。

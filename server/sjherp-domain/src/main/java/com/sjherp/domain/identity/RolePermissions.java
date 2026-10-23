@@ -47,6 +47,7 @@ public final class RolePermissions {
         // M5-T02 新增：PRODUCTION_PLAN / PRODUCTION_MRP（需求计划 + MRP 运行）
         // M5-T03 新增：PRODUCTION_WO（生产工单）
         // M5-T04 新增：PRODUCTION_MATERIAL（生产领料与退料）
+        // M8-T07 新增：PILOT_SEED（演示种子装载，预发/本地）
         grants.put(Role.BOSS, Collections.unmodifiableSet(EnumSet.of(
                 Permission.CATALOG_CREATE_PRODUCT,
                 Permission.PARTNER_CREATE_CUSTOMER,
@@ -83,7 +84,8 @@ public final class RolePermissions {
                 Permission.DATA_IMPORT,
                 Permission.GAP_TRIAGE,
                 Permission.GAP_ISSUE,
-                Permission.DEVELOPER_AGENT)));
+                Permission.DEVELOPER_AGENT,
+                Permission.PILOT_SEED)));
 
         // PURCHASER：创建供应商 + 采购全程参与（采购订单/入库/发票）；商品/供应商查询登录即可
         grants.put(Role.PURCHASER, Collections.unmodifiableSet(EnumSet.of(
