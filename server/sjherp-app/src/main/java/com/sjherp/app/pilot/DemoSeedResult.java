@@ -5,7 +5,7 @@ import java.util.List;
 import com.sjherp.app.gl.GlDtos.PeriodCloseReadiness;
 
 /**
- * 演示种子装载结果（M8-T07）。关账预检只读，本结果不代表已关账。
+ * 试点种子装载结果（M8-T07）。关账预检只读，本结果不代表已关账。
  */
 public record DemoSeedResult(
         String packId,

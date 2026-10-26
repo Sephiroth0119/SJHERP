@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# SJHERP 演示种子试点（M8-T07）：语法/资产 dry-run，或登录后经 REST 装入虚构企业。
+# SJHERP 种子试点（M8-T07）：语法/资产 dry-run，或登录后经 REST 装入通润驱动。
 # 文档：docs/部署-种子试点.md
 set -euo pipefail
 
@@ -12,7 +12,7 @@ PACK="sunshine"
 
 usage() {
   cat <<'EOF'
-SJHERP 演示种子试点（虚构「演示*」企业，不接真实客户）
+SJHERP 种子试点（默认通润驱动；qinghe 为备选演示数据集）
 
 用法：
   ./deploy/seed-pilot.sh --check              不需要 Docker：脚本语法 + 种子资产守门
@@ -55,7 +55,7 @@ assert_seed_files() {
 }
 
 run_check() {
-  info "校验演示种子试点资产"
+  info "校验种子试点资产"
   assert_seed_files
   bash -n "$DEPLOY_DIR/seed-pilot.sh"
   local yml pack_java controller
@@ -63,7 +63,7 @@ run_check() {
   grep -Fq 'enabled: ${SJHERP_DEMO_SEED:false}' <<<"$yml" \
     || die "application.yml 必须默认关闭 sjherp.demo-seed.enabled"
   pack_java="$(cat "$REPO_ROOT/server/sjherp-app/src/main/java/com/sjherp/app/pilot/DemoCompanyPack.java")"
-  grep -Fq '"演示阳光文具"' <<<"$pack_java" || die "sunshine 包缺少演示阳光文具"
+  grep -Fq '"通润驱动"' <<<"$pack_java" || die "sunshine 包缺少通润驱动"
   grep -Fq '"演示青禾食品"' <<<"$pack_java" || die "qinghe 包缺少演示青禾食品"
   grep -Fq 'SJHERP-DEMO-SEED:' <<<"$pack_java" \
     || grep -Fq 'seedMarker' <<<"$pack_java" \
@@ -79,7 +79,7 @@ run_check() {
       die "本工作区 web-dist/ 有改动（M8-T07 NO_WEB_DIST）"
     fi
   fi
-  info "演示种子 --check 通过（pack 默认 sunshine，启动开关默认 false）"
+  info "种子 --check 通过（默认 sunshine/通润驱动，启动开关默认 false）"
 }
 
 extract_json_field() {
@@ -109,7 +109,7 @@ run_live() {
   if [[ "$url" == https://* ]]; then
     curl_tls=(-k)
   fi
-  info "管理员登录后装载演示种子 pack=$PACK"
+  info "管理员登录后装载试点种子 pack=$PACK"
   login_body="$(mktemp)"
   http_code="$(curl -sS --max-time 20 "${curl_tls[@]}" -o "$login_body" -w '%{http_code}' \
     -H 'Content-Type: application/json' \
@@ -132,7 +132,7 @@ run_live() {
   if [[ "$http_code" != "200" ]]; then
     warn "装载响应：$(cat "$seed_body")"
     rm -f "$seed_body"
-    die "演示种子装载失败（HTTP $http_code）。409 通常是已装另一包或账期已关"
+    die "种子装载失败（HTTP $http_code）。409 通常是已装另一包或账期已关"
   fi
   local company period closeable
   company="$(extract_json_field "$seed_body" companyLabel)"

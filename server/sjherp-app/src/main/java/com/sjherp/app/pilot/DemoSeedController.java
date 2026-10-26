@@ -15,7 +15,7 @@ import com.sjherp.app.pilot.DemoSeedDtos.SeedResponse;
 import com.sjherp.app.security.CurrentUser;
 
 /**
- * 演示种子试点入口（M8-T07）：ADMIN/BOSS 显式装载虚构企业数据。
+ * 种子试点入口（M8-T07）：ADMIN/BOSS 显式装载通润驱动（默认）或备选演示包。
  *
  * <p>不提供关账；关账仍走 {@code /api/gl/periods/{period}/close-precheck} 与 close。
  */

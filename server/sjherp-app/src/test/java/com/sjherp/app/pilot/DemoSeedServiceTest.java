@@ -143,7 +143,7 @@ class DemoSeedServiceTest {
 
         assertThat(result.alreadyLoaded()).isFalse();
         assertThat(result.period()).isEqualTo("202610");
-        assertThat(result.companyLabel()).isEqualTo("演示阳光文具");
+        assertThat(result.companyLabel()).isEqualTo("通润驱动");
         assertThat(result.purchaseOrderNo()).isEqualTo("PO-1");
         assertThat(result.collectionDocNo()).isEqualTo("RCPT-1");
         assertThat(result.sampleGapNo()).isEqualTo("GAP-1");
@@ -198,7 +198,7 @@ class DemoSeedServiceTest {
                 .thenReturn(new PageResult<>(List.of(paymentAccount()), 1, 1, 50));
         PurchaseOrder existing = org.mockito.Mockito.mock(PurchaseOrder.class);
         when(existing.getDocNo()).thenReturn("PO-EXIST");
-        when(existing.getRemark()).thenReturn("SJHERP-DEMO-SEED:sunshine 演示阳光文具");
+        when(existing.getRemark()).thenReturn("SJHERP-DEMO-SEED:sunshine 通润驱动");
         when(purchaseOrderAppService.search(any())).thenReturn(new PageResult<>(List.of(existing), 1, 1, 20));
         when(accountingPeriodService.listAll()).thenReturn(List.of());
         when(accountingPeriodService.isOpen("202610")).thenReturn(true);
@@ -248,14 +248,14 @@ class DemoSeedServiceTest {
     }
 
     private void stubCreatesAndPosts() {
-        when(unitService.create(eq("演示件"), eq(0), eq(OPERATOR))).thenReturn(unit());
+        when(unitService.create(eq("件"), eq(0), eq(OPERATOR))).thenReturn(unit());
         when(warehouseService.create(any(), eq(OPERATOR))).thenReturn(warehouse());
         when(supplierService.create(any(), eq(OPERATOR))).thenReturn(supplier());
         when(customerService.create(any(), eq(OPERATOR))).thenReturn(customer());
         when(paymentAccountService.create(any(), eq(OPERATOR))).thenReturn(paymentAccount());
         when(productService.create(any(), eq(OPERATOR))).thenAnswer(invocation -> {
             ProductCommand command = invocation.getArgument(0);
-            long id = command.name().contains("中性笔") ? 11L : 12L;
+            long id = command.name().contains("减速电机") ? 11L : 12L;
             return product(id, command.name());
         });
 
@@ -304,7 +304,7 @@ class DemoSeedServiceTest {
         when(collectionReceiptAppService.approve("RCPT-1", OPERATOR)).thenReturn(rcpt);
         when(collectionReceiptAppService.post("RCPT-1", OPERATOR)).thenReturn(rcpt);
         when(gapRecordService.create(any(GapRecordCommand.class), eq(OPERATOR))).thenReturn(
-                GapRecord.restore(1L, "GAP-1", null, DemoSeedService.SAMPLE_GAP_PREFIX + "演示阳光文具x",
+                GapRecord.restore(1L, "GAP-1", null, DemoSeedService.SAMPLE_GAP_PREFIX + "通润驱动x",
                         "场景", "期望", "缺失", BusinessModule.FINANCE, GapSeverity.LOW, GapStatus.NEW,
                         OPERATOR, OPERATOR, NOW, OPERATOR, NOW));
     }
@@ -325,27 +325,27 @@ class DemoSeedServiceTest {
     }
 
     private static Unit unit() {
-        return Unit.restore(61L, "演示件", 0, OPERATOR, NOW, OPERATOR, NOW);
+        return Unit.restore(61L, "件", 0, OPERATOR, NOW, OPERATOR, NOW);
     }
 
     private static Warehouse warehouse() {
-        return Warehouse.restore(51L, "WH-1", "演示阳光仓", "", "", false, ArchiveStatus.ENABLED,
+        return Warehouse.restore(51L, "WH-1", "通润驱动仓", "", "", false, ArchiveStatus.ENABLED,
                 OPERATOR, NOW, OPERATOR, NOW);
     }
 
     private static Supplier supplier() {
-        return Supplier.restore(21L, "SUP-1", "演示晨光供应商", "", "", "", "", SettlementMethod.MONTHLY,
+        return Supplier.restore(21L, "SUP-1", "通润配套供应商", "", "", "", "", SettlementMethod.MONTHLY,
                 ArchiveStatus.ENABLED, OPERATOR, NOW, OPERATOR, NOW);
     }
 
     private static Customer customer() {
-        return Customer.restore(31L, "CUS-1", "演示文具零售客户", "", "", "", "", SettlementMethod.MONTHLY,
+        return Customer.restore(31L, "CUS-1", "通润主机厂客户", "", "", "", "", SettlementMethod.MONTHLY,
                 null, "CNY", ArchiveStatus.ENABLED, OPERATOR, NOW, OPERATOR, NOW);
     }
 
     private static PaymentAccount paymentAccount() {
-        return PaymentAccount.restore(41L, "FA-1", "演示工行基本户", PaymentAccountType.BANK, "1002",
-                "演示银行", "6222-DEMO-0001", ArchiveStatus.ENABLED, OPERATOR, NOW, OPERATOR, NOW);
+        return PaymentAccount.restore(41L, "FA-1", "通润驱动工行基本户", PaymentAccountType.BANK, "1002",
+                "工商银行", "6222-DEMO-0001", ArchiveStatus.ENABLED, OPERATOR, NOW, OPERATOR, NOW);
     }
 
     private static Product product(long id, String name) {

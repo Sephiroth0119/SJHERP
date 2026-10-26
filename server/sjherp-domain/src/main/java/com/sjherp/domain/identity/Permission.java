@@ -255,10 +255,10 @@ public enum Permission {
     DEVELOPER_AGENT("developer:agent", "开发者 Agent"),
 
     /**
-     * 演示种子试点装载（M8-T07）：把虚构「演示*」档案与完整会计期间业务种子
+     * 种子试点装载（M8-T07）：把通润驱动（默认）档案与完整会计期间业务种子
      * 经领域/应用服务写入预发或本地库。默认关闭；仅 ADMIN/BOSS。
      */
-    PILOT_SEED("pilot:seed", "演示种子装载"),
+    PILOT_SEED("pilot:seed", "试点种子装载"),
 
     /**
      * 离线许可状态只读（M8-T08）：GET /api/license/status。

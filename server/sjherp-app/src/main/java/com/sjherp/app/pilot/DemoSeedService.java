@@ -84,8 +84,9 @@ import com.sjherp.domain.warehouse.WarehouseQuery;
 import com.sjherp.domain.warehouse.WarehouseService;
 
 /**
- * 演示种子编排（M8-T07）：经已有档案服务与单据 AppService 走完
+ * 种子编排（M8-T07）：经已有档案服务与单据 AppService 走完
  * 采购→入库→发票→付款→销售→出库→发票→收款，并登记一条样例缺口。
+ * 默认展示名为通润驱动（pack id 仍为 sunshine）。
  *
  * <p>不关账、不绕过状态机、不写裸 SQL。账期取当前 UTC 月，与销售出库 COGS 凭证日对齐。
  */
@@ -199,7 +200,7 @@ public class DemoSeedService {
     }
 
     /**
-     * 装载演示种子。写路径包在单一事务内（中途失败整单回滚）；关账预检在提交后执行，
+     * 装载试点种子。写路径包在单一事务内（中途失败整单回滚）；关账预检在提交后执行，
      * 以便看到 afterCommit 才落库的审计行（否则 AUDIT_INTEGRITY 会误报 ERROR）。
      */
     public DemoSeedResult seed(String packId, String operator) {
@@ -214,7 +215,7 @@ public class DemoSeedService {
         DemoSeedResult loaded = transactionTemplate.execute(status ->
                 seedInTransaction(pack, operator, period, bizDate));
         if (loaded == null) {
-            throw new IllegalStateException("演示种子事务未返回结果");
+            throw new IllegalStateException("种子事务未返回结果");
         }
         PeriodCloseReadiness readiness = periodCloseService.precheck(period);
         return loaded.withPrecheck(accountingPeriodService.isOpen(period), readiness);
@@ -235,7 +236,7 @@ public class DemoSeedService {
             return result(pack, true, period, warehouse, pack.tradeProductName(),
                     pack.openingProductName(), supplier, customer, paymentAccount,
                     existing.get().getDocNo(), null, null, null, null, null, null, null,
-                    findSampleGapNo(pack), "演示种子已存在，跳过重复装载。可继续关账预检与缺口记录。");
+                    findSampleGapNo(pack), "种子已存在，跳过重复装载。可继续关账预检与缺口记录。");
         }
 
         ProductCreated trade = ensureProduct(pack.tradeProductName(), unit.getId(), operator);
@@ -245,7 +246,7 @@ public class DemoSeedService {
                     pack.openingQty(), pack.openingCost(), operator);
         }
 
-        String remark = pack.seedMarker() + " " + pack.companyLabel() + " · 虚构演示数据，禁止当作真实客户";
+        String remark = pack.seedMarker() + " " + pack.companyLabel() + " · 试点种子";
         BigDecimal purchaseAmount = amount(pack.purchaseQty(), pack.purchasePrice());
         BigDecimal salesAmount = amount(pack.salesQty(), pack.salesPrice());
 
@@ -324,7 +325,7 @@ public class DemoSeedService {
             }
             if (findWarehouse(other.warehouseName()).isPresent()) {
                 throw new IllegalStateException(
-                        "当前库已装入演示包 " + other.id() + "（" + other.companyLabel()
+                        "当前库已装入种子包 " + other.id() + "（" + other.companyLabel()
                                 + "）。v1.0 单租户不能并行隔离另一家企业，请恢复到空库后再装 "
                                 + pack.id() + "，或继续使用已装入的种子包。");
             }
@@ -340,7 +341,7 @@ public class DemoSeedService {
         }
         if (!accountingPeriodService.isOpen(period)) {
             throw new IllegalStateException("账期 " + period
-                    + " 已关账，演示种子只写入 OPEN 账期。请换新库或重开后再装。");
+                    + " 已关账，种子只写入 OPEN 账期。请换新库或重开后再装。");
         }
     }
 
@@ -353,8 +354,8 @@ public class DemoSeedService {
 
     private Warehouse ensureWarehouse(DemoCompanyPack pack, String operator) {
         return findWarehouse(pack.warehouseName()).orElseGet(() -> warehouseService.create(
-                new WarehouseCommand(null, pack.warehouseName(), pack.companyLabel() + "演示地址",
-                        "演示仓管", false), operator));
+                new WarehouseCommand(null, pack.warehouseName(), pack.companyLabel() + "地址",
+                        "仓管", false), operator));
     }
 
     private Optional<Warehouse> findWarehouse(String name) {
@@ -369,7 +370,7 @@ public class DemoSeedService {
                 new SupplierQuery(pack.supplierName(), ArchiveStatus.ENABLED, 1, 50)),
                 pack.supplierName(), Supplier::getName)
                 .orElseGet(() -> supplierService.create(new SupplierCommand(null, pack.supplierName(),
-                        "演示联系人", "13800000000", pack.companyLabel(), "DEMOTAX0001",
+                        "联系人", "13800000000", pack.companyLabel(), "DEMOTAX0001",
                         SettlementMethod.MONTHLY), operator));
     }
 
@@ -378,7 +379,7 @@ public class DemoSeedService {
                 new CustomerQuery(pack.customerName(), ArchiveStatus.ENABLED, 1, 50)),
                 pack.customerName(), Customer::getName)
                 .orElseGet(() -> customerService.create(new CustomerCommand(null, pack.customerName(),
-                        "演示联系人", "13900000000", pack.companyLabel(), "DEMOCUS0001",
+                        "联系人", "13900000000", pack.companyLabel(), "DEMOCUS0001",
                         SettlementMethod.MONTHLY, null), operator));
     }
 
@@ -397,8 +398,8 @@ public class DemoSeedService {
         if (existing.isPresent()) {
             return new ProductCreated(existing.get(), false);
         }
-        Product created = productService.create(new ProductCommand(null, name, "演示规格", null, unitId,
-                null, "演示种子商品", List.of(), InventoryCategory.MERCHANDISE), operator);
+        Product created = productService.create(new ProductCommand(null, name, "标准规格", null, unitId,
+                null, "试点种子商品", List.of(), InventoryCategory.MERCHANDISE), operator);
         return new ProductCreated(created, true);
     }
 
@@ -434,7 +435,7 @@ public class DemoSeedService {
         GapRecord record = gapRecordService.create(new GapRecordCommand(
                 null,
                 SAMPLE_GAP_PREFIX + pack.companyLabel() + "希望科目余额一键导出 CSV",
-                "QA 在 " + pack.companyLabel() + " 演示试点中核对科目余额，希望从试算/科目余额直接导出 CSV。",
+                "QA 在 " + pack.companyLabel() + " 试点中核对科目余额，希望从试算/科目余额直接导出 CSV。",
                 "财务工作台提供科目余额 CSV 导出，金额仍为字符串。",
                 "科目余额导出尚未作为独立能力提供。",
                 BusinessModule.FINANCE,

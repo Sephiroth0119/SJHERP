@@ -354,10 +354,10 @@ class DemoSeedFlowIntegrationTest {
 
         assertThat(result.alreadyLoaded()).isFalse();
         assertThat(result.packId()).isEqualTo("sunshine");
-        assertThat(result.companyLabel()).isEqualTo("演示阳光文具");
-        assertThat(result.warehouseName()).isEqualTo("演示阳光仓");
-        assertThat(result.tradeProductName()).startsWith("演示");
-        assertThat(result.openingProductName()).startsWith("演示");
+        assertThat(result.companyLabel()).isEqualTo("通润驱动");
+        assertThat(result.warehouseName()).isEqualTo("通润驱动仓");
+        assertThat(result.tradeProductName()).isEqualTo("通润减速电机");
+        assertThat(result.openingProductName()).isEqualTo("通润联轴器");
         assertThat(result.purchaseOrderNo()).startsWith("PO-");
         assertThat(result.purchaseReceiptNo()).startsWith("PR-");
         assertThat(result.purchaseInvoiceNo()).startsWith("PINV-");
