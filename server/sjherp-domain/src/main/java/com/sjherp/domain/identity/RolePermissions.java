@@ -47,7 +47,7 @@ public final class RolePermissions {
         // M5-T02 新增：PRODUCTION_PLAN / PRODUCTION_MRP（需求计划 + MRP 运行）
         // M5-T03 新增：PRODUCTION_WO（生产工单）
         // M5-T04 新增：PRODUCTION_MATERIAL（生产领料与退料）
-        // M8-T07 新增：PILOT_SEED（演示种子装载，预发/本地）
+        // M8-T07 新增：PILOT_SEED（试点种子装载，预发/本地，默认通润驱动）
         // M8-T08 新增：LICENSE_VIEW（离线许可状态只读）
         grants.put(Role.BOSS, Collections.unmodifiableSet(EnumSet.of(
                 Permission.CATALOG_CREATE_PRODUCT,

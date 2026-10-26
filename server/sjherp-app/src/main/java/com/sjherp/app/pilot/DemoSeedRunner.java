@@ -30,7 +30,7 @@ public class DemoSeedRunner implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) {
         DemoSeedResult result = demoSeedService.seed(properties.pack(), OPERATOR);
-        log.info("演示种子装载完成 pack={} alreadyLoaded={} period={} closeable={} po={}",
+        log.info("种子装载完成 pack={} alreadyLoaded={} period={} closeable={} po={}",
                 result.packId(), result.alreadyLoaded(), result.period(), result.periodCloseable(),
                 result.purchaseOrderNo());
     }

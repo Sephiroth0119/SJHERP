@@ -6,10 +6,11 @@ import java.util.Locale;
 import java.util.Objects;
 
 /**
- * 虚构演示企业种子包（M8-T07）。名称必须带「演示」或「Demo」前缀，禁止空名假数据。
+ * 种子企业数据包（M8-T07）。默认包展示名为真实试点客户「通润驱动」；
+ * {@code qinghe} 仍是备选演示数据集。档案名称禁止为空，不要求「演示」前缀。
  *
  * <p>v1.0 单租户：同一库同时只装一包。经济口径对齐月末关账验收（采购 100@12.50、销售 60@25.00），
- * 便于关账预检断言毛利 750.00。
+ * 便于关账预检断言毛利 750.00。pack id（sunshine / qinghe）是 API/脚本契约，勿改。
  */
 public record DemoCompanyPack(
         String id,
@@ -33,15 +34,15 @@ public record DemoCompanyPack(
 
     public static final DemoCompanyPack SUNSHINE = new DemoCompanyPack(
             "sunshine",
-            "演示阳光文具",
-            "演示件",
-            "演示阳光仓",
-            "演示中性笔",
-            "演示草稿纸",
-            "演示晨光供应商",
-            "演示文具零售客户",
-            "演示工行基本户",
-            "演示银行",
+            "通润驱动",
+            "件",
+            "通润驱动仓",
+            "通润减速电机",
+            "通润联轴器",
+            "通润配套供应商",
+            "通润主机厂客户",
+            "通润驱动工行基本户",
+            "工商银行",
             "6222-DEMO-0001",
             "1002",
             new BigDecimal("100"),
@@ -73,15 +74,15 @@ public record DemoCompanyPack(
 
     public DemoCompanyPack {
         Objects.requireNonNull(id, "pack id 不能为空");
-        requireDemoName(companyLabel, "演示企业名称");
-        requireDemoName(unitName, "单位名称");
-        requireDemoName(warehouseName, "仓库名称");
-        requireDemoName(tradeProductName, "经销商品名称");
-        requireDemoName(openingProductName, "期初商品名称");
-        requireDemoName(supplierName, "供应商名称");
-        requireDemoName(customerName, "客户名称");
-        requireDemoName(paymentAccountName, "资金账户名称");
-        requireDemoName(bankName, "开户行");
+        requireNonBlankName(companyLabel, "企业名称");
+        requireNonBlankName(unitName, "单位名称");
+        requireNonBlankName(warehouseName, "仓库名称");
+        requireNonBlankName(tradeProductName, "经销商品名称");
+        requireNonBlankName(openingProductName, "期初商品名称");
+        requireNonBlankName(supplierName, "供应商名称");
+        requireNonBlankName(customerName, "客户名称");
+        requireNonBlankName(paymentAccountName, "资金账户名称");
+        requireNonBlankName(bankName, "开户行");
         if (accountNo == null || accountNo.isBlank()
                 || !(accountNo.contains("DEMO") || accountNo.contains("演示"))) {
             throw new IllegalArgumentException("银行账号必须含 DEMO 或 演示，避免被当成真实账号");
@@ -110,7 +111,7 @@ public record DemoCompanyPack(
             case "sunshine" -> SUNSHINE;
             case "qinghe" -> QINGHE;
             default -> throw new IllegalArgumentException(
-                    "未知演示种子包: " + packId + "（支持 sunshine / qinghe）");
+                    "未知种子包: " + packId + "（支持 sunshine / qinghe）");
         };
     }
 
@@ -118,13 +119,9 @@ public record DemoCompanyPack(
         return List.of(SUNSHINE, QINGHE);
     }
 
-    static void requireDemoName(String name, String label) {
+    static void requireNonBlankName(String name, String label) {
         if (name == null || name.isBlank()) {
             throw new IllegalArgumentException(label + "不能为空，禁止空名假数据");
-        }
-        String trimmed = name.strip();
-        if (!trimmed.startsWith("演示") && !trimmed.startsWith("Demo")) {
-            throw new IllegalArgumentException(label + "必须使用「演示」或「Demo」前缀: " + trimmed);
         }
     }
 }

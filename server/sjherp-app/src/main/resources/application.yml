@@ -67,7 +67,7 @@ sjherp:
   admin:
     password: ${SJHERP_ADMIN_PASSWORD:}
 
-  # 演示种子试点（M8-T07）：默认关闭。打开后启动时经领域/应用服务装入「演示*」虚构企业。
+  # 种子试点（M8-T07）：默认关闭。打开后启动时经领域/应用服务装入通润驱动（默认 pack=sunshine）。
   # 生产一键安装不要打开；预发/本地用 deploy/seed-pilot.sh 或本开关。
   demo-seed:
     enabled: ${SJHERP_DEMO_SEED:false}

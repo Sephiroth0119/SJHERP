@@ -50,7 +50,7 @@ class DemoSeedApiPermissionTest {
     @BeforeEach
     void setUp() {
         Mockito.when(demoSeedService.listPacks()).thenReturn(List.of(
-                new DemoSeedDtos.PackInfo("sunshine", "演示阳光文具", "演示阳光仓")));
+                new DemoSeedDtos.PackInfo("sunshine", "通润驱动", "通润驱动仓")));
         Mockito.when(demoSeedService.seed(Mockito.any(), Mockito.anyString())).thenReturn(sampleResult());
     }
 
@@ -59,7 +59,7 @@ class DemoSeedApiPermissionTest {
         mockMvc.perform(get("/api/pilot/demo-seed/packs").with(asUser(Role.ADMIN)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value("sunshine"))
-                .andExpect(jsonPath("$[0].companyLabel").value("演示阳光文具"));
+                .andExpect(jsonPath("$[0].companyLabel").value("通润驱动"));
     }
 
     @Test
@@ -68,7 +68,7 @@ class DemoSeedApiPermissionTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"pack\":\"sunshine\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.companyLabel").value("演示阳光文具"))
+                .andExpect(jsonPath("$.companyLabel").value("通润驱动"))
                 .andExpect(jsonPath("$.periodCloseable").value(true))
                 .andExpect(jsonPath("$.alreadyLoaded").value(false));
     }
@@ -122,9 +122,9 @@ class DemoSeedApiPermissionTest {
     }
 
     private static DemoSeedResult sampleResult() {
-        return new DemoSeedResult("sunshine", "演示阳光文具", false, "202610", true, true, List.of(),
-                "演示阳光仓", "演示中性笔", "演示草稿纸", "演示晨光供应商", "演示文具零售客户",
-                "演示工行基本户", "PO-1", "PR-1", "PINV-1", "PAYV-1", "SO-1", "SD-1", "SINV-1",
-                "RCPT-1", "GAP-1", "已装入演示阳光文具");
+        return new DemoSeedResult("sunshine", "通润驱动", false, "202610", true, true, List.of(),
+                "通润驱动仓", "通润减速电机", "通润联轴器", "通润配套供应商", "通润主机厂客户",
+                "通润驱动工行基本户", "PO-1", "PR-1", "PINV-1", "PAYV-1", "SO-1", "SD-1", "SINV-1",
+                "RCPT-1", "GAP-1", "已装入通润驱动");
     }
 }
